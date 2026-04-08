@@ -167,6 +167,20 @@ func (p Pipeline) ValueCounts(col string) Pipeline {
 	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.ValueCounts(col) })}
 }
 
+// GroupByAgg groups by groupCols and applies aggregations. See table.Table.GroupByAgg.
+func (p Pipeline) GroupByAgg(groupCols []string, aggs []table.AggDef) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return t.GroupByAgg(groupCols, aggs)
+	})}
+}
+
+// AddColSwitch appends a column via conditional cases. See table.Table.AddColSwitch.
+func (p Pipeline) AddColSwitch(name string, cases []table.Case, else_ func(table.Row) string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return t.AddColSwitch(name, cases, else_)
+	})}
+}
+
 // Melt converts wide format to long format. See table.Table.Melt.
 func (p Pipeline) Melt(idCols []string, varName, valName string) Pipeline {
 	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
@@ -195,6 +209,227 @@ func (p Pipeline) ApplySchemaStrict(s schema.Schema) Pipeline {
 	return Pipeline{r: result.FlatMap(p.r, func(t table.Table) result.Result[table.Table, error] {
 		return s.ApplyStrict(t)
 	})}
+}
+
+// RenameMany renames multiple columns at once. See table.Table.RenameMany.
+func (p Pipeline) RenameMany(renames map[string]string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.RenameMany(renames) })}
+}
+
+// AddRowIndex prepends a row-number column. See table.Table.AddRowIndex.
+func (p Pipeline) AddRowIndex(name string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.AddRowIndex(name) })}
+}
+
+// Explode splits col on sep into multiple rows. See table.Table.Explode.
+func (p Pipeline) Explode(col, sep string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Explode(col, sep) })}
+}
+
+// Transpose pivots rows and columns. See table.Table.Transpose.
+func (p Pipeline) Transpose() Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Transpose() })}
+}
+
+// RightJoin performs a right join. See table.Table.RightJoin.
+func (p Pipeline) RightJoin(other table.Table, leftCol, rightCol string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return t.RightJoin(other, leftCol, rightCol)
+	})}
+}
+
+// OuterJoin performs a full outer join. See table.Table.OuterJoin.
+func (p Pipeline) OuterJoin(other table.Table, leftCol, rightCol string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return t.OuterJoin(other, leftCol, rightCol)
+	})}
+}
+
+// AntiJoin returns rows without a match in other. See table.Table.AntiJoin.
+func (p Pipeline) AntiJoin(other table.Table, leftCol, rightCol string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return t.AntiJoin(other, leftCol, rightCol)
+	})}
+}
+
+// FillForward fills empty cells with the previous non-empty value. See table.Table.FillForward.
+func (p Pipeline) FillForward(col string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.FillForward(col) })}
+}
+
+// FillBackward fills empty cells with the next non-empty value. See table.Table.FillBackward.
+func (p Pipeline) FillBackward(col string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.FillBackward(col) })}
+}
+
+// Sample returns n random rows. See table.Table.Sample.
+func (p Pipeline) Sample(n int) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Sample(n) })}
+}
+
+// SampleFrac returns a random fraction of rows. See table.Table.SampleFrac.
+func (p Pipeline) SampleFrac(f float64) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.SampleFrac(f) })}
+}
+
+// AddColFloat appends a float64-typed computed column. See table.Table.AddColFloat.
+func (p Pipeline) AddColFloat(name string, fn func(table.Row) float64) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.AddColFloat(name, fn) })}
+}
+
+// AddColInt appends an int64-typed computed column. See table.Table.AddColInt.
+func (p Pipeline) AddColInt(name string, fn func(table.Row) int64) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.AddColInt(name, fn) })}
+}
+
+// RollingAgg computes a sliding-window aggregation. See table.Table.RollingAgg.
+func (p Pipeline) RollingAgg(outCol string, size int, agg table.Agg) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return t.RollingAgg(outCol, size, agg)
+	})}
+}
+
+// Concat stacks additional tables onto the pipeline result. See table.Concat.
+func (p Pipeline) Concat(others ...table.Table) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return table.Concat(append([]table.Table{t}, others...)...)
+	})}
+}
+
+// AssertColumns returns an error pipeline if any required column is missing.
+// See table.Table.AssertColumns.
+func (p Pipeline) AssertColumns(cols ...string) Pipeline {
+	return Pipeline{r: result.FlatMap(p.r, func(t table.Table) result.Result[table.Table, error] {
+		if err := t.AssertColumns(cols...); err != nil {
+			return result.Err[table.Table, error](err)
+		}
+		return result.Ok[table.Table, error](t)
+	})}
+}
+
+// AssertNoEmpty returns an error pipeline if any cell in the given columns is
+// empty. See table.Table.AssertNoEmpty.
+func (p Pipeline) AssertNoEmpty(cols ...string) Pipeline {
+	return Pipeline{r: result.FlatMap(p.r, func(t table.Table) result.Result[table.Table, error] {
+		if err := t.AssertNoEmpty(cols...); err != nil {
+			return result.Err[table.Table, error](err)
+		}
+		return result.Ok[table.Table, error](t)
+	})}
+}
+
+// Peek calls fn with the current Table without modifying it. Useful for
+// logging or inspecting intermediate state in a chain.
+//
+//	p.Peek(func(t table.Table) { log.Printf("rows: %d", t.Len()) }).Select("name")
+func (p Pipeline) Peek(fn func(table.Table)) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		fn(t)
+		return t
+	})}
+}
+
+// ForEach calls fn for each row (side-effects only). See table.Table.ForEach.
+func (p Pipeline) ForEach(fn func(int, table.Row)) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		t.ForEach(fn)
+		return t
+	})}
+}
+
+// Coalesce adds a column with the first non-empty value from cols. See table.Table.Coalesce.
+func (p Pipeline) Coalesce(name string, cols ...string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Coalesce(name, cols...) })}
+}
+
+// Lookup adds a column via a lookup table. See table.Table.Lookup.
+func (p Pipeline) Lookup(col, outCol string, lookupTable table.Table, keyCol, valCol string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
+		return t.Lookup(col, outCol, lookupTable, keyCol, valCol)
+	})}
+}
+
+// FormatCol rounds float values in col to precision decimal places. See table.Table.FormatCol.
+func (p Pipeline) FormatCol(col string, precision int) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.FormatCol(col, precision) })}
+}
+
+// Lag adds a lagged column. See table.Table.Lag.
+func (p Pipeline) Lag(col, outCol string, n int) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Lag(col, outCol, n) })}
+}
+
+// Lead adds a lead column. See table.Table.Lead.
+func (p Pipeline) Lead(col, outCol string, n int) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Lead(col, outCol, n) })}
+}
+
+// CumSum adds a cumulative-sum column. See table.Table.CumSum.
+func (p Pipeline) CumSum(col, outCol string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.CumSum(col, outCol) })}
+}
+
+// Rank adds a dense-rank column. See table.Table.Rank.
+func (p Pipeline) Rank(col, outCol string, asc bool) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Rank(col, outCol, asc) })}
+}
+
+// Bin adds a bucketing column. See table.Table.Bin.
+func (p Pipeline) Bin(col, name string, bins []table.BinDef) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Bin(col, name, bins) })}
+}
+
+// Intersect keeps rows that also appear in other. See table.Table.Intersect.
+func (p Pipeline) Intersect(other table.Table, cols ...string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.Intersect(other, cols...) })}
+}
+
+// TryTransform applies a fallible row transformation. See table.Table.TryTransform.
+func (p Pipeline) TryTransform(fn func(table.Row) (map[string]string, error)) Pipeline {
+	return Pipeline{r: result.FlatMap(p.r, func(t table.Table) result.Result[table.Table, error] {
+		return t.TryTransform(fn)
+	})}
+}
+
+// TryMap applies a fallible single-column transformation. See table.Table.TryMap.
+func (p Pipeline) TryMap(col string, fn func(string) (string, error)) Pipeline {
+	return Pipeline{r: result.FlatMap(p.r, func(t table.Table) result.Result[table.Table, error] {
+		return t.TryMap(col, fn)
+	})}
+}
+
+// TransformParallel runs fn concurrently over all rows. See table.Table.TransformParallel.
+func (p Pipeline) TransformParallel(fn func(table.Row) map[string]string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.TransformParallel(fn) })}
+}
+
+// MapParallel runs fn concurrently over col. See table.Table.MapParallel.
+func (p Pipeline) MapParallel(col string, fn func(string) string) Pipeline {
+	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table { return t.MapParallel(col, fn) })}
+}
+
+// Partition is a terminal that splits the pipeline into two sub-pipelines.
+// If the pipeline is in an error state, both sub-pipelines carry the error.
+func (p Pipeline) Partition(fn func(table.Row) bool) (matched, rest Pipeline) {
+	if p.r.IsErr() {
+		return p, p
+	}
+	m, r := p.r.Unwrap().Partition(fn)
+	return From(m), From(r)
+}
+
+// Chunk is a terminal that splits the pipeline result into n-row batches.
+// If the pipeline is in an error state, a single error pipeline is returned.
+func (p Pipeline) Chunk(n int) []Pipeline {
+	if p.r.IsErr() {
+		return []Pipeline{p}
+	}
+	chunks := p.r.Unwrap().Chunk(n)
+	out := make([]Pipeline, len(chunks))
+	for i, c := range chunks {
+		out[i] = From(c)
+	}
+	return out
 }
 
 // GroupBy is a terminal operation that splits the pipeline into one
