@@ -489,6 +489,69 @@ func (t Table) Distinct(cols ...string) Table {
 
 // --- Transformation ---
 
+// Case is a condition/value pair for use with AddColSwitch.
+type Case struct {
+	When func(Row) bool
+	Then func(Row) string
+}
+
+// AddColSwitch appends a new column whose value is determined by the first
+// matching Case. If no case matches, else_ is called (pass nil for empty
+// string). This is the Go equivalent of numpy's np.select.
+//
+//	t.AddColSwitch("category",
+//	    []table.Case{
+//	        {When: func(r table.Row) bool { return r.Get("score").UnwrapOr("") == "A" },
+//	         Then: func(r table.Row) string { return "excellent" }},
+//	        {When: func(r table.Row) bool { return r.Get("score").UnwrapOr("") == "B" },
+//	         Then: func(r table.Row) string { return "good" }},
+//	    },
+//	    func(r table.Row) string { return "other" },
+//	)
+func (t Table) AddColSwitch(name string, cases []Case, else_ func(Row) string) Table {
+	return t.AddCol(name, func(r Row) string {
+		for _, c := range cases {
+			if c.When(r) {
+				return c.Then(r)
+			}
+		}
+		if else_ != nil {
+			return else_(r)
+		}
+		return ""
+	})
+}
+
+// CartesianProduct returns a new table with every combination of rows from a
+// and b. The result has len(a.Headers)+len(b.Headers) columns and
+// len(a.Rows)*len(b.Rows) rows. Column names from b that conflict with a are
+// kept as-is; use Rename to disambiguate if needed.
+//
+//	regions := table.New([]string{"region"}, [][]string{{"EU"}, {"US"}})
+//	products := table.New([]string{"product"}, [][]string{{"Widget"}, {"Gadget"}})
+//	table.CartesianProduct(regions, products)
+//	// region  product
+//	// EU      Widget
+//	// EU      Gadget
+//	// US      Widget
+//	// US      Gadget
+func CartesianProduct(a, b Table) Table {
+	newHeaders := make(slice.Slice[string], 0, len(a.Headers)+len(b.Headers))
+	newHeaders = append(newHeaders, a.Headers...)
+	newHeaders = append(newHeaders, b.Headers...)
+
+	records := make([][]string, 0, len(a.Rows)*len(b.Rows))
+	for _, ra := range a.Rows {
+		for _, rb := range b.Rows {
+			rec := make([]string, 0, len(newHeaders))
+			rec = append(rec, ra.Values()...)
+			rec = append(rec, rb.Values()...)
+			records = append(records, rec)
+		}
+	}
+	return New(newHeaders, records)
+}
+
 // Transform applies fn to every row. The map returned by fn is used as a
 // partial update: only the columns present in the map are changed; all other
 // columns keep their current value.
