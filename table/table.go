@@ -351,23 +351,33 @@ func (t Table) Sort(col string, asc bool) Table {
 //
 //	orders.Join(customers, "customer_id", "id")
 func (t Table) Join(other Table, leftCol, rightCol string) Table {
-	rightIdx := make(map[string][]Row)
+	rightKeyIdx := other.headerIdx[rightCol]
+	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
-		key := row.Get(rightCol).UnwrapOr("")
+		key := ""
+		if rightKeyIdx < len(row.values) {
+			key = row.values[rightKeyIdx]
+		}
 		rightIdx[key] = append(rightIdx[key], row)
 	}
 
 	newHeaders := make(slice.Slice[string], len(t.Headers))
 	copy(newHeaders, t.Headers)
-	for _, h := range other.Headers {
+	var rightExtraIdx []int
+	for i, h := range other.Headers {
 		if h != rightCol {
 			newHeaders = append(newHeaders, h)
+			rightExtraIdx = append(rightExtraIdx, i)
 		}
 	}
 
+	leftKeyIdx := t.headerIdx[leftCol]
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
-		key := lRow.Get(leftCol).UnwrapOr("")
+		key := ""
+		if leftKeyIdx < len(lRow.values) {
+			key = lRow.values[leftKeyIdx]
+		}
 		rRows, ok := rightIdx[key]
 		if !ok {
 			continue
@@ -375,9 +385,11 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 		for _, rRow := range rRows {
 			vals := make(slice.Slice[string], 0, len(newHeaders))
 			vals = append(vals, lRow.values...)
-			for _, h := range other.Headers {
-				if h != rightCol {
-					vals = append(vals, rRow.Get(h).UnwrapOr(""))
+			for _, idx := range rightExtraIdx {
+				if idx < len(rRow.values) {
+					vals = append(vals, rRow.values[idx])
+				} else {
+					vals = append(vals, "")
 				}
 			}
 			rows = append(rows, NewRow(newHeaders, vals))
@@ -664,28 +676,36 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 //	// Keep all orders, attach customer name where available
 //	orders.LeftJoin(customers, "customer_id", "id")
 func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
-	rightIdx := make(map[string][]Row)
+	rightKeyIdx := other.headerIdx[rightCol]
+	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
-		key := row.Get(rightCol).UnwrapOr("")
+		key := ""
+		if rightKeyIdx < len(row.values) {
+			key = row.values[rightKeyIdx]
+		}
 		rightIdx[key] = append(rightIdx[key], row)
 	}
 	newHeaders := make(slice.Slice[string], len(t.Headers))
 	copy(newHeaders, t.Headers)
-	var rightExtra []string
-	for _, h := range other.Headers {
+	var rightExtraIdx []int
+	for i, h := range other.Headers {
 		if h != rightCol {
 			newHeaders = append(newHeaders, h)
-			rightExtra = append(rightExtra, h)
+			rightExtraIdx = append(rightExtraIdx, i)
 		}
 	}
+	leftKeyIdx := t.headerIdx[leftCol]
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
-		key := lRow.Get(leftCol).UnwrapOr("")
+		key := ""
+		if leftKeyIdx < len(lRow.values) {
+			key = lRow.values[leftKeyIdx]
+		}
 		rRows := rightIdx[key]
 		if len(rRows) == 0 {
 			vals := make(slice.Slice[string], 0, len(newHeaders))
 			vals = append(vals, lRow.values...)
-			for range rightExtra {
+			for range rightExtraIdx {
 				vals = append(vals, "")
 			}
 			rows = append(rows, NewRow(newHeaders, vals))
@@ -693,8 +713,12 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 			for _, rRow := range rRows {
 				vals := make(slice.Slice[string], 0, len(newHeaders))
 				vals = append(vals, lRow.values...)
-				for _, h := range rightExtra {
-					vals = append(vals, rRow.Get(h).UnwrapOr(""))
+				for _, idx := range rightExtraIdx {
+					if idx < len(rRow.values) {
+						vals = append(vals, rRow.values[idx])
+					} else {
+						vals = append(vals, "")
+					}
 				}
 				rows = append(rows, NewRow(newHeaders, vals))
 			}
@@ -718,10 +742,14 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 //	// US      37
 //	// FR      15
 func (t Table) ValueCounts(col string) Table {
+	idx := t.headerIdx[col]
 	counts := make(map[string]int)
 	var order []string
 	for _, row := range t.Rows {
-		v := row.Get(col).UnwrapOr("")
+		v := ""
+		if idx < len(row.values) {
+			v = row.values[idx]
+		}
 		if counts[v] == 0 {
 			order = append(order, v)
 		}
@@ -759,10 +787,20 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 	for _, c := range idCols {
 		idSet[c] = true
 	}
-	var meltCols []string
-	for _, h := range t.Headers {
+	// pre-compute id column indices
+	idIdx := make([]int, len(idCols))
+	for i, c := range idCols {
+		idIdx[i] = t.headerIdx[c]
+	}
+	// collect melt columns with their indices
+	type meltCol struct {
+		name string
+		idx  int
+	}
+	var meltCols []meltCol
+	for i, h := range t.Headers {
 		if !idSet[h] {
-			meltCols = append(meltCols, h)
+			meltCols = append(meltCols, meltCol{name: h, idx: i})
 		}
 	}
 	newHeaders := make(slice.Slice[string], 0, len(idCols)+2)
@@ -774,10 +812,18 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 	for _, row := range t.Rows {
 		for _, mc := range meltCols {
 			rec := make([]string, 0, len(newHeaders))
-			for _, ic := range idCols {
-				rec = append(rec, row.Get(ic).UnwrapOr(""))
+			for _, ii := range idIdx {
+				v := ""
+				if ii < len(row.values) {
+					v = row.values[ii]
+				}
+				rec = append(rec, v)
 			}
-			rec = append(rec, mc, row.Get(mc).UnwrapOr(""))
+			v := ""
+			if mc.idx < len(row.values) {
+				v = row.values[mc.idx]
+			}
+			rec = append(rec, mc.name, v)
 			records = append(records, rec)
 		}
 	}
@@ -799,10 +845,17 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 //	// wide:  name  q1   q2
 //	//        Alice 100  200
 func (t Table) Pivot(index, col, val string) Table {
+	indexIdx := t.headerIdx[index]
+	colIdx := t.headerIdx[col]
+	valIdx := t.headerIdx[val]
+
 	var colVals []string
 	colSeen := make(map[string]bool)
 	for _, row := range t.Rows {
-		c := row.Get(col).UnwrapOr("")
+		c := ""
+		if colIdx < len(row.values) {
+			c = row.values[colIdx]
+		}
 		if !colSeen[c] {
 			colSeen[c] = true
 			colVals = append(colVals, c)
@@ -818,9 +871,18 @@ func (t Table) Pivot(index, col, val string) Table {
 	rowMap := make(map[string]*entry)
 	var rowOrder []string
 	for _, row := range t.Rows {
-		idxVal := row.Get(index).UnwrapOr("")
-		colVal := row.Get(col).UnwrapOr("")
-		cellVal := row.Get(val).UnwrapOr("")
+		idxVal := ""
+		if indexIdx < len(row.values) {
+			idxVal = row.values[indexIdx]
+		}
+		colVal := ""
+		if colIdx < len(row.values) {
+			colVal = row.values[colIdx]
+		}
+		cellVal := ""
+		if valIdx < len(row.values) {
+			cellVal = row.values[valIdx]
+		}
 		e, ok := rowMap[idxVal]
 		if !ok {
 			e = &entry{vals: make(map[string]string)}

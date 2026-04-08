@@ -174,7 +174,11 @@ func (t Table) Transpose() Table {
 		rec := make([]string, 0, len(t.Rows)+1)
 		rec = append(rec, col)
 		for _, row := range t.Rows {
-			rec = append(rec, row.Get(col).UnwrapOr(""))
+			v := ""
+			if ci < len(row.values) {
+				v = row.values[ci]
+			}
+			rec = append(rec, v)
 		}
 		records[ci] = rec
 	}
@@ -367,12 +371,26 @@ func (t Table) Coalesce(name string, cols ...string) Table {
 //	// enrich orders with customer name
 //	orders.Lookup("customer_id", "customer_name", customers, "id", "name")
 func (t Table) Lookup(col, outCol string, lookupTable Table, keyCol, valCol string) Table {
+	keyIdx := lookupTable.headerIdx[keyCol]
+	valIdx := lookupTable.headerIdx[valCol]
 	lkp := make(map[string]string, len(lookupTable.Rows))
 	for _, row := range lookupTable.Rows {
-		lkp[row.Get(keyCol).UnwrapOr("")] = row.Get(valCol).UnwrapOr("")
+		k, v := "", ""
+		if keyIdx < len(row.values) {
+			k = row.values[keyIdx]
+		}
+		if valIdx < len(row.values) {
+			v = row.values[valIdx]
+		}
+		lkp[k] = v
 	}
+	colIdx := t.headerIdx[col]
 	return t.AddCol(outCol, func(r Row) string {
-		return lkp[r.Get(col).UnwrapOr("")]
+		k := ""
+		if colIdx < len(r.values) {
+			k = r.values[colIdx]
+		}
+		return lkp[k]
 	})
 }
 
