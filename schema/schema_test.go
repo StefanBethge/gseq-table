@@ -214,3 +214,138 @@ func TestTime_MissingCol(t *testing.T) {
 	row := table.NewRow([]string{"x"}, []string{"2024-01-01"})
 	assertEqual(t, Time(row, "missing", "").IsNone(), true)
 }
+
+// --- Numeric column aggregators ---
+
+func numTable() table.Table {
+	return table.New(
+		[]string{"name", "score", "status"},
+		[][]string{
+			{"Alice", "80", "active"},
+			{"Bob", "90", "active"},
+			{"Carol", "70", "inactive"},
+			{"Dave", "", "active"}, // empty score
+		},
+	)
+}
+
+func TestSumCol(t *testing.T) {
+	assertEqual(t, SumCol(numTable(), "score"), 240.0)
+}
+
+func TestMeanCol(t *testing.T) {
+	// mean of 80, 90, 70 (empty skipped) = 240/3 = 80
+	assertEqual(t, MeanCol(numTable(), "score"), 80.0)
+}
+
+func TestMeanCol_EmptyTable(t *testing.T) {
+	tb := table.New([]string{"v"}, nil)
+	assertEqual(t, MeanCol(tb, "v"), 0.0)
+}
+
+func TestMinCol(t *testing.T) {
+	assertEqual(t, MinCol(numTable(), "score"), 70.0)
+}
+
+func TestMaxCol(t *testing.T) {
+	assertEqual(t, MaxCol(numTable(), "score"), 90.0)
+}
+
+func TestCountCol(t *testing.T) {
+	// 3 non-empty scores (Dave's is empty)
+	assertEqual(t, CountCol(numTable(), "score"), 3)
+}
+
+func TestCountWhere(t *testing.T) {
+	assertEqual(t, CountWhere(numTable(), "status", "active"), 3)
+	assertEqual(t, CountWhere(numTable(), "status", "inactive"), 1)
+	assertEqual(t, CountWhere(numTable(), "status", "unknown"), 0)
+}
+
+// --- StdDevCol / MedianCol / Describe ---
+
+func TestStdDevCol(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"2"}, {"4"}, {"4"}, {"4"}, {"5"}, {"5"}, {"7"}, {"9"}})
+	// population std dev of [2,4,4,4,5,5,7,9] = 2.0
+	std := StdDevCol(tb, "v")
+	if std < 1.99 || std > 2.01 {
+		t.Errorf("expected ~2.0, got %f", std)
+	}
+}
+
+func TestStdDevCol_LessThanTwo(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"5"}})
+	assertEqual(t, StdDevCol(tb, "v"), 0.0)
+}
+
+func TestMedianCol_Odd(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"3"}, {"1"}, {"2"}})
+	assertEqual(t, MedianCol(tb, "v"), 2.0) // sorted: [1,2,3] → median=2
+}
+
+func TestMedianCol_Even(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"1"}, {"3"}, {"5"}, {"7"}})
+	assertEqual(t, MedianCol(tb, "v"), 4.0) // sorted: [1,3,5,7] → (3+5)/2=4
+}
+
+func TestMedianCol_Empty(t *testing.T) {
+	tb := table.New([]string{"v"}, nil)
+	assertEqual(t, MedianCol(tb, "v"), 0.0)
+}
+
+func TestDescribe_NumericCol(t *testing.T) {
+	tb := table.New([]string{"score"}, [][]string{{"80"}, {"90"}, {"70"}})
+	result := Describe(tb)
+	assertEqual(t, len(result.Rows), 1)
+	row := result.Rows[0]
+	assertEqual(t, row.Get("column").UnwrapOr(""), "score")
+	assertEqual(t, row.Get("count").UnwrapOr(""), "3")
+	assertEqual(t, row.Get("min").UnwrapOr(""), "70")
+	assertEqual(t, row.Get("max").UnwrapOr(""), "90")
+	assertEqual(t, row.Get("mean").UnwrapOr(""), "80")
+}
+
+func TestDescribe_NonNumericCol(t *testing.T) {
+	tb := table.New([]string{"name"}, [][]string{{"Alice"}, {"Bob"}})
+	result := Describe(tb)
+	row := result.Rows[0]
+	assertEqual(t, row.Get("column").UnwrapOr(""), "name")
+	assertEqual(t, row.Get("count").UnwrapOr(""), "0") // non-numeric → count=0
+	assertEqual(t, row.Get("min").UnwrapOr("x"), "")
+}
+
+// --- FreqMap ---
+
+func TestFreqMap(t *testing.T) {
+	tb := table.New([]string{"status"}, [][]string{
+		{"active"}, {"active"}, {"inactive"}, {"active"}, {""},
+	})
+	m := FreqMap(tb, "status")
+	assertEqual(t, m["active"], 3)
+	assertEqual(t, m["inactive"], 1)
+	assertEqual(t, m[""], 1)
+}
+
+// --- MinMaxNorm ---
+
+func TestMinMaxNorm(t *testing.T) {
+	tb := table.New([]string{"score"}, [][]string{{"0"}, {"50"}, {"100"}})
+	result := MinMaxNorm(tb, "score")
+	assertEqual(t, result.Rows[0].Get("score").UnwrapOr(""), "0")
+	assertEqual(t, result.Rows[1].Get("score").UnwrapOr(""), "0.5")
+	assertEqual(t, result.Rows[2].Get("score").UnwrapOr(""), "1")
+}
+
+func TestMinMaxNorm_AllEqual(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"5"}, {"5"}, {"5"}})
+	result := MinMaxNorm(tb, "v")
+	// all equal → return unchanged
+	assertEqual(t, result.Rows[0].Get("v").UnwrapOr(""), "5")
+}
+
+func TestMinMaxNorm_NonNumericUnchanged(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"1"}, {"abc"}, {"3"}})
+	result := MinMaxNorm(tb, "v")
+	// "abc" is left as-is
+	assertEqual(t, result.Rows[1].Get("v").UnwrapOr(""), "abc")
+}

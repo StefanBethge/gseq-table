@@ -18,6 +18,7 @@
 package csv
 
 import (
+	"bytes"
 	gcsv "encoding/csv"
 	"fmt"
 	"io"
@@ -108,6 +109,16 @@ func (r *Reader) Read(rd io.Reader) result.Result[table.Table, error] {
 	}
 	headers, dataRows := r.resolveHeaders(records)
 	return result.Ok[table.Table, error](table.New(headers, dataRows))
+}
+
+// ToString serialises t as a CSV string using the default writer settings
+// (comma separator, header row included). Useful for tests and debugging.
+//
+//	fmt.Println(csv.ToString(t))
+func ToString(t table.Table) string {
+	var buf bytes.Buffer
+	_ = NewWriter().Write(&buf, t)
+	return buf.String()
 }
 
 // resolveHeaders separates the header row (or generates names) from the data

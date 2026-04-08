@@ -34,6 +34,8 @@ package schema
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -338,4 +340,227 @@ func colIndex(t table.Table, col string) int {
 		}
 	}
 	return -1
+}
+
+// --- Numeric column aggregators ---
+//
+// These functions operate on the string values of a column, parsing each cell
+// as float64. Unparseable values (including empty strings) are silently
+// skipped unless otherwise noted.
+
+// SumCol returns the sum of all parseable float values in col.
+//
+//	schema.SumCol(t, "revenue")
+func SumCol(t table.Table, col string) float64 {
+	var sum float64
+	for _, v := range t.Col(col) {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			sum += f
+		}
+	}
+	return sum
+}
+
+// MeanCol returns the arithmetic mean of all parseable float values in col.
+// Returns 0 if no parseable values are found.
+//
+//	schema.MeanCol(t, "age")
+func MeanCol(t table.Table, col string) float64 {
+	var sum float64
+	var n int
+	for _, v := range t.Col(col) {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			sum += f
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
+}
+
+// MinCol returns the minimum parseable float value in col.
+// Returns 0 if no parseable values are found.
+//
+//	schema.MinCol(t, "price")
+func MinCol(t table.Table, col string) float64 {
+	var min float64
+	first := true
+	for _, v := range t.Col(col) {
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			continue
+		}
+		if first || f < min {
+			min = f
+			first = false
+		}
+	}
+	return min
+}
+
+// MaxCol returns the maximum parseable float value in col.
+// Returns 0 if no parseable values are found.
+//
+//	schema.MaxCol(t, "price")
+func MaxCol(t table.Table, col string) float64 {
+	var max float64
+	first := true
+	for _, v := range t.Col(col) {
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			continue
+		}
+		if first || f > max {
+			max = f
+			first = false
+		}
+	}
+	return max
+}
+
+// CountCol counts non-empty values in col.
+//
+//	schema.CountCol(t, "email")
+func CountCol(t table.Table, col string) int {
+	var n int
+	for _, v := range t.Col(col) {
+		if v != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// CountWhere counts rows where col == val (case-sensitive).
+//
+//	schema.CountWhere(t, "status", "active")
+func CountWhere(t table.Table, col, val string) int {
+	var n int
+	for _, v := range t.Col(col) {
+		if v == val {
+			n++
+		}
+	}
+	return n
+}
+
+// StdDevCol returns the population standard deviation of the parseable float
+// values in col. Returns 0 if fewer than two values are found.
+//
+//	schema.StdDevCol(t, "revenue")
+func StdDevCol(t table.Table, col string) float64 {
+	mean := MeanCol(t, col)
+	var sumSq float64
+	var n int
+	for _, v := range t.Col(col) {
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			continue
+		}
+		d := f - mean
+		sumSq += d * d
+		n++
+	}
+	if n < 2 {
+		return 0
+	}
+	return math.Sqrt(sumSq / float64(n))
+}
+
+// MedianCol returns the median of the parseable float values in col.
+// Returns 0 if no parseable values are found.
+//
+//	schema.MedianCol(t, "age")
+func MedianCol(t table.Table, col string) float64 {
+	var vals []float64
+	for _, v := range t.Col(col) {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			vals = append(vals, f)
+		}
+	}
+	if len(vals) == 0 {
+		return 0
+	}
+	sort.Float64s(vals)
+	n := len(vals)
+	if n%2 == 1 {
+		return vals[n/2]
+	}
+	return (vals[n/2-1] + vals[n/2]) / 2
+}
+
+// numericCount counts the parseable float64 values in col.
+func numericCount(t table.Table, col string) int {
+	var n int
+	for _, v := range t.Col(col) {
+		if _, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			n++
+		}
+	}
+	return n
+}
+
+// Describe returns a summary statistics table with one row per column of t.
+// Columns: "column", "count", "min", "max", "mean", "std", "median".
+// count reflects only parseable numeric values; non-numeric columns show
+// count=0 and empty strings for all stat fields.
+//
+//	schema.Describe(t)
+//	// column   count  min   max    mean   std    median
+//	// revenue  10     50    500    227.3  134.1  215
+//	// name     0
+func Describe(t table.Table) table.Table {
+	headers := []string{"column", "count", "min", "max", "mean", "std", "median"}
+	records := make([][]string, len(t.Headers))
+	for i, col := range t.Headers {
+		count := numericCount(t, col)
+		if count == 0 {
+			records[i] = []string{col, "0", "", "", "", "", ""}
+			continue
+		}
+		records[i] = []string{
+			col,
+			strconv.Itoa(count),
+			strconv.FormatFloat(MinCol(t, col), 'f', -1, 64),
+			strconv.FormatFloat(MaxCol(t, col), 'f', -1, 64),
+			strconv.FormatFloat(MeanCol(t, col), 'f', -1, 64),
+			strconv.FormatFloat(StdDevCol(t, col), 'f', -1, 64),
+			strconv.FormatFloat(MedianCol(t, col), 'f', -1, 64),
+		}
+	}
+	return table.New(headers, records)
+}
+
+// FreqMap returns a map[string]int counting how often each distinct value
+// appears in col (including empty strings).
+//
+//	schema.FreqMap(t, "status") // → map["active":42 "inactive":8]
+func FreqMap(t table.Table, col string) map[string]int {
+	result := make(map[string]int)
+	for _, v := range t.Col(col) {
+		result[v]++
+	}
+	return result
+}
+
+// MinMaxNorm normalises the numeric values in col to the [0, 1] range using
+// min-max scaling: (x - min) / (max - min). Non-parseable values are left
+// unchanged. If all values are equal, the column is returned unchanged.
+//
+//	schema.MinMaxNorm(t, "score")
+func MinMaxNorm(t table.Table, col string) table.Table {
+	min := MinCol(t, col)
+	max := MaxCol(t, col)
+	if max == min {
+		return t
+	}
+	return t.Map(col, func(v string) string {
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			return v
+		}
+		return strconv.FormatFloat((f-min)/(max-min), 'f', -1, 64)
+	})
 }
