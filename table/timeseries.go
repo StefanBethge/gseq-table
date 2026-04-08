@@ -18,11 +18,15 @@ func (t Table) Lag(col, outCol string, n int) Table {
 	newHeaders = append(newHeaders, t.Headers...)
 	newHeaders = append(newHeaders, outCol)
 
+	colIdx := t.headerIdx[col]
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
 		lagVal := ""
 		if i-n >= 0 {
-			lagVal = t.Rows[i-n].Get(col).UnwrapOr("")
+			prev := t.Rows[i-n]
+			if colIdx < len(prev.values) {
+				lagVal = prev.values[colIdx]
+			}
 		}
 		vals := make(slice.Slice[string], 0, len(row.values)+1)
 		vals = append(vals, row.values...)
@@ -41,11 +45,15 @@ func (t Table) Lead(col, outCol string, n int) Table {
 	newHeaders = append(newHeaders, t.Headers...)
 	newHeaders = append(newHeaders, outCol)
 
+	colIdx := t.headerIdx[col]
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
 		leadVal := ""
 		if i+n < len(t.Rows) {
-			leadVal = t.Rows[i+n].Get(col).UnwrapOr("")
+			next := t.Rows[i+n]
+			if colIdx < len(next.values) {
+				leadVal = next.values[colIdx]
+			}
 		}
 		vals := make(slice.Slice[string], 0, len(row.values)+1)
 		vals = append(vals, row.values...)
@@ -64,11 +72,14 @@ func (t Table) CumSum(col, outCol string) Table {
 	newHeaders = append(newHeaders, t.Headers...)
 	newHeaders = append(newHeaders, outCol)
 
+	colIdx := t.headerIdx[col]
 	rows := make(slice.Slice[Row], len(t.Rows))
 	var running float64
 	for i, row := range t.Rows {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(row.Get(col).UnwrapOr("")), 64); err == nil {
-			running += f
+		if colIdx < len(row.values) {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[colIdx]), 64); err == nil {
+				running += f
+			}
 		}
 		vals := make(slice.Slice[string], 0, len(row.values)+1)
 		vals = append(vals, row.values...)
@@ -90,11 +101,16 @@ func (t Table) Rank(col, outCol string, asc bool) Table {
 		val   float64
 		valid bool
 	}
+	colIdx := t.headerIdx[col]
 	entries := make([]entry, len(t.Rows))
 	var numericVals []float64
 	seen := make(map[float64]bool)
 	for i, row := range t.Rows {
-		f, err := strconv.ParseFloat(strings.TrimSpace(row.Get(col).UnwrapOr("")), 64)
+		var v string
+		if colIdx < len(row.values) {
+			v = row.values[colIdx]
+		}
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 		entries[i] = entry{idx: i, val: f, valid: err == nil}
 		if err == nil && !seen[f] {
 			seen[f] = true

@@ -412,18 +412,30 @@ func (t Table) Intersect(other Table, cols ...string) Table {
 	if len(check) == 0 {
 		check = t.Headers
 	}
+	// pre-compute column indices for both tables
+	tIdx := make([]int, len(check))
+	oIdx := make([]int, len(check))
+	for i, c := range check {
+		tIdx[i] = t.headerIdx[c]
+		oIdx[i] = other.headerIdx[c]
+	}
 	otherKeys := make(map[string]bool, len(other.Rows))
+	parts := make([]string, len(check))
 	for _, row := range other.Rows {
-		parts := make([]string, len(check))
-		for i, c := range check {
-			parts[i] = row.Get(c).UnwrapOr("")
+		for i, idx := range oIdx {
+			parts[i] = ""
+			if idx < len(row.values) {
+				parts[i] = row.values[idx]
+			}
 		}
 		otherKeys[strings.Join(parts, "\x00")] = true
 	}
 	return t.Where(func(r Row) bool {
-		parts := make([]string, len(check))
-		for i, c := range check {
-			parts[i] = r.Get(c).UnwrapOr("")
+		for i, idx := range tIdx {
+			parts[i] = ""
+			if idx < len(r.values) {
+				parts[i] = r.values[idx]
+			}
 		}
 		return otherKeys[strings.Join(parts, "\x00")]
 	})

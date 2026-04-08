@@ -129,6 +129,16 @@ func NewFromRows(headers slice.Slice[string], rows slice.Slice[Row]) Table {
 	return newTable(headers, rows)
 }
 
+// ColIndex returns the zero-based index of col in t.Headers, or -1 if the
+// column does not exist. This allows external packages to use the O(1) header
+// index without accessing unexported fields.
+func (t Table) ColIndex(col string) int {
+	if idx, ok := t.headerIdx[col]; ok {
+		return idx
+	}
+	return -1
+}
+
 // Select returns a new table containing only the named columns, in the order
 // given. Columns not present in the table are silently ignored.
 //
@@ -217,14 +227,25 @@ func (t Table) Rename(old, new string) Table {
 //
 //	combined := jan.Append(feb).Append(mar)
 func (t Table) Append(other Table) Table {
+	// pre-compute mapping: for each position in t.Headers, the index in other
+	otherIdx := make([]int, len(t.Headers))
+	for i, h := range t.Headers {
+		if idx, ok := other.headerIdx[h]; ok {
+			otherIdx[i] = idx
+		} else {
+			otherIdx[i] = -1
+		}
+	}
 	rows := make(slice.Slice[Row], 0, len(t.Rows)+len(other.Rows))
 	for _, row := range t.Rows {
 		rows = append(rows, NewRow(t.Headers, row.values))
 	}
 	for _, row := range other.Rows {
 		vals := make(slice.Slice[string], len(t.Headers))
-		for i, h := range t.Headers {
-			vals[i] = row.Get(h).UnwrapOr("")
+		for i, idx := range otherIdx {
+			if idx >= 0 && idx < len(row.values) {
+				vals[i] = row.values[idx]
+			}
 		}
 		rows = append(rows, NewRow(t.Headers, vals))
 	}
@@ -277,9 +298,13 @@ func (t Table) AddCol(name string, fn func(Row) string) Table {
 //	groups := t.GroupBy("country")
 //	deRows := groups["DE"].Rows
 func (t Table) GroupBy(col string) map[string]Table {
+	idx := t.headerIdx[col]
 	groups := make(map[string]Table)
 	for _, row := range t.Rows {
-		key := row.Get(col).UnwrapOr("")
+		key := ""
+		if idx < len(row.values) {
+			key = row.values[idx]
+		}
 		g := groups[key]
 		if g.Headers == nil {
 			g = newTable(t.Headers, slice.Slice[Row]{})
@@ -458,12 +483,18 @@ func (t Table) Distinct(cols ...string) Table {
 	if len(check) == 0 {
 		check = t.Headers
 	}
+	checkIdx := make([]int, len(check))
+	for i, c := range check {
+		checkIdx[i] = t.headerIdx[c]
+	}
 	seen := make(map[string]bool)
 	var rows slice.Slice[Row]
 	for _, row := range t.Rows {
-		parts := make([]string, len(check))
-		for i, c := range check {
-			parts[i] = row.Get(c).UnwrapOr("")
+		parts := make([]string, len(checkIdx))
+		for i, idx := range checkIdx {
+			if idx < len(row.values) {
+				parts[i] = row.values[idx]
+			}
 		}
 		key := strings.Join(parts, "\x00")
 		if !seen[key] {

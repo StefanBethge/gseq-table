@@ -70,13 +70,21 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 		rows    slice.Slice[Row]
 	}
 
+	// pre-compute group column indices once
+	groupIdx := make([]int, len(groupCols))
+	for i, col := range groupCols {
+		groupIdx[i] = t.headerIdx[col]
+	}
+
 	index := make(map[string]*groupEntry)
 	var keyOrder []string
 
 	for _, row := range t.Rows {
 		parts := make([]string, len(groupCols))
-		for i, col := range groupCols {
-			parts[i] = row.Get(col).UnwrapOr("")
+		for i, idx := range groupIdx {
+			if idx < len(row.values) {
+				parts[i] = row.values[idx]
+			}
 		}
 		key := strings.Join(parts, "\x00")
 		if e, ok := index[key]; ok {
@@ -224,7 +232,8 @@ func (t Table) RollingAgg(outCol string, size int, agg Agg) Table {
 		if start < 0 {
 			start = 0
 		}
-		window := newTable(t.Headers, t.Rows[start:i+1])
+		// reuse t.headerIdx — no need to rebuild the map for each window
+		window := Table{Headers: t.Headers, Rows: t.Rows[start : i+1], headerIdx: t.headerIdx}
 		val := agg.reduce(window)
 
 		vals := make(slice.Slice[string], 0, len(row.values)+1)
