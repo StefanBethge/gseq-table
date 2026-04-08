@@ -97,8 +97,19 @@ func (r Row) ToMap() map[string]string {
 //	    Select("name", "email").
 //	    Sort("name", true)
 type Table struct {
-	Headers slice.Slice[string]
-	Rows    slice.Slice[Row]
+	Headers   slice.Slice[string]
+	Rows      slice.Slice[Row]
+	headerIdx map[string]int
+}
+
+// newTable is the internal constructor. It builds the header index once so all
+// subsequent column lookups are O(1) instead of O(k).
+func newTable(headers slice.Slice[string], rows slice.Slice[Row]) Table {
+	idx := make(map[string]int, len(headers))
+	for i, h := range headers {
+		idx[h] = i
+	}
+	return Table{Headers: headers, Rows: rows, headerIdx: idx}
 }
 
 // New builds a Table from a header slice and a slice of raw string records.
@@ -109,7 +120,13 @@ func New(headers slice.Slice[string], records [][]string) Table {
 	for i, rec := range records {
 		rows[i] = NewRow(headers, rec)
 	}
-	return Table{Headers: headers, Rows: rows}
+	return newTable(headers, rows)
+}
+
+// NewFromRows constructs a Table from a header slice and a slice of already-built
+// Rows. The header index is built automatically.
+func NewFromRows(headers slice.Slice[string], rows slice.Slice[Row]) Table {
+	return newTable(headers, rows)
 }
 
 // Select returns a new table containing only the named columns, in the order
@@ -120,12 +137,9 @@ func (t Table) Select(cols ...string) Table {
 	newHeaders := make(slice.Slice[string], 0, len(cols))
 	indices := make([]int, 0, len(cols))
 	for _, col := range cols {
-		for i, h := range t.Headers {
-			if h == col {
-				newHeaders = append(newHeaders, col)
-				indices = append(indices, i)
-				break
-			}
+		if i, ok := t.headerIdx[col]; ok {
+			newHeaders = append(newHeaders, col)
+			indices = append(indices, i)
 		}
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
@@ -138,7 +152,7 @@ func (t Table) Select(cols ...string) Table {
 		}
 		rows[ri] = NewRow(newHeaders, vals)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // Where returns a new table containing only the rows for which fn returns
@@ -157,7 +171,7 @@ func (t Table) Where(fn func(Row) bool) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // Col extracts all values of the named column as a flat slice.
@@ -165,14 +179,8 @@ func (t Table) Where(fn func(Row) bool) Table {
 //
 //	names := t.Col("name") // slice.Slice[string]
 func (t Table) Col(name string) slice.Slice[string] {
-	idx := -1
-	for i, h := range t.Headers {
-		if h == name {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
+	idx, ok := t.headerIdx[name]
+	if !ok {
 		return slice.Slice[string]{}
 	}
 	out := make(slice.Slice[string], len(t.Rows))
@@ -189,14 +197,8 @@ func (t Table) Col(name string) slice.Slice[string] {
 //
 //	t.Rename("cust_id", "customer_id")
 func (t Table) Rename(old, new string) Table {
-	idx := -1
-	for i, h := range t.Headers {
-		if h == old {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
+	idx, ok := t.headerIdx[old]
+	if !ok {
 		return t
 	}
 	newHeaders := make(slice.Slice[string], len(t.Headers))
@@ -206,7 +208,7 @@ func (t Table) Rename(old, new string) Table {
 	for i, row := range t.Rows {
 		rows[i] = NewRow(newHeaders, row.values)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // Append concatenates other onto t, aligning columns by name. Columns present
@@ -226,7 +228,7 @@ func (t Table) Append(other Table) Table {
 		}
 		rows = append(rows, NewRow(t.Headers, vals))
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // Map transforms every value in col using fn, leaving all other columns
@@ -234,14 +236,8 @@ func (t Table) Append(other Table) Table {
 //
 //	t.Map("price", func(v string) string { return "$" + v })
 func (t Table) Map(col string, fn func(string) string) Table {
-	idx := -1
-	for i, h := range t.Headers {
-		if h == col {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
+	idx, ok := t.headerIdx[col]
+	if !ok {
 		return t
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
@@ -253,7 +249,7 @@ func (t Table) Map(col string, fn func(string) string) Table {
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // AddCol appends a new column whose value for each row is computed by fn.
@@ -272,7 +268,7 @@ func (t Table) AddCol(name string, fn func(Row) string) Table {
 		vals[len(row.values)] = fn(row)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // GroupBy splits the table into sub-tables keyed by the distinct values of
@@ -286,7 +282,7 @@ func (t Table) GroupBy(col string) map[string]Table {
 		key := row.Get(col).UnwrapOr("")
 		g := groups[key]
 		if g.Headers == nil {
-			g = Table{Headers: t.Headers, Rows: slice.Slice[Row]{}}
+			g = newTable(t.Headers, slice.Slice[Row]{})
 		}
 		g.Rows = append(g.Rows, NewRow(t.Headers, row.values))
 		groups[key] = g
@@ -301,14 +297,8 @@ func (t Table) GroupBy(col string) map[string]Table {
 //	t.Sort("name", true)   // A → Z
 //	t.Sort("date", false)  // newest first
 func (t Table) Sort(col string, asc bool) Table {
-	idx := -1
-	for i, h := range t.Headers {
-		if h == col {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
+	idx, ok := t.headerIdx[col]
+	if !ok {
 		return t
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
@@ -326,7 +316,7 @@ func (t Table) Sort(col string, asc bool) Table {
 		}
 		return av > bv
 	})
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // Join performs an inner join on leftCol = rightCol.
@@ -371,7 +361,7 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // --- Shape & inspection ---
@@ -389,7 +379,7 @@ func (t Table) Head(n int) Table {
 	if n >= len(t.Rows) {
 		return t
 	}
-	return Table{Headers: t.Headers, Rows: t.Rows[:n]}
+	return newTable(t.Headers, t.Rows[:n])
 }
 
 // Tail returns the last n rows. If n >= Len the full table is returned.
@@ -397,7 +387,7 @@ func (t Table) Tail(n int) Table {
 	if n >= len(t.Rows) {
 		return t
 	}
-	return Table{Headers: t.Headers, Rows: t.Rows[len(t.Rows)-n:]}
+	return newTable(t.Headers, t.Rows[len(t.Rows)-n:])
 }
 
 // --- Column operations ---
@@ -484,7 +474,7 @@ func (t Table) Distinct(cols ...string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // --- Transformation ---
@@ -570,16 +560,13 @@ func (t Table) Transform(fn func(Row) map[string]string) Table {
 		vals := make(slice.Slice[string], len(row.values))
 		copy(vals, row.values)
 		for col, v := range updates {
-			for j, h := range t.Headers {
-				if h == col && j < len(vals) {
-					vals[j] = v
-					break
-				}
+			if j, ok := t.headerIdx[col]; ok && j < len(vals) {
+				vals[j] = v
 			}
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // --- Multi-column sort ---
@@ -603,12 +590,10 @@ func Desc(col string) SortKey { return SortKey{Col: col, Asc: false} }
 func (t Table) SortMulti(keys ...SortKey) Table {
 	indices := make([]int, len(keys))
 	for k, sk := range keys {
-		indices[k] = -1
-		for i, h := range t.Headers {
-			if h == sk.Col {
-				indices[k] = i
-				break
-			}
+		if i, ok := t.headerIdx[sk.Col]; ok {
+			indices[k] = i
+		} else {
+			indices[k] = -1
 		}
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
@@ -635,7 +620,7 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 		}
 		return false
 	})
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // --- Joins ---
@@ -687,7 +672,7 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // --- Aggregation ---

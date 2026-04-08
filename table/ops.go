@@ -28,7 +28,7 @@ func (t Table) RenameMany(renames map[string]string) Table {
 	for i, row := range t.Rows {
 		rows[i] = NewRow(newHeaders, row.values)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // --- Concat ---
@@ -66,7 +66,7 @@ func (t Table) AddRowIndex(name string) Table {
 		vals = append(vals, row.values...)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // --- Explode ---
@@ -78,14 +78,8 @@ func (t Table) AddRowIndex(name string) Table {
 //	// "tags" contains "go,etl,data" → three rows
 //	t.Explode("tags", ",")
 func (t Table) Explode(col, sep string) Table {
-	idx := -1
-	for i, h := range t.Headers {
-		if h == col {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
+	idx, ok := t.headerIdx[col]
+	if !ok {
 		return t
 	}
 
@@ -213,7 +207,7 @@ func (t Table) FillForward(col string) Table {
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // FillBackward replaces empty string values in col with the next non-empty
@@ -243,7 +237,7 @@ func (t Table) FillBackward(col string) Table {
 			}
 		}
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // --- Sampling ---
@@ -257,7 +251,7 @@ func (t Table) Sample(n int) Table {
 		return t
 	}
 	sampled := t.Rows.Samples(n)
-	return Table{Headers: t.Headers, Rows: sampled}
+	return newTable(t.Headers, sampled)
 }
 
 // SampleFrac returns a random fraction of rows. f=0.2 returns ~20% of rows.
@@ -317,7 +311,7 @@ func (t Table) Partition(fn func(Row) bool) (matched, rest Table) {
 	if rRows == nil {
 		rRows = slice.Slice[Row]{}
 	}
-	return Table{Headers: t.Headers, Rows: mRows}, Table{Headers: t.Headers, Rows: rRows}
+	return newTable(t.Headers, mRows), newTable(t.Headers, rRows)
 }
 
 // Chunk splits the table into consecutive sub-tables of at most n rows each.
@@ -334,7 +328,7 @@ func (t Table) Chunk(n int) []Table {
 		if end > len(t.Rows) {
 			end = len(t.Rows)
 		}
-		chunks = append(chunks, Table{Headers: t.Headers, Rows: t.Rows[i:end]})
+		chunks = append(chunks, newTable(t.Headers, t.Rows[i:end]))
 	}
 	return chunks
 }
@@ -475,10 +469,8 @@ func (t Table) Bin(col, name string, bins []BinDef) Table {
 
 // colIdx returns the index of col in t.Headers, or -1.
 func colIdx(t Table, col string) int {
-	for i, h := range t.Headers {
-		if h == col {
-			return i
-		}
+	if i, ok := t.headerIdx[col]; ok {
+		return i
 	}
 	return -1
 }

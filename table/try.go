@@ -25,16 +25,13 @@ func (t Table) TryTransform(fn func(Row) (map[string]string, error)) result.Resu
 		vals := make(slice.Slice[string], len(row.values))
 		copy(vals, row.values)
 		for col, v := range updates {
-			for j, h := range t.Headers {
-				if h == col && j < len(vals) {
-					vals[j] = v
-					break
-				}
+			if j, ok := t.headerIdx[col]; ok && j < len(vals) {
+				vals[j] = v
 			}
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return result.Ok[Table, error](Table{Headers: t.Headers, Rows: rows})
+	return result.Ok[Table, error](newTable(t.Headers, rows))
 }
 
 // TryMap is like Map but fn may return an error. Processing stops at the
@@ -65,5 +62,5 @@ func (t Table) TryMap(col string, fn func(string) (string, error)) result.Result
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return result.Ok[Table, error](Table{Headers: t.Headers, Rows: rows})
+	return result.Ok[Table, error](newTable(t.Headers, rows))
 }

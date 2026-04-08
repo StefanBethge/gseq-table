@@ -168,7 +168,7 @@ func (s Schema) apply(t table.Table, strict bool) result.Result[table.Table, err
 			newVals[idx] = normalized
 			rows[ri] = table.NewRow(row.Headers(), newVals)
 		}
-		out = table.Table{Headers: out.Headers, Rows: rows}
+		out = table.NewFromRows(out.Headers, rows)
 	}
 	return result.Ok[table.Table, error](out)
 }

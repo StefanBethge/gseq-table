@@ -59,7 +59,7 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // OuterJoin (full outer join) keeps every row from both tables. Rows that
