@@ -35,6 +35,7 @@
 package etl
 
 import (
+	"github.com/stefanbethge/gseq-table/schema"
 	"github.com/stefanbethge/gseq-table/table"
 	"github.com/stefanbethge/gseq/result"
 )
@@ -177,6 +178,22 @@ func (p Pipeline) Melt(idCols []string, varName, valName string) Pipeline {
 func (p Pipeline) Pivot(index, col, val string) Pipeline {
 	return Pipeline{r: result.Map(p.r, func(t table.Table) table.Table {
 		return t.Pivot(index, col, val)
+	})}
+}
+
+// ApplySchema normalises cell values according to s (lenient: empty cells pass
+// through). See schema.Schema.Apply.
+func (p Pipeline) ApplySchema(s schema.Schema) Pipeline {
+	return Pipeline{r: result.FlatMap(p.r, func(t table.Table) result.Result[table.Table, error] {
+		return s.Apply(t)
+	})}
+}
+
+// ApplySchemaStrict normalises cell values according to s and returns an error
+// for any empty cell in a non-string column. See schema.Schema.ApplyStrict.
+func (p Pipeline) ApplySchemaStrict(s schema.Schema) Pipeline {
+	return Pipeline{r: result.FlatMap(p.r, func(t table.Table) result.Result[table.Table, error] {
+		return s.ApplyStrict(t)
 	})}
 }
 
