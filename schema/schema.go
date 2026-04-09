@@ -637,30 +637,51 @@ func floatVal(r table.Row, col string) float64 {
 	return f
 }
 
-// Add returns a function that sums the float values of two columns.
+// Add returns a function that sums the float values of all named columns.
 //
 //	t.AddColFloat("total", schema.Add("price", "tax"))
-func Add(colA, colB string) func(table.Row) float64 {
+//	t.AddColFloat("grand", schema.Add("price", "tax", "shipping", "handling"))
+func Add(cols ...string) func(table.Row) float64 {
 	return func(r table.Row) float64 {
-		return floatVal(r, colA) + floatVal(r, colB)
+		var sum float64
+		for _, col := range cols {
+			sum += floatVal(r, col)
+		}
+		return sum
 	}
 }
 
-// Sub returns a function that subtracts colB from colA.
+// Sub returns a function that subtracts all subsequent columns from the first.
 //
 //	t.AddColFloat("profit", schema.Sub("revenue", "cost"))
-func Sub(colA, colB string) func(table.Row) float64 {
+//	t.AddColFloat("net", schema.Sub("revenue", "cost", "tax", "fees"))
+func Sub(cols ...string) func(table.Row) float64 {
 	return func(r table.Row) float64 {
-		return floatVal(r, colA) - floatVal(r, colB)
+		if len(cols) == 0 {
+			return 0
+		}
+		result := floatVal(r, cols[0])
+		for _, col := range cols[1:] {
+			result -= floatVal(r, col)
+		}
+		return result
 	}
 }
 
-// Mul returns a function that multiplies the float values of two columns.
+// Mul returns a function that multiplies the float values of all named columns.
 //
 //	t.AddColFloat("line_total", schema.Mul("qty", "unit_price"))
-func Mul(colA, colB string) func(table.Row) float64 {
+//	t.AddColFloat("volume", schema.Mul("length", "width", "height"))
+func Mul(cols ...string) func(table.Row) float64 {
 	return func(r table.Row) float64 {
-		return floatVal(r, colA) * floatVal(r, colB)
+		if len(cols) == 0 {
+			return 0
+		}
+		result := floatVal(r, cols[0])
+		for _, col := range cols[1:] {
+			result *= floatVal(r, col)
+		}
+		return result
 	}
 }
 
@@ -832,31 +853,41 @@ func Mod(colA, colB string) func(table.Row) float64 {
 	}
 }
 
-// Min2 returns a function that returns the smaller of two columns.
+// Min2 returns a function that returns the smallest value across all named columns.
 //
 //	t.AddColFloat("lower", schema.Min2("bid", "ask"))
-func Min2(colA, colB string) func(table.Row) float64 {
+//	t.AddColFloat("cheapest", schema.Min2("price_a", "price_b", "price_c"))
+func Min2(cols ...string) func(table.Row) float64 {
 	return func(r table.Row) float64 {
-		a := floatVal(r, colA)
-		b := floatVal(r, colB)
-		if a < b {
-			return a
+		if len(cols) == 0 {
+			return 0
 		}
-		return b
+		min := floatVal(r, cols[0])
+		for _, col := range cols[1:] {
+			if v := floatVal(r, col); v < min {
+				min = v
+			}
+		}
+		return min
 	}
 }
 
-// Max2 returns a function that returns the larger of two columns.
+// Max2 returns a function that returns the largest value across all named columns.
 //
 //	t.AddColFloat("upper", schema.Max2("bid", "ask"))
-func Max2(colA, colB string) func(table.Row) float64 {
+//	t.AddColFloat("highest", schema.Max2("price_a", "price_b", "price_c"))
+func Max2(cols ...string) func(table.Row) float64 {
 	return func(r table.Row) float64 {
-		a := floatVal(r, colA)
-		b := floatVal(r, colB)
-		if a > b {
-			return a
+		if len(cols) == 0 {
+			return 0
 		}
-		return b
+		max := floatVal(r, cols[0])
+		for _, col := range cols[1:] {
+			if v := floatVal(r, col); v > max {
+				max = v
+			}
+		}
+		return max
 	}
 }
 

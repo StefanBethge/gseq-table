@@ -344,10 +344,10 @@ schema.Float(row, "price")        // option.Option[float64]
 schema.Bool(row, "active")        // option.Option[bool]
 schema.Time(row, "date", "")      // option.Option[time.Time]
 
-// Column arithmetic — returns func(Row) float64, use with AddColFloat
-t.AddColFloat("total",  schema.Add("price", "tax"))
-t.AddColFloat("profit", schema.Sub("revenue", "cost"))
-t.AddColFloat("amount", schema.Mul("qty", "unit_price"))
+// Column arithmetic — variadic, returns func(Row) float64
+t.AddColFloat("total",  schema.Add("price", "tax", "shipping"))
+t.AddColFloat("net",    schema.Sub("revenue", "cost", "tax", "fees"))
+t.AddColFloat("volume", schema.Mul("length", "width", "height"))
 t.AddColFloat("avg",    schema.Div("total", "count"))    // 0 if denominator=0
 t.AddColFloat("margin", schema.Pct("profit", "revenue")) // (a/b)*100
 t.AddColFloat("abs",    schema.Abs("pnl"))
@@ -355,8 +355,8 @@ t.AddColFloat("neg",    schema.Neg("cost"))
 t.AddColFloat("vat",    schema.MulConst("net", 1.19))
 t.AddColFloat("adj",    schema.AddConst("score", -10))
 t.AddColFloat("mod",    schema.Mod("total", "batch"))
-t.AddColFloat("lower",  schema.Min2("bid", "ask"))
-t.AddColFloat("upper",  schema.Max2("bid", "ask"))
+t.AddColFloat("lowest", schema.Min2("price_a", "price_b", "price_c"))
+t.AddColFloat("highest",schema.Max2("price_a", "price_b", "price_c"))
 t.AddColFloat("round",  schema.Round("ratio", 2))
 t.AddColFloat("capped", schema.Clamp("score", 0, 100))
 

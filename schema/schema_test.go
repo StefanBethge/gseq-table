@@ -407,11 +407,54 @@ func TestDiv_ByZero(t *testing.T) {
 	assertEqual(t, result.Rows[3].Get("ratio").UnwrapOr(""), "0")
 }
 
+func TestAdd_ThreeCols(t *testing.T) {
+	tb := table.New([]string{"a", "b", "c"}, [][]string{{"10", "20", "30"}, {"1", "2", "3"}})
+	result := tb.AddColFloat("sum", Add("a", "b", "c"))
+	assertEqual(t, result.Rows[0].Get("sum").UnwrapOr(""), "60")
+	assertEqual(t, result.Rows[1].Get("sum").UnwrapOr(""), "6")
+}
+
+func TestAdd_SingleCol(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("same", Add("a"))
+	assertEqual(t, result.Rows[0].Get("same").UnwrapOr(""), "10")
+}
+
+func TestAdd_Empty(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("zero", Add())
+	assertEqual(t, result.Rows[0].Get("zero").UnwrapOr(""), "0")
+}
+
 func TestAdd_MissingCol(t *testing.T) {
 	tb := arithTable()
 	result := tb.AddColFloat("sum", Add("a", "nonexistent"))
 	// nonexistent → 0, so sum = a + 0
 	assertEqual(t, result.Rows[0].Get("sum").UnwrapOr(""), "10")
+}
+
+func TestSub_ThreeCols(t *testing.T) {
+	tb := table.New([]string{"a", "b", "c"}, [][]string{{"100", "30", "20"}})
+	result := tb.AddColFloat("net", Sub("a", "b", "c"))
+	assertEqual(t, result.Rows[0].Get("net").UnwrapOr(""), "50") // 100 - 30 - 20
+}
+
+func TestMul_ThreeCols(t *testing.T) {
+	tb := table.New([]string{"l", "w", "h"}, [][]string{{"2", "3", "4"}})
+	result := tb.AddColFloat("vol", Mul("l", "w", "h"))
+	assertEqual(t, result.Rows[0].Get("vol").UnwrapOr(""), "24") // 2*3*4
+}
+
+func TestMin2_ThreeCols(t *testing.T) {
+	tb := table.New([]string{"a", "b", "c"}, [][]string{{"10", "3", "7"}})
+	result := tb.AddColFloat("min", Min2("a", "b", "c"))
+	assertEqual(t, result.Rows[0].Get("min").UnwrapOr(""), "3")
+}
+
+func TestMax2_ThreeCols(t *testing.T) {
+	tb := table.New([]string{"a", "b", "c"}, [][]string{{"10", "3", "7"}})
+	result := tb.AddColFloat("max", Max2("a", "b", "c"))
+	assertEqual(t, result.Rows[0].Get("max").UnwrapOr(""), "10")
 }
 
 // --- Date column operations ---
