@@ -4,7 +4,7 @@ go 1.23
 
 require (
 	github.com/stefanbethge/gseq v0.2.0
-	github.com/stefanbethge/gseq-table v0.0.0
+	github.com/stefanbethge/gseq-table v0.2.0
 	github.com/xuri/excelize/v2 v2.9.0
 )
 
@@ -18,5 +18,3 @@ require (
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
 )
-
-replace github.com/stefanbethge/gseq-table => ../
