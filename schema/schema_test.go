@@ -2,6 +2,7 @@ package schema
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stefanbethge/gseq-table/table"
 )
@@ -348,4 +349,358 @@ func TestMinMaxNorm_NonNumericUnchanged(t *testing.T) {
 	result := MinMaxNorm(tb, "v")
 	// "abc" is left as-is
 	assertEqual(t, result.Rows[1].Get("v").UnwrapOr(""), "abc")
+}
+
+// --- Numeric column operations ---
+
+func arithTable() table.Table {
+	return table.New(
+		[]string{"a", "b"},
+		[][]string{
+			{"10", "3"},
+			{"20", "5"},
+			{"", "7"},   // a missing
+			{"15", "0"}, // b zero (div by zero)
+		},
+	)
+}
+
+func TestAdd(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("sum", Add("a", "b"))
+	assertEqual(t, result.Rows[0].Get("sum").UnwrapOr(""), "13")
+	assertEqual(t, result.Rows[1].Get("sum").UnwrapOr(""), "25")
+	assertEqual(t, result.Rows[2].Get("sum").UnwrapOr(""), "7") // 0 + 7
+}
+
+func TestSub(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("diff", Sub("a", "b"))
+	assertEqual(t, result.Rows[0].Get("diff").UnwrapOr(""), "7")
+	assertEqual(t, result.Rows[1].Get("diff").UnwrapOr(""), "15")
+}
+
+func TestMul(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("product", Mul("a", "b"))
+	assertEqual(t, result.Rows[0].Get("product").UnwrapOr(""), "30")
+	assertEqual(t, result.Rows[1].Get("product").UnwrapOr(""), "100")
+}
+
+func TestDiv(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("ratio", Div("a", "b"))
+	// 10/3 = 3.3333...
+	v := result.Rows[0].Get("ratio").UnwrapOr("")
+	f, _ := Float(result.Rows[0], "ratio").Get()
+	if f < 3.33 || f > 3.34 {
+		t.Errorf("expected ~3.33, got %s", v)
+	}
+	// 20/5 = 4
+	assertEqual(t, result.Rows[1].Get("ratio").UnwrapOr(""), "4")
+}
+
+func TestDiv_ByZero(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("ratio", Div("a", "b"))
+	// b=0 → result 0
+	assertEqual(t, result.Rows[3].Get("ratio").UnwrapOr(""), "0")
+}
+
+func TestAdd_MissingCol(t *testing.T) {
+	tb := arithTable()
+	result := tb.AddColFloat("sum", Add("a", "nonexistent"))
+	// nonexistent → 0, so sum = a + 0
+	assertEqual(t, result.Rows[0].Get("sum").UnwrapOr(""), "10")
+}
+
+// --- Date column operations ---
+
+func dateTable() table.Table {
+	return table.New(
+		[]string{"start", "end", "invalid"},
+		[][]string{
+			{"2024-01-15", "2024-03-15", "not-a-date"},
+			{"2024-06-01", "2024-06-30", ""},
+			{"15.03.2024", "2024-12-31", "abc"},
+		},
+	)
+}
+
+func TestDateDiffDays(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddColFloat("days", DateDiffDays("end", "start"))
+	assertEqual(t, result.Rows[0].Get("days").UnwrapOr(""), "60") // Jan 15 → Mar 15
+	assertEqual(t, result.Rows[1].Get("days").UnwrapOr(""), "29") // Jun 1 → Jun 30
+}
+
+func TestDateDiffDays_InvalidDate(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddColFloat("days", DateDiffDays("invalid", "start"))
+	assertEqual(t, result.Rows[0].Get("days").UnwrapOr(""), "0") // invalid → 0
+}
+
+func TestDateAddDays(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("future", DateAddDays("start", 30))
+	assertEqual(t, result.Rows[0].Get("future").UnwrapOr(""), "2024-02-14")
+	assertEqual(t, result.Rows[1].Get("future").UnwrapOr(""), "2024-07-01")
+}
+
+func TestDateAddDays_Negative(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("past", DateAddDays("start", -10))
+	assertEqual(t, result.Rows[0].Get("past").UnwrapOr(""), "2024-01-05")
+}
+
+func TestDateAddDays_InvalidDate(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("future", DateAddDays("invalid", 30))
+	assertEqual(t, result.Rows[0].Get("future").UnwrapOr("x"), "") // invalid → empty
+}
+
+func TestDateYear(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("year", DateYear("start"))
+	assertEqual(t, result.Rows[0].Get("year").UnwrapOr(""), "2024")
+}
+
+func TestDateMonth(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("month", DateMonth("start"))
+	assertEqual(t, result.Rows[0].Get("month").UnwrapOr(""), "1")  // January
+	assertEqual(t, result.Rows[1].Get("month").UnwrapOr(""), "6")  // June
+}
+
+func TestDateDay(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("day", DateDay("start"))
+	assertEqual(t, result.Rows[0].Get("day").UnwrapOr(""), "15")
+	assertEqual(t, result.Rows[1].Get("day").UnwrapOr(""), "1")
+}
+
+func TestDateFormat(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("display", DateFormat("start", "02.01.2006"))
+	assertEqual(t, result.Rows[0].Get("display").UnwrapOr(""), "15.01.2024")
+	assertEqual(t, result.Rows[1].Get("display").UnwrapOr(""), "01.06.2024")
+}
+
+func TestDateFormat_InvalidDate(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("display", DateFormat("invalid", "02.01.2006"))
+	assertEqual(t, result.Rows[0].Get("display").UnwrapOr("x"), "")
+}
+
+func TestDateWeekday(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("weekday", DateWeekday("start"))
+	assertEqual(t, result.Rows[0].Get("weekday").UnwrapOr(""), "Monday") // 2024-01-15 was Monday
+}
+
+func TestDateQuarter(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("q", DateQuarter("start"))
+	assertEqual(t, result.Rows[0].Get("q").UnwrapOr(""), "1") // January → Q1
+	assertEqual(t, result.Rows[1].Get("q").UnwrapOr(""), "2") // June → Q2
+}
+
+func TestDateYear_InvalidDate(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("year", DateYear("invalid"))
+	assertEqual(t, result.Rows[0].Get("year").UnwrapOr("x"), "")
+}
+
+func TestDateGermanFormat(t *testing.T) {
+	// Row 2 has "15.03.2024" as start — German date format
+	tb := dateTable()
+	result := tb.AddCol("year", DateYear("start"))
+	assertEqual(t, result.Rows[2].Get("year").UnwrapOr(""), "2024")
+
+	result2 := tb.AddCol("month", DateMonth("start"))
+	assertEqual(t, result2.Rows[2].Get("month").UnwrapOr(""), "3") // March
+}
+
+// --- Additional numeric operations ---
+
+func TestAbs(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"-5"}, {"3"}, {"0"}})
+	result := tb.AddColFloat("abs", Abs("v"))
+	assertEqual(t, result.Rows[0].Get("abs").UnwrapOr(""), "5")
+	assertEqual(t, result.Rows[1].Get("abs").UnwrapOr(""), "3")
+	assertEqual(t, result.Rows[2].Get("abs").UnwrapOr(""), "0")
+}
+
+func TestNeg(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"10"}, {"-3"}})
+	result := tb.AddColFloat("neg", Neg("v"))
+	assertEqual(t, result.Rows[0].Get("neg").UnwrapOr(""), "-10")
+	assertEqual(t, result.Rows[1].Get("neg").UnwrapOr(""), "3")
+}
+
+func TestAddConst(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"100"}, {"200"}})
+	result := tb.AddColFloat("plus", AddConst("v", 19))
+	assertEqual(t, result.Rows[0].Get("plus").UnwrapOr(""), "119")
+	assertEqual(t, result.Rows[1].Get("plus").UnwrapOr(""), "219")
+}
+
+func TestMulConst(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"100"}, {"50"}})
+	result := tb.AddColFloat("scaled", MulConst("v", 0.5))
+	assertEqual(t, result.Rows[0].Get("scaled").UnwrapOr(""), "50")
+	assertEqual(t, result.Rows[1].Get("scaled").UnwrapOr(""), "25")
+}
+
+func TestMod(t *testing.T) {
+	tb := table.New([]string{"a", "b"}, [][]string{{"10", "3"}, {"7", "0"}})
+	result := tb.AddColFloat("mod", Mod("a", "b"))
+	assertEqual(t, result.Rows[0].Get("mod").UnwrapOr(""), "1")
+	assertEqual(t, result.Rows[1].Get("mod").UnwrapOr(""), "0") // b=0
+}
+
+func TestMin2(t *testing.T) {
+	tb := table.New([]string{"a", "b"}, [][]string{{"10", "3"}, {"5", "8"}})
+	result := tb.AddColFloat("min", Min2("a", "b"))
+	assertEqual(t, result.Rows[0].Get("min").UnwrapOr(""), "3")
+	assertEqual(t, result.Rows[1].Get("min").UnwrapOr(""), "5")
+}
+
+func TestMax2(t *testing.T) {
+	tb := table.New([]string{"a", "b"}, [][]string{{"10", "3"}, {"5", "8"}})
+	result := tb.AddColFloat("max", Max2("a", "b"))
+	assertEqual(t, result.Rows[0].Get("max").UnwrapOr(""), "10")
+	assertEqual(t, result.Rows[1].Get("max").UnwrapOr(""), "8")
+}
+
+func TestRound(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"3.14159"}, {"2.71828"}})
+	result := tb.AddColFloat("r", Round("v", 2))
+	assertEqual(t, result.Rows[0].Get("r").UnwrapOr(""), "3.14")
+	assertEqual(t, result.Rows[1].Get("r").UnwrapOr(""), "2.72")
+}
+
+func TestClamp(t *testing.T) {
+	tb := table.New([]string{"v"}, [][]string{{"-5"}, {"50"}, {"150"}})
+	result := tb.AddColFloat("c", Clamp("v", 0, 100))
+	assertEqual(t, result.Rows[0].Get("c").UnwrapOr(""), "0")
+	assertEqual(t, result.Rows[1].Get("c").UnwrapOr(""), "50")
+	assertEqual(t, result.Rows[2].Get("c").UnwrapOr(""), "100")
+}
+
+func TestPct(t *testing.T) {
+	tb := table.New([]string{"part", "total"}, [][]string{{"25", "100"}, {"1", "3"}})
+	result := tb.AddColFloat("pct", Pct("part", "total"))
+	assertEqual(t, result.Rows[0].Get("pct").UnwrapOr(""), "25")
+	f, _ := Float(result.Rows[1], "pct").Get()
+	if f < 33.3 || f > 33.4 {
+		t.Errorf("expected ~33.33, got %f", f)
+	}
+}
+
+func TestPct_ZeroDenom(t *testing.T) {
+	tb := table.New([]string{"a", "b"}, [][]string{{"10", "0"}})
+	result := tb.AddColFloat("pct", Pct("a", "b"))
+	assertEqual(t, result.Rows[0].Get("pct").UnwrapOr(""), "0")
+}
+
+// --- Additional date operations ---
+
+func TestDateDiffMonths(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddColFloat("months", DateDiffMonths("end", "start"))
+	f, _ := Float(result.Rows[0], "months").Get()
+	// Jan 15 → Mar 15 = ~2 months
+	if f < 1.9 || f > 2.1 {
+		t.Errorf("expected ~2 months, got %f", f)
+	}
+}
+
+func TestDateDiffYears(t *testing.T) {
+	tb := table.New([]string{"a", "b"}, [][]string{
+		{"2024-06-15", "2020-06-15"},
+	})
+	result := tb.AddColFloat("years", DateDiffYears("a", "b"))
+	f, _ := Float(result.Rows[0], "years").Get()
+	if f < 3.9 || f > 4.1 {
+		t.Errorf("expected ~4 years, got %f", f)
+	}
+}
+
+func TestDateAddMonths(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("future", DateAddMonths("start", 3))
+	assertEqual(t, result.Rows[0].Get("future").UnwrapOr(""), "2024-04-15")
+	assertEqual(t, result.Rows[1].Get("future").UnwrapOr(""), "2024-09-01")
+}
+
+func TestDateWeek(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("week", DateWeek("start"))
+	assertEqual(t, result.Rows[0].Get("week").UnwrapOr(""), "3") // 2024-01-15 = week 3
+}
+
+func TestDateStartOfMonth(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("start_m", DateStartOfMonth("start"))
+	assertEqual(t, result.Rows[0].Get("start_m").UnwrapOr(""), "2024-01-01")
+	assertEqual(t, result.Rows[1].Get("start_m").UnwrapOr(""), "2024-06-01")
+}
+
+func TestDateEndOfMonth(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("end_m", DateEndOfMonth("start"))
+	assertEqual(t, result.Rows[0].Get("end_m").UnwrapOr(""), "2024-01-31")
+	assertEqual(t, result.Rows[1].Get("end_m").UnwrapOr(""), "2024-06-30")
+}
+
+func TestDateEndOfMonth_February(t *testing.T) {
+	tb := table.New([]string{"d"}, [][]string{{"2024-02-15"}}) // leap year
+	result := tb.AddCol("end_m", DateEndOfMonth("d"))
+	assertEqual(t, result.Rows[0].Get("end_m").UnwrapOr(""), "2024-02-29")
+}
+
+func TestDateAge(t *testing.T) {
+	// Use a fixed reference date
+	tb := table.New([]string{"birthday"}, [][]string{{"1990-06-15"}, {"2000-01-01"}})
+	ref, _ := time.Parse("2006-01-02", "2024-06-15")
+	result := tb.AddCol("age", DateAge("birthday", ref))
+	assertEqual(t, result.Rows[0].Get("age").UnwrapOr(""), "34")
+	assertEqual(t, result.Rows[1].Get("age").UnwrapOr(""), "24")
+}
+
+func TestDateAge_InvalidDate(t *testing.T) {
+	tb := table.New([]string{"d"}, [][]string{{"not-a-date"}})
+	ref, _ := time.Parse("2006-01-02", "2024-01-01")
+	result := tb.AddCol("age", DateAge("d", ref))
+	assertEqual(t, result.Rows[0].Get("age").UnwrapOr("x"), "")
+}
+
+func TestDateBetween(t *testing.T) {
+	tb := table.New([]string{"event", "from", "to"}, [][]string{
+		{"2024-03-15", "2024-01-01", "2024-06-30"}, // in range
+		{"2024-09-01", "2024-01-01", "2024-06-30"}, // out of range
+		{"2024-01-01", "2024-01-01", "2024-06-30"}, // boundary
+	})
+	result := tb.Where(DateBetween("event", "from", "to"))
+	assertEqual(t, len(result.Rows), 2) // first and third
+}
+
+func TestDateTrunc_Month(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("trunc", DateTrunc("start", "month"))
+	assertEqual(t, result.Rows[0].Get("trunc").UnwrapOr(""), "2024-01-01")
+	assertEqual(t, result.Rows[1].Get("trunc").UnwrapOr(""), "2024-06-01")
+}
+
+func TestDateTrunc_Year(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("trunc", DateTrunc("start", "year"))
+	assertEqual(t, result.Rows[0].Get("trunc").UnwrapOr(""), "2024-01-01")
+}
+
+func TestDateTrunc_Day(t *testing.T) {
+	tb := dateTable()
+	result := tb.AddCol("trunc", DateTrunc("start", "day"))
+	assertEqual(t, result.Rows[0].Get("trunc").UnwrapOr(""), "2024-01-15")
 }

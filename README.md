@@ -344,6 +344,51 @@ schema.Float(row, "price")        // option.Option[float64]
 schema.Bool(row, "active")        // option.Option[bool]
 schema.Time(row, "date", "")      // option.Option[time.Time]
 
+// Column arithmetic — returns func(Row) float64, use with AddColFloat
+t.AddColFloat("total",  schema.Add("price", "tax"))
+t.AddColFloat("profit", schema.Sub("revenue", "cost"))
+t.AddColFloat("amount", schema.Mul("qty", "unit_price"))
+t.AddColFloat("avg",    schema.Div("total", "count"))    // 0 if denominator=0
+t.AddColFloat("margin", schema.Pct("profit", "revenue")) // (a/b)*100
+t.AddColFloat("abs",    schema.Abs("pnl"))
+t.AddColFloat("neg",    schema.Neg("cost"))
+t.AddColFloat("vat",    schema.MulConst("net", 1.19))
+t.AddColFloat("adj",    schema.AddConst("score", -10))
+t.AddColFloat("mod",    schema.Mod("total", "batch"))
+t.AddColFloat("lower",  schema.Min2("bid", "ask"))
+t.AddColFloat("upper",  schema.Max2("bid", "ask"))
+t.AddColFloat("round",  schema.Round("ratio", 2))
+t.AddColFloat("capped", schema.Clamp("score", 0, 100))
+
+// Date arithmetic
+t.AddColFloat("days",   schema.DateDiffDays("end", "start"))
+t.AddColFloat("months", schema.DateDiffMonths("end", "start"))
+t.AddColFloat("years",  schema.DateDiffYears("end", "start"))
+t.AddCol("due",         schema.DateAddDays("created_at", 30))
+t.AddCol("review",      schema.DateAddMonths("created_at", 6))
+
+// Date extraction
+t.AddCol("year",      schema.DateYear("date"))
+t.AddCol("month",     schema.DateMonth("date"))
+t.AddCol("day",       schema.DateDay("date"))
+t.AddCol("quarter",   schema.DateQuarter("date"))       // 1–4
+t.AddCol("week",      schema.DateWeek("date"))           // ISO week 1–53
+t.AddCol("weekday",   schema.DateWeekday("date"))        // "Monday", …
+t.AddCol("formatted", schema.DateFormat("date", "02.01.2006"))
+t.AddCol("age",       schema.DateAge("birthday", time.Time{}))  // years until today
+
+// Date truncation & boundaries
+t.AddCol("period",      schema.DateTrunc("date", "month"))      // 2024-03-15 → 2024-03-01
+t.AddCol("month_start", schema.DateStartOfMonth("date"))
+t.AddCol("month_end",   schema.DateEndOfMonth("date"))          // handles Feb 29
+
+// Date predicate — use with Where
+t.Where(schema.DateBetween("event", "period_start", "period_end"))
+
+// Supported date formats (auto-detected):
+// RFC3339, 2006-01-02, 2006-01-02T15:04:05, 02.01.2006,
+// 01/02/2006, 02 Jan 2006, Jan 02, 2006
+
 // Column statistics
 schema.SumCol(t, "revenue")       // float64
 schema.MeanCol(t, "revenue")

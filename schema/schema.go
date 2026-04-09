@@ -615,3 +615,463 @@ func MinMaxNorm(t table.Table, col string) table.Table {
 		return strconv.FormatFloat((f-min)/(max-min), 'f', -1, 64)
 	})
 }
+
+// --- Numeric column operations ---
+//
+// These functions return func(table.Row) float64 for direct use with
+// table.Table.AddColFloat. Unparseable values are treated as 0.
+//
+//	t.AddColFloat("total", schema.Add("price", "tax"))
+//	t.AddColFloat("margin", schema.Div("profit", "revenue"))
+
+// floatVal parses col from r as float64, returning 0 on failure.
+func floatVal(r table.Row, col string) float64 {
+	v, ok := r.Get(col).Get()
+	if !ok {
+		return 0
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil {
+		return 0
+	}
+	return f
+}
+
+// Add returns a function that sums the float values of two columns.
+//
+//	t.AddColFloat("total", schema.Add("price", "tax"))
+func Add(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		return floatVal(r, colA) + floatVal(r, colB)
+	}
+}
+
+// Sub returns a function that subtracts colB from colA.
+//
+//	t.AddColFloat("profit", schema.Sub("revenue", "cost"))
+func Sub(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		return floatVal(r, colA) - floatVal(r, colB)
+	}
+}
+
+// Mul returns a function that multiplies the float values of two columns.
+//
+//	t.AddColFloat("line_total", schema.Mul("qty", "unit_price"))
+func Mul(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		return floatVal(r, colA) * floatVal(r, colB)
+	}
+}
+
+// Div returns a function that divides colA by colB. Returns 0 when colB is 0.
+//
+//	t.AddColFloat("avg_price", schema.Div("total", "count"))
+func Div(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := floatVal(r, colA)
+		b := floatVal(r, colB)
+		if b == 0 {
+			return 0
+		}
+		return a / b
+	}
+}
+
+// --- Date column operations ---
+//
+// These functions return closures for use with AddCol or AddColFloat.
+// Dates are parsed using the same dateLayouts as Infer/Time. Unparseable
+// values produce an empty string (for string functions) or 0 (for float
+// functions).
+//
+//	t.AddColFloat("days", schema.DateDiffDays("end", "start"))
+//	t.AddCol("year", schema.DateYear("created_at"))
+//	t.AddCol("next", schema.DateAddDays("review_date", 90))
+
+// timeVal parses col from r as time.Time. Returns zero time on failure.
+func timeVal(r table.Row, col string) time.Time {
+	v, ok := r.Get(col).Get()
+	if !ok {
+		return time.Time{}
+	}
+	return tryParseDate(v)
+}
+
+// DateDiffDays returns a function that computes the difference in days
+// between two date columns (colA - colB). Fractional days are included.
+//
+//	t.AddColFloat("laufzeit", schema.DateDiffDays("end_date", "start_date"))
+func DateDiffDays(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := timeVal(r, colA)
+		b := timeVal(r, colB)
+		if a.IsZero() || b.IsZero() {
+			return 0
+		}
+		return a.Sub(b).Hours() / 24
+	}
+}
+
+// DateAddDays returns a function that adds days to a date column and returns
+// the result as an ISO date string (2006-01-02). Negative days subtract.
+//
+//	t.AddCol("due_date", schema.DateAddDays("created_at", 30))
+func DateAddDays(col string, days int) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return t.AddDate(0, 0, days).Format("2006-01-02")
+	}
+}
+
+// DateYear returns a function that extracts the year from a date column.
+//
+//	t.AddCol("year", schema.DateYear("created_at"))
+func DateYear(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return strconv.Itoa(t.Year())
+	}
+}
+
+// DateMonth returns a function that extracts the month (1–12) from a date column.
+//
+//	t.AddCol("month", schema.DateMonth("created_at"))
+func DateMonth(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return strconv.Itoa(int(t.Month()))
+	}
+}
+
+// DateDay returns a function that extracts the day of month (1–31) from a date column.
+//
+//	t.AddCol("day", schema.DateDay("created_at"))
+func DateDay(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return strconv.Itoa(t.Day())
+	}
+}
+
+// DateFormat returns a function that formats a date column using a Go time
+// layout string.
+//
+//	t.AddCol("display", schema.DateFormat("created_at", "02.01.2006"))
+func DateFormat(col string, layout string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return t.Format(layout)
+	}
+}
+
+// --- Additional numeric operations ---
+
+// Abs returns a function that computes the absolute value of a column.
+//
+//	t.AddColFloat("abs_pnl", schema.Abs("pnl"))
+func Abs(col string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		return math.Abs(floatVal(r, col))
+	}
+}
+
+// Neg returns a function that negates a column's value.
+//
+//	t.AddColFloat("loss", schema.Neg("profit"))
+func Neg(col string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		return -floatVal(r, col)
+	}
+}
+
+// AddConst returns a function that adds a constant to a column.
+//
+//	t.AddColFloat("price_vat", schema.AddConst("price", 19.0))
+func AddConst(col string, c float64) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		return floatVal(r, col) + c
+	}
+}
+
+// MulConst returns a function that multiplies a column by a constant.
+//
+//	t.AddColFloat("price_eur", schema.MulConst("price_usd", 0.92))
+func MulConst(col string, c float64) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		return floatVal(r, col) * c
+	}
+}
+
+// Mod returns a function that computes colA mod colB. Returns 0 if colB is 0.
+//
+//	t.AddColFloat("remainder", schema.Mod("total", "batch_size"))
+func Mod(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := floatVal(r, colA)
+		b := floatVal(r, colB)
+		if b == 0 {
+			return 0
+		}
+		return math.Mod(a, b)
+	}
+}
+
+// Min2 returns a function that returns the smaller of two columns.
+//
+//	t.AddColFloat("lower", schema.Min2("bid", "ask"))
+func Min2(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := floatVal(r, colA)
+		b := floatVal(r, colB)
+		if a < b {
+			return a
+		}
+		return b
+	}
+}
+
+// Max2 returns a function that returns the larger of two columns.
+//
+//	t.AddColFloat("upper", schema.Max2("bid", "ask"))
+func Max2(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := floatVal(r, colA)
+		b := floatVal(r, colB)
+		if a > b {
+			return a
+		}
+		return b
+	}
+}
+
+// Round returns a function that rounds a column to n decimal places.
+//
+//	t.AddColFloat("rounded", schema.Round("ratio", 2))
+func Round(col string, decimals int) func(table.Row) float64 {
+	pow := math.Pow(10, float64(decimals))
+	return func(r table.Row) float64 {
+		return math.Round(floatVal(r, col)*pow) / pow
+	}
+}
+
+// Clamp returns a function that clamps a column's value to [min, max].
+//
+//	t.AddColFloat("score", schema.Clamp("raw_score", 0, 100))
+func Clamp(col string, min, max float64) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		v := floatVal(r, col)
+		if v < min {
+			return min
+		}
+		if v > max {
+			return max
+		}
+		return v
+	}
+}
+
+// Pct returns a function that computes (colA / colB) * 100. Returns 0 if colB is 0.
+//
+//	t.AddColFloat("margin_pct", schema.Pct("profit", "revenue"))
+func Pct(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := floatVal(r, colA)
+		b := floatVal(r, colB)
+		if b == 0 {
+			return 0
+		}
+		return (a / b) * 100
+	}
+}
+
+// --- Additional date operations ---
+
+// DateDiffMonths returns a function that computes the approximate difference
+// in months between two date columns (colA - colB). Uses 30.44 days/month.
+//
+//	t.AddColFloat("months", schema.DateDiffMonths("end", "start"))
+func DateDiffMonths(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := timeVal(r, colA)
+		b := timeVal(r, colB)
+		if a.IsZero() || b.IsZero() {
+			return 0
+		}
+		return a.Sub(b).Hours() / (24 * 30.44)
+	}
+}
+
+// DateDiffYears returns a function that computes the approximate difference
+// in years between two date columns (colA - colB). Uses 365.25 days/year.
+//
+//	t.AddColFloat("years", schema.DateDiffYears("end", "start"))
+func DateDiffYears(colA, colB string) func(table.Row) float64 {
+	return func(r table.Row) float64 {
+		a := timeVal(r, colA)
+		b := timeVal(r, colB)
+		if a.IsZero() || b.IsZero() {
+			return 0
+		}
+		return a.Sub(b).Hours() / (24 * 365.25)
+	}
+}
+
+// DateAddMonths returns a function that adds months to a date column.
+//
+//	t.AddCol("review", schema.DateAddMonths("created_at", 6))
+func DateAddMonths(col string, months int) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return t.AddDate(0, months, 0).Format("2006-01-02")
+	}
+}
+
+// DateWeek returns a function that extracts the ISO week number (1–53).
+//
+//	t.AddCol("week", schema.DateWeek("date"))
+func DateWeek(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		_, week := t.ISOWeek()
+		return strconv.Itoa(week)
+	}
+}
+
+// DateStartOfMonth returns a function that truncates a date to the first day
+// of its month.
+//
+//	t.AddCol("month_start", schema.DateStartOfMonth("date"))
+func DateStartOfMonth(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location()).Format("2006-01-02")
+	}
+}
+
+// DateEndOfMonth returns a function that returns the last day of a date's month.
+//
+//	t.AddCol("month_end", schema.DateEndOfMonth("date"))
+func DateEndOfMonth(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		// first day of next month, minus one day
+		first := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, t.Location())
+		return first.AddDate(0, 0, -1).Format("2006-01-02")
+	}
+}
+
+// DateAge returns a function that computes the age in full years at a reference
+// date. If ref is zero, time.Now() is used.
+//
+//	t.AddCol("age", schema.DateAge("birthday", time.Time{}))  // age today
+//	t.AddCol("age", schema.DateAge("birthday", cutoff))       // age at cutoff
+func DateAge(col string, ref time.Time) func(table.Row) string {
+	return func(r table.Row) string {
+		birth := timeVal(r, col)
+		if birth.IsZero() {
+			return ""
+		}
+		now := ref
+		if now.IsZero() {
+			now = time.Now()
+		}
+		years := now.Year() - birth.Year()
+		if now.YearDay() < birth.YearDay() {
+			years--
+		}
+		return strconv.Itoa(years)
+	}
+}
+
+// DateBetween returns a predicate: startCol <= row date <= endCol.
+// All three dates are parsed from their respective columns.
+//
+//	t.Where(schema.DateBetween("event_date", "period_start", "period_end"))
+func DateBetween(dateCol, startCol, endCol string) func(table.Row) bool {
+	return func(r table.Row) bool {
+		d := timeVal(r, dateCol)
+		s := timeVal(r, startCol)
+		e := timeVal(r, endCol)
+		if d.IsZero() || s.IsZero() || e.IsZero() {
+			return false
+		}
+		return !d.Before(s) && !d.After(e)
+	}
+}
+
+// DateTrunc truncates a date to the given precision: "day", "month", or "year".
+//
+//	t.AddCol("period", schema.DateTrunc("date", "month"))
+//	// 2024-03-15 → 2024-03-01
+//	// 2024-07-22 → 2024-07-01
+func DateTrunc(col string, precision string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		switch precision {
+		case "year":
+			return time.Date(t.Year(), 1, 1, 0, 0, 0, 0, t.Location()).Format("2006-01-02")
+		case "month":
+			return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location()).Format("2006-01-02")
+		default: // "day"
+			return t.Format("2006-01-02")
+		}
+	}
+}
+
+// DateWeekday returns a function that extracts the weekday name (Monday, …)
+// from a date column.
+//
+//	t.AddCol("weekday", schema.DateWeekday("date"))
+func DateWeekday(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return t.Weekday().String()
+	}
+}
+
+// DateQuarter returns a function that extracts the quarter (1–4) from a date column.
+//
+//	t.AddCol("quarter", schema.DateQuarter("date"))
+func DateQuarter(col string) func(table.Row) string {
+	return func(r table.Row) string {
+		t := timeVal(r, col)
+		if t.IsZero() {
+			return ""
+		}
+		return strconv.Itoa((int(t.Month())-1)/3 + 1)
+	}
+}
