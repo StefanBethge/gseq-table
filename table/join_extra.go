@@ -10,47 +10,62 @@ import "github.com/stefanbethge/gseq/slice"
 //	orders.RightJoin(customers, "customer_id", "id")
 func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 	// index left table by leftCol
-	leftIdx := make(map[string][]Row)
+	leftKeyIdx := t.headerIdx[leftCol]
+	leftIdx := make(map[string][]Row, len(t.Rows))
 	for _, row := range t.Rows {
-		key := row.Get(leftCol).UnwrapOr("")
+		key := ""
+		if leftKeyIdx < len(row.values) {
+			key = row.values[leftKeyIdx]
+		}
 		leftIdx[key] = append(leftIdx[key], row)
 	}
 
 	// merged headers: left headers + right headers (minus rightCol)
 	newHeaders := make(slice.Slice[string], len(t.Headers))
 	copy(newHeaders, t.Headers)
-	var rightExtra []string
-	for _, h := range other.Headers {
+	var rightExtraIdx []int
+	for i, h := range other.Headers {
 		if h != rightCol {
 			newHeaders = append(newHeaders, h)
-			rightExtra = append(rightExtra, h)
+			rightExtraIdx = append(rightExtraIdx, i)
 		}
 	}
 
+	// position of leftCol in t.Headers (for unmatched rows)
+	leftColPos := t.headerIdx[leftCol]
+
+	rightKeyIdx := other.headerIdx[rightCol]
 	var rows slice.Slice[Row]
 	for _, rRow := range other.Rows {
-		key := rRow.Get(rightCol).UnwrapOr("")
+		key := ""
+		if rightKeyIdx < len(rRow.values) {
+			key = rRow.values[rightKeyIdx]
+		}
 		lRows := leftIdx[key]
 		if len(lRows) == 0 {
-			// unmatched right row: empty left columns, set join key
-			vals := make(slice.Slice[string], 0, len(newHeaders))
-			for _, h := range t.Headers {
-				if h == leftCol {
-					vals = append(vals, key) // carry the join key
-				} else {
-					vals = append(vals, "")
-				}
+			// unmatched right row: empty left columns, carry join key
+			vals := make(slice.Slice[string], len(t.Headers), len(newHeaders))
+			if leftColPos < len(vals) {
+				vals[leftColPos] = key
 			}
-			for _, h := range rightExtra {
-				vals = append(vals, rRow.Get(h).UnwrapOr(""))
+			for _, idx := range rightExtraIdx {
+				v := ""
+				if idx < len(rRow.values) {
+					v = rRow.values[idx]
+				}
+				vals = append(vals, v)
 			}
 			rows = append(rows, NewRow(newHeaders, vals))
 		} else {
 			for _, lRow := range lRows {
 				vals := make(slice.Slice[string], 0, len(newHeaders))
 				vals = append(vals, lRow.values...)
-				for _, h := range rightExtra {
-					vals = append(vals, rRow.Get(h).UnwrapOr(""))
+				for _, idx := range rightExtraIdx {
+					v := ""
+					if idx < len(rRow.values) {
+						v = rRow.values[idx]
+					}
+					vals = append(vals, v)
 				}
 				rows = append(rows, NewRow(newHeaders, vals))
 			}
@@ -59,7 +74,7 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // OuterJoin (full outer join) keeps every row from both tables. Rows that
@@ -72,40 +87,44 @@ func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
 	result := t.LeftJoin(other, leftCol, rightCol)
 
 	// index left keys to find unmatched right rows
+	leftKeyIdx := t.headerIdx[leftCol]
 	leftKeys := make(map[string]bool, len(t.Rows))
 	for _, row := range t.Rows {
-		leftKeys[row.Get(leftCol).UnwrapOr("")] = true
+		key := ""
+		if leftKeyIdx < len(row.values) {
+			key = row.values[leftKeyIdx]
+		}
+		leftKeys[key] = true
 	}
 
-	// build the right-only rows aligned to result's headers
-	var rightExtra []string
-	for _, h := range other.Headers {
+	// pre-compute positions in result for the join key and each rightExtra column
+	resultLeftColPos := result.headerIdx[leftCol]
+	var rightExtraIdx []int   // indices in other.Rows
+	var rightExtraPos []int   // positions in result.Headers
+	for i, h := range other.Headers {
 		if h != rightCol {
-			rightExtra = append(rightExtra, h)
+			rightExtraIdx = append(rightExtraIdx, i)
+			rightExtraPos = append(rightExtraPos, result.headerIdx[h])
 		}
 	}
 
+	rightKeyIdx := other.headerIdx[rightCol]
 	var unmatched [][]string
 	for _, rRow := range other.Rows {
-		key := rRow.Get(rightCol).UnwrapOr("")
+		key := ""
+		if rightKeyIdx < len(rRow.values) {
+			key = rRow.values[rightKeyIdx]
+		}
 		if leftKeys[key] {
-			continue // already covered by left join
+			continue
 		}
 		rec := make([]string, len(result.Headers))
-		// set the join key in the left-side position
-		for i, h := range result.Headers {
-			if h == leftCol {
-				rec[i] = key
-				break
-			}
+		if resultLeftColPos >= 0 && resultLeftColPos < len(rec) {
+			rec[resultLeftColPos] = key
 		}
-		// fill right-side columns
-		for _, h := range rightExtra {
-			for i, lh := range result.Headers {
-				if lh == h {
-					rec[i] = rRow.Get(h).UnwrapOr("")
-					break
-				}
+		for i, srcIdx := range rightExtraIdx {
+			if srcIdx < len(rRow.values) && rightExtraPos[i] < len(rec) {
+				rec[rightExtraPos[i]] = rRow.values[srcIdx]
 			}
 		}
 		unmatched = append(unmatched, rec)
@@ -124,11 +143,21 @@ func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
 //	// Find orders without a matching customer
 //	orders.AntiJoin(customers, "customer_id", "id")
 func (t Table) AntiJoin(other Table, leftCol, rightCol string) Table {
+	rightKeyIdx := other.headerIdx[rightCol]
 	rightKeys := make(map[string]bool, len(other.Rows))
 	for _, row := range other.Rows {
-		rightKeys[row.Get(rightCol).UnwrapOr("")] = true
+		key := ""
+		if rightKeyIdx < len(row.values) {
+			key = row.values[rightKeyIdx]
+		}
+		rightKeys[key] = true
 	}
+	leftKeyIdx := t.headerIdx[leftCol]
 	return t.Where(func(r Row) bool {
-		return !rightKeys[r.Get(leftCol).UnwrapOr("")]
+		key := ""
+		if leftKeyIdx < len(r.values) {
+			key = r.values[leftKeyIdx]
+		}
+		return !rightKeys[key]
 	})
 }

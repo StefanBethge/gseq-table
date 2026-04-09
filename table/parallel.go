@@ -17,16 +17,13 @@ func (t Table) TransformParallel(fn func(Row) map[string]string) Table {
 		vals := make(slice.Slice[string], len(row.values))
 		copy(vals, row.values)
 		for col, v := range updates {
-			for j, h := range t.Headers {
-				if h == col && j < len(vals) {
-					vals[j] = v
-					break
-				}
+			if j, ok := t.headerIdx[col]; ok && j < len(vals) {
+				vals[j] = v
 			}
 		}
 		return NewRow(t.Headers, vals)
 	})
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // MapParallel applies fn to every value in col concurrently. Row order is
@@ -46,5 +43,5 @@ func (t Table) MapParallel(col string, fn func(string) string) Table {
 		}
 		return NewRow(t.Headers, vals)
 	})
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }

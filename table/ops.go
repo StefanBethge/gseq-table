@@ -28,7 +28,7 @@ func (t Table) RenameMany(renames map[string]string) Table {
 	for i, row := range t.Rows {
 		rows[i] = NewRow(newHeaders, row.values)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // --- Concat ---
@@ -66,7 +66,7 @@ func (t Table) AddRowIndex(name string) Table {
 		vals = append(vals, row.values...)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }
 
 // --- Explode ---
@@ -78,14 +78,8 @@ func (t Table) AddRowIndex(name string) Table {
 //	// "tags" contains "go,etl,data" → three rows
 //	t.Explode("tags", ",")
 func (t Table) Explode(col, sep string) Table {
-	idx := -1
-	for i, h := range t.Headers {
-		if h == col {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
+	idx, ok := t.headerIdx[col]
+	if !ok {
 		return t
 	}
 
@@ -180,7 +174,11 @@ func (t Table) Transpose() Table {
 		rec := make([]string, 0, len(t.Rows)+1)
 		rec = append(rec, col)
 		for _, row := range t.Rows {
-			rec = append(rec, row.Get(col).UnwrapOr(""))
+			v := ""
+			if ci < len(row.values) {
+				v = row.values[ci]
+			}
+			rec = append(rec, v)
 		}
 		records[ci] = rec
 	}
@@ -213,7 +211,7 @@ func (t Table) FillForward(col string) Table {
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // FillBackward replaces empty string values in col with the next non-empty
@@ -243,7 +241,7 @@ func (t Table) FillBackward(col string) Table {
 			}
 		}
 	}
-	return Table{Headers: t.Headers, Rows: rows}
+	return newTable(t.Headers, rows)
 }
 
 // --- Sampling ---
@@ -257,7 +255,7 @@ func (t Table) Sample(n int) Table {
 		return t
 	}
 	sampled := t.Rows.Samples(n)
-	return Table{Headers: t.Headers, Rows: sampled}
+	return newTable(t.Headers, sampled)
 }
 
 // SampleFrac returns a random fraction of rows. f=0.2 returns ~20% of rows.
@@ -317,7 +315,7 @@ func (t Table) Partition(fn func(Row) bool) (matched, rest Table) {
 	if rRows == nil {
 		rRows = slice.Slice[Row]{}
 	}
-	return Table{Headers: t.Headers, Rows: mRows}, Table{Headers: t.Headers, Rows: rRows}
+	return newTable(t.Headers, mRows), newTable(t.Headers, rRows)
 }
 
 // Chunk splits the table into consecutive sub-tables of at most n rows each.
@@ -334,7 +332,7 @@ func (t Table) Chunk(n int) []Table {
 		if end > len(t.Rows) {
 			end = len(t.Rows)
 		}
-		chunks = append(chunks, Table{Headers: t.Headers, Rows: t.Rows[i:end]})
+		chunks = append(chunks, newTable(t.Headers, t.Rows[i:end]))
 	}
 	return chunks
 }
@@ -373,12 +371,26 @@ func (t Table) Coalesce(name string, cols ...string) Table {
 //	// enrich orders with customer name
 //	orders.Lookup("customer_id", "customer_name", customers, "id", "name")
 func (t Table) Lookup(col, outCol string, lookupTable Table, keyCol, valCol string) Table {
+	keyIdx := lookupTable.headerIdx[keyCol]
+	valIdx := lookupTable.headerIdx[valCol]
 	lkp := make(map[string]string, len(lookupTable.Rows))
 	for _, row := range lookupTable.Rows {
-		lkp[row.Get(keyCol).UnwrapOr("")] = row.Get(valCol).UnwrapOr("")
+		k, v := "", ""
+		if keyIdx < len(row.values) {
+			k = row.values[keyIdx]
+		}
+		if valIdx < len(row.values) {
+			v = row.values[valIdx]
+		}
+		lkp[k] = v
 	}
+	colIdx := t.headerIdx[col]
 	return t.AddCol(outCol, func(r Row) string {
-		return lkp[r.Get(col).UnwrapOr("")]
+		k := ""
+		if colIdx < len(r.values) {
+			k = r.values[colIdx]
+		}
+		return lkp[k]
 	})
 }
 
@@ -418,18 +430,30 @@ func (t Table) Intersect(other Table, cols ...string) Table {
 	if len(check) == 0 {
 		check = t.Headers
 	}
+	// pre-compute column indices for both tables
+	tIdx := make([]int, len(check))
+	oIdx := make([]int, len(check))
+	for i, c := range check {
+		tIdx[i] = t.headerIdx[c]
+		oIdx[i] = other.headerIdx[c]
+	}
 	otherKeys := make(map[string]bool, len(other.Rows))
+	parts := make([]string, len(check))
 	for _, row := range other.Rows {
-		parts := make([]string, len(check))
-		for i, c := range check {
-			parts[i] = row.Get(c).UnwrapOr("")
+		for i, idx := range oIdx {
+			parts[i] = ""
+			if idx < len(row.values) {
+				parts[i] = row.values[idx]
+			}
 		}
 		otherKeys[strings.Join(parts, "\x00")] = true
 	}
 	return t.Where(func(r Row) bool {
-		parts := make([]string, len(check))
-		for i, c := range check {
-			parts[i] = r.Get(c).UnwrapOr("")
+		for i, idx := range tIdx {
+			parts[i] = ""
+			if idx < len(r.values) {
+				parts[i] = r.values[idx]
+			}
 		}
 		return otherKeys[strings.Join(parts, "\x00")]
 	})
@@ -475,10 +499,8 @@ func (t Table) Bin(col, name string, bins []BinDef) Table {
 
 // colIdx returns the index of col in t.Headers, or -1.
 func colIdx(t Table, col string) int {
-	for i, h := range t.Headers {
-		if h == col {
-			return i
-		}
+	if i, ok := t.headerIdx[col]; ok {
+		return i
 	}
 	return -1
 }

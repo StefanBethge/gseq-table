@@ -22,6 +22,7 @@ import (
 	gcsv "encoding/csv"
 	"fmt"
 	"io"
+	"iter"
 	"os"
 
 	"github.com/stefanbethge/gseq-table/table"
@@ -109,6 +110,111 @@ func (r *Reader) Read(rd io.Reader) result.Result[table.Table, error] {
 	}
 	headers, dataRows := r.resolveHeaders(records)
 	return result.Ok[table.Table, error](table.New(headers, dataRows))
+}
+
+// ReadStream reads CSV from rd and yields chunks of at most chunkSize rows as
+// Tables. This allows processing large files without loading them fully into
+// memory. Each yielded Table shares the same header slice.
+//
+// The iterator stops early if the caller returns false from yield or an error
+// is encountered. If rd contains no data rows, no Tables are yielded.
+//
+//	for t, err := range csv.New().ReadStream(f, 1000) {
+//	    if err != nil { log.Fatal(err) }
+//	    process(t)
+//	}
+func (r *Reader) ReadStream(rd io.Reader, chunkSize int) iter.Seq2[table.Table, error] {
+	return func(yield func(table.Table, error) bool) {
+		sep := r.config.Separator
+		if sep == 0 {
+			sep = ','
+		}
+		if chunkSize <= 0 {
+			chunkSize = 1000
+		}
+		cr := gcsv.NewReader(rd)
+		cr.Comma = sep
+
+		headers, dataRows, err := r.resolveHeadersStreaming(cr)
+		if err != nil {
+			yield(table.Table{}, err)
+			return
+		}
+
+		// flush any rows already read (e.g. when HasHeader=false and we read
+		// the first record to detect width)
+		chunk := dataRows
+
+		for {
+			if len(chunk) >= chunkSize {
+				if !yield(table.New(headers, chunk), nil) {
+					return
+				}
+				chunk = chunk[:0]
+			}
+			record, err := cr.Read()
+			if err == io.EOF {
+				if len(chunk) > 0 {
+					yield(table.New(headers, chunk), nil)
+				}
+				return
+			}
+			if err != nil {
+				yield(table.Table{}, err)
+				return
+			}
+			chunk = append(chunk, record)
+		}
+	}
+}
+
+// ReadFileStream opens the file at path and streams it in chunks of chunkSize
+// rows. See ReadStream for details.
+func (r *Reader) ReadFileStream(path string, chunkSize int) iter.Seq2[table.Table, error] {
+	return func(yield func(table.Table, error) bool) {
+		f, err := os.Open(path)
+		if err != nil {
+			yield(table.Table{}, err)
+			return
+		}
+		defer f.Close()
+		for t, err := range r.ReadStream(f, chunkSize) {
+			if !yield(t, err) {
+				return
+			}
+		}
+	}
+}
+
+// resolveHeadersStreaming reads the header row (or generates names) from a
+// streaming csv.Reader and returns any pre-read data rows.
+func (r *Reader) resolveHeadersStreaming(cr *gcsv.Reader) (slice.Slice[string], [][]string, error) {
+	if r.config.HasHeader {
+		rec, err := cr.Read()
+		if err == io.EOF {
+			return slice.Slice[string]{}, nil, nil
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		return slice.Slice[string](rec), nil, nil
+	}
+	if len(r.config.HeaderNames) > 0 {
+		return r.config.HeaderNames, nil, nil
+	}
+	// auto-generate names — peek at first row to determine width
+	rec, err := cr.Read()
+	if err == io.EOF {
+		return slice.Slice[string]{}, nil, nil
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	names := make(slice.Slice[string], len(rec))
+	for i := range rec {
+		names[i] = fmt.Sprintf("col_%d", i)
+	}
+	return names, [][]string{rec}, nil
 }
 
 // ToString serialises t as a CSV string using the default writer settings

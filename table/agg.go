@@ -70,13 +70,21 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 		rows    slice.Slice[Row]
 	}
 
+	// pre-compute group column indices once
+	groupIdx := make([]int, len(groupCols))
+	for i, col := range groupCols {
+		groupIdx[i] = t.headerIdx[col]
+	}
+
 	index := make(map[string]*groupEntry)
 	var keyOrder []string
 
 	for _, row := range t.Rows {
 		parts := make([]string, len(groupCols))
-		for i, col := range groupCols {
-			parts[i] = row.Get(col).UnwrapOr("")
+		for i, idx := range groupIdx {
+			if idx < len(row.values) {
+				parts[i] = row.values[idx]
+			}
 		}
 		key := strings.Join(parts, "\x00")
 		if e, ok := index[key]; ok {
@@ -99,7 +107,7 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 	records := make([][]string, len(keyOrder))
 	for i, key := range keyOrder {
 		e := index[key]
-		grp := Table{Headers: t.Headers, Rows: e.rows}
+		grp := newTable(t.Headers, e.rows)
 		rec := make([]string, 0, len(newHeaders))
 		rec = append(rec, e.keyVals...)
 		for _, a := range aggs {
@@ -116,10 +124,13 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 type sumAgg struct{ col string }
 
 func (a sumAgg) reduce(g Table) string {
+	idx := g.headerIdx[a.col]
 	var sum float64
-	for _, v := range g.Col(a.col) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			sum += f
+	for _, row := range g.Rows {
+		if idx < len(row.values) {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[idx]), 64); err == nil {
+				sum += f
+			}
 		}
 	}
 	return strconv.FormatFloat(sum, 'f', -1, 64)
@@ -128,12 +139,15 @@ func (a sumAgg) reduce(g Table) string {
 type meanAgg struct{ col string }
 
 func (a meanAgg) reduce(g Table) string {
+	idx := g.headerIdx[a.col]
 	var sum float64
 	var n int
-	for _, v := range g.Col(a.col) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			sum += f
-			n++
+	for _, row := range g.Rows {
+		if idx < len(row.values) {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[idx]), 64); err == nil {
+				sum += f
+				n++
+			}
 		}
 	}
 	if n == 0 {
@@ -145,9 +159,10 @@ func (a meanAgg) reduce(g Table) string {
 type countAgg struct{ col string }
 
 func (a countAgg) reduce(g Table) string {
+	idx := g.headerIdx[a.col]
 	var n int
-	for _, v := range g.Col(a.col) {
-		if v != "" {
+	for _, row := range g.Rows {
+		if idx < len(row.values) && row.values[idx] != "" {
 			n++
 		}
 	}
@@ -160,10 +175,11 @@ type stringJoinAgg struct {
 }
 
 func (a stringJoinAgg) reduce(g Table) string {
+	idx := g.headerIdx[a.col]
 	var parts []string
-	for _, v := range g.Col(a.col) {
-		if v != "" {
-			parts = append(parts, v)
+	for _, row := range g.Rows {
+		if idx < len(row.values) && row.values[idx] != "" {
+			parts = append(parts, row.values[idx])
 		}
 	}
 	return strings.Join(parts, a.sep)
@@ -175,7 +191,11 @@ func (a firstAgg) reduce(g Table) string {
 	if len(g.Rows) == 0 {
 		return ""
 	}
-	return g.Rows[0].Get(a.col).UnwrapOr("")
+	idx := g.headerIdx[a.col]
+	if idx < len(g.Rows[0].values) {
+		return g.Rows[0].values[idx]
+	}
+	return ""
 }
 
 type lastAgg struct{ col string }
@@ -184,7 +204,12 @@ func (a lastAgg) reduce(g Table) string {
 	if len(g.Rows) == 0 {
 		return ""
 	}
-	return g.Rows[len(g.Rows)-1].Get(a.col).UnwrapOr("")
+	idx := g.headerIdx[a.col]
+	last := g.Rows[len(g.Rows)-1]
+	if idx < len(last.values) {
+		return last.values[idx]
+	}
+	return ""
 }
 
 // RollingAgg computes a sliding-window aggregation over the rows of t in their
@@ -207,7 +232,8 @@ func (t Table) RollingAgg(outCol string, size int, agg Agg) Table {
 		if start < 0 {
 			start = 0
 		}
-		window := Table{Headers: t.Headers, Rows: t.Rows[start : i+1]}
+		// reuse t.headerIdx — no need to rebuild the map for each window
+		window := Table{Headers: t.Headers, Rows: t.Rows[start : i+1], headerIdx: t.headerIdx}
 		val := agg.reduce(window)
 
 		vals := make(slice.Slice[string], 0, len(row.values)+1)
@@ -215,5 +241,5 @@ func (t Table) RollingAgg(outCol string, size int, agg Agg) Table {
 		vals = append(vals, val)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return Table{Headers: newHeaders, Rows: rows}
+	return newTable(newHeaders, rows)
 }

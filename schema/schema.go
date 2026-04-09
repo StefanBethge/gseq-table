@@ -168,7 +168,7 @@ func (s Schema) apply(t table.Table, strict bool) result.Result[table.Table, err
 			newVals[idx] = normalized
 			rows[ri] = table.NewRow(row.Headers(), newVals)
 		}
-		out = table.Table{Headers: out.Headers, Rows: rows}
+		out = table.NewFromRows(out.Headers, rows)
 	}
 	return result.Ok[table.Table, error](out)
 }
@@ -334,12 +334,7 @@ func normalize(v string, typ ColType) (string, error) {
 }
 
 func colIndex(t table.Table, col string) int {
-	for i, h := range t.Headers {
-		if h == col {
-			return i
-		}
-	}
-	return -1
+	return t.ColIndex(col)
 }
 
 // --- Numeric column aggregators ---
@@ -347,17 +342,34 @@ func colIndex(t table.Table, col string) int {
 // These functions operate on the string values of a column, parsing each cell
 // as float64. Unparseable values (including empty strings) are silently
 // skipped unless otherwise noted.
+//
+// All functions iterate rows directly using the O(1) column index rather than
+// extracting a full column slice.
+
+// colVals is an internal helper that iterates the raw string values of col
+// without allocating an intermediate slice.
+func colVals(t table.Table, col string, fn func(string)) {
+	idx := t.ColIndex(col)
+	if idx < 0 {
+		return
+	}
+	for _, row := range t.Rows {
+		if idx < len(row.Values()) {
+			fn(row.Values()[idx])
+		}
+	}
+}
 
 // SumCol returns the sum of all parseable float values in col.
 //
 //	schema.SumCol(t, "revenue")
 func SumCol(t table.Table, col string) float64 {
 	var sum float64
-	for _, v := range t.Col(col) {
+	colVals(t, col, func(v string) {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			sum += f
 		}
-	}
+	})
 	return sum
 }
 
@@ -368,12 +380,12 @@ func SumCol(t table.Table, col string) float64 {
 func MeanCol(t table.Table, col string) float64 {
 	var sum float64
 	var n int
-	for _, v := range t.Col(col) {
+	colVals(t, col, func(v string) {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			sum += f
 			n++
 		}
-	}
+	})
 	if n == 0 {
 		return 0
 	}
@@ -387,16 +399,14 @@ func MeanCol(t table.Table, col string) float64 {
 func MinCol(t table.Table, col string) float64 {
 	var min float64
 	first := true
-	for _, v := range t.Col(col) {
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		if err != nil {
-			continue
+	colVals(t, col, func(v string) {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			if first || f < min {
+				min = f
+				first = false
+			}
 		}
-		if first || f < min {
-			min = f
-			first = false
-		}
-	}
+	})
 	return min
 }
 
@@ -407,16 +417,14 @@ func MinCol(t table.Table, col string) float64 {
 func MaxCol(t table.Table, col string) float64 {
 	var max float64
 	first := true
-	for _, v := range t.Col(col) {
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		if err != nil {
-			continue
+	colVals(t, col, func(v string) {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			if first || f > max {
+				max = f
+				first = false
+			}
 		}
-		if first || f > max {
-			max = f
-			first = false
-		}
-	}
+	})
 	return max
 }
 
@@ -425,11 +433,11 @@ func MaxCol(t table.Table, col string) float64 {
 //	schema.CountCol(t, "email")
 func CountCol(t table.Table, col string) int {
 	var n int
-	for _, v := range t.Col(col) {
+	colVals(t, col, func(v string) {
 		if v != "" {
 			n++
 		}
-	}
+	})
 	return n
 }
 
@@ -438,11 +446,11 @@ func CountCol(t table.Table, col string) int {
 //	schema.CountWhere(t, "status", "active")
 func CountWhere(t table.Table, col, val string) int {
 	var n int
-	for _, v := range t.Col(col) {
+	colVals(t, col, func(v string) {
 		if v == val {
 			n++
 		}
-	}
+	})
 	return n
 }
 
@@ -454,15 +462,13 @@ func StdDevCol(t table.Table, col string) float64 {
 	mean := MeanCol(t, col)
 	var sumSq float64
 	var n int
-	for _, v := range t.Col(col) {
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		if err != nil {
-			continue
+	colVals(t, col, func(v string) {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			d := f - mean
+			sumSq += d * d
+			n++
 		}
-		d := f - mean
-		sumSq += d * d
-		n++
-	}
+	})
 	if n < 2 {
 		return 0
 	}
@@ -475,11 +481,11 @@ func StdDevCol(t table.Table, col string) float64 {
 //	schema.MedianCol(t, "age")
 func MedianCol(t table.Table, col string) float64 {
 	var vals []float64
-	for _, v := range t.Col(col) {
+	colVals(t, col, func(v string) {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			vals = append(vals, f)
 		}
-	}
+	})
 	if len(vals) == 0 {
 		return 0
 	}
@@ -491,15 +497,47 @@ func MedianCol(t table.Table, col string) float64 {
 	return (vals[n/2-1] + vals[n/2]) / 2
 }
 
-// numericCount counts the parseable float64 values in col.
-func numericCount(t table.Table, col string) int {
-	var n int
-	for _, v := range t.Col(col) {
-		if _, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
-			n++
+// colStats computes count, sum, sumSq, min, max and all numeric values in a
+// single pass over the rows. Used by Describe to avoid repeated column scans.
+type colStats struct {
+	count          int
+	sum, sumSq     float64
+	min, max       float64
+	numericVals    []float64
+}
+
+func computeColStats(t table.Table, col string) colStats {
+	idx := t.ColIndex(col)
+	var s colStats
+	first := true
+	for _, row := range t.Rows {
+		if idx < 0 || idx >= len(row.Values()) {
+			continue
+		}
+		v := row.Values()[idx]
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil {
+			continue
+		}
+		s.count++
+		s.sum += f
+		s.numericVals = append(s.numericVals, f)
+		if first || f < s.min {
+			s.min = f
+		}
+		if first || f > s.max {
+			s.max = f
+		}
+		first = false
+	}
+	if s.count > 0 {
+		mean := s.sum / float64(s.count)
+		for _, f := range s.numericVals {
+			d := f - mean
+			s.sumSq += d * d
 		}
 	}
-	return n
+	return s
 }
 
 // Describe returns a summary statistics table with one row per column of t.
@@ -515,19 +553,32 @@ func Describe(t table.Table) table.Table {
 	headers := []string{"column", "count", "min", "max", "mean", "std", "median"}
 	records := make([][]string, len(t.Headers))
 	for i, col := range t.Headers {
-		count := numericCount(t, col)
-		if count == 0 {
+		s := computeColStats(t, col)
+		if s.count == 0 {
 			records[i] = []string{col, "0", "", "", "", "", ""}
 			continue
 		}
+		mean := s.sum / float64(s.count)
+		var std float64
+		if s.count >= 2 {
+			std = math.Sqrt(s.sumSq / float64(s.count))
+		}
+		sort.Float64s(s.numericVals)
+		n := len(s.numericVals)
+		var median float64
+		if n%2 == 1 {
+			median = s.numericVals[n/2]
+		} else {
+			median = (s.numericVals[n/2-1] + s.numericVals[n/2]) / 2
+		}
 		records[i] = []string{
 			col,
-			strconv.Itoa(count),
-			strconv.FormatFloat(MinCol(t, col), 'f', -1, 64),
-			strconv.FormatFloat(MaxCol(t, col), 'f', -1, 64),
-			strconv.FormatFloat(MeanCol(t, col), 'f', -1, 64),
-			strconv.FormatFloat(StdDevCol(t, col), 'f', -1, 64),
-			strconv.FormatFloat(MedianCol(t, col), 'f', -1, 64),
+			strconv.Itoa(s.count),
+			strconv.FormatFloat(s.min, 'f', -1, 64),
+			strconv.FormatFloat(s.max, 'f', -1, 64),
+			strconv.FormatFloat(mean, 'f', -1, 64),
+			strconv.FormatFloat(std, 'f', -1, 64),
+			strconv.FormatFloat(median, 'f', -1, 64),
 		}
 	}
 	return table.New(headers, records)
@@ -539,9 +590,9 @@ func Describe(t table.Table) table.Table {
 //	schema.FreqMap(t, "status") // → map["active":42 "inactive":8]
 func FreqMap(t table.Table, col string) map[string]int {
 	result := make(map[string]int)
-	for _, v := range t.Col(col) {
+	colVals(t, col, func(v string) {
 		result[v]++
-	}
+	})
 	return result
 }
 
