@@ -10,7 +10,10 @@ import "github.com/stefanbethge/gseq/slice"
 //	orders.RightJoin(customers, "customer_id", "id")
 func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 	// index left table by leftCol
-	leftKeyIdx := t.headerIdx[leftCol]
+	leftKeyIdx, lok := t.headerIdx[leftCol]
+	if !lok {
+		return t
+	}
 	leftIdx := make(map[string][]Row, len(t.Rows))
 	for _, row := range t.Rows {
 		key := ""
@@ -34,7 +37,10 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 	// position of leftCol in t.Headers (for unmatched rows)
 	leftColPos := t.headerIdx[leftCol]
 
-	rightKeyIdx := other.headerIdx[rightCol]
+	rightKeyIdx, rok := other.headerIdx[rightCol]
+	if !rok {
+		return t
+	}
 	var rows slice.Slice[Row]
 	for _, rRow := range other.Rows {
 		key := ""
@@ -83,6 +89,12 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 //
 //	t.OuterJoin(other, "id", "id")
 func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
+	if _, ok := t.headerIdx[leftCol]; !ok {
+		return t
+	}
+	if _, ok := other.headerIdx[rightCol]; !ok {
+		return t
+	}
 	// start with a left join (all left rows + matched right rows)
 	result := t.LeftJoin(other, leftCol, rightCol)
 
@@ -143,7 +155,10 @@ func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
 //	// Find orders without a matching customer
 //	orders.AntiJoin(customers, "customer_id", "id")
 func (t Table) AntiJoin(other Table, leftCol, rightCol string) Table {
-	rightKeyIdx := other.headerIdx[rightCol]
+	rightKeyIdx, rok := other.headerIdx[rightCol]
+	if !rok {
+		return t
+	}
 	rightKeys := make(map[string]bool, len(other.Rows))
 	for _, row := range other.Rows {
 		key := ""
@@ -152,7 +167,10 @@ func (t Table) AntiJoin(other Table, leftCol, rightCol string) Table {
 		}
 		rightKeys[key] = true
 	}
-	leftKeyIdx := t.headerIdx[leftCol]
+	leftKeyIdx, lok := t.headerIdx[leftCol]
+	if !lok {
+		return t
+	}
 	return t.Where(func(r Row) bool {
 		key := ""
 		if leftKeyIdx < len(r.values) {

@@ -73,7 +73,11 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 	// pre-compute group column indices once
 	groupIdx := make([]int, len(groupCols))
 	for i, col := range groupCols {
-		groupIdx[i] = t.headerIdx[col]
+		idx, ok := t.headerIdx[col]
+		if !ok {
+			return Table{}
+		}
+		groupIdx[i] = idx
 	}
 
 	index := make(map[string]*groupEntry)
@@ -124,7 +128,10 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 type sumAgg struct{ col string }
 
 func (a sumAgg) reduce(g Table) string {
-	idx := g.headerIdx[a.col]
+	idx, ok := g.headerIdx[a.col]
+	if !ok {
+		return "0"
+	}
 	var sum float64
 	for _, row := range g.Rows {
 		if idx < len(row.values) {
@@ -139,7 +146,10 @@ func (a sumAgg) reduce(g Table) string {
 type meanAgg struct{ col string }
 
 func (a meanAgg) reduce(g Table) string {
-	idx := g.headerIdx[a.col]
+	idx, ok := g.headerIdx[a.col]
+	if !ok {
+		return ""
+	}
 	var sum float64
 	var n int
 	for _, row := range g.Rows {
@@ -159,7 +169,10 @@ func (a meanAgg) reduce(g Table) string {
 type countAgg struct{ col string }
 
 func (a countAgg) reduce(g Table) string {
-	idx := g.headerIdx[a.col]
+	idx, ok := g.headerIdx[a.col]
+	if !ok {
+		return "0"
+	}
 	var n int
 	for _, row := range g.Rows {
 		if idx < len(row.values) && row.values[idx] != "" {
@@ -175,7 +188,10 @@ type stringJoinAgg struct {
 }
 
 func (a stringJoinAgg) reduce(g Table) string {
-	idx := g.headerIdx[a.col]
+	idx, ok := g.headerIdx[a.col]
+	if !ok {
+		return ""
+	}
 	parts := make([]string, 0, len(g.Rows))
 	for _, row := range g.Rows {
 		if idx < len(row.values) && row.values[idx] != "" {
@@ -191,7 +207,10 @@ func (a firstAgg) reduce(g Table) string {
 	if len(g.Rows) == 0 {
 		return ""
 	}
-	idx := g.headerIdx[a.col]
+	idx, ok := g.headerIdx[a.col]
+	if !ok {
+		return ""
+	}
 	if idx < len(g.Rows[0].values) {
 		return g.Rows[0].values[idx]
 	}
@@ -204,7 +223,10 @@ func (a lastAgg) reduce(g Table) string {
 	if len(g.Rows) == 0 {
 		return ""
 	}
-	idx := g.headerIdx[a.col]
+	idx, ok := g.headerIdx[a.col]
+	if !ok {
+		return ""
+	}
 	last := g.Rows[len(g.Rows)-1]
 	if idx < len(last.values) {
 		return last.values[idx]

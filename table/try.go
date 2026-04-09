@@ -45,7 +45,7 @@ func (t Table) TryTransform(fn func(Row) (map[string]string, error)) result.Resu
 //	    return fmt.Sprintf("%.2f EUR", f), nil
 //	})
 func (t Table) TryMap(col string, fn func(string) (string, error)) result.Result[Table, error] {
-	idx := colIdx(t, col)
+	idx := t.ColIndex(col)
 	if idx < 0 {
 		return result.Ok[Table, error](t)
 	}

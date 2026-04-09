@@ -1,7 +1,6 @@
 package table
 
 import (
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,14 +17,17 @@ func (t Table) Lag(col, outCol string, n int) Table {
 	newHeaders = append(newHeaders, t.Headers...)
 	newHeaders = append(newHeaders, outCol)
 
-	colIdx := t.headerIdx[col]
+	colI, ok := t.headerIdx[col]
+	if !ok {
+		return t
+	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
 		lagVal := ""
 		if i-n >= 0 {
 			prev := t.Rows[i-n]
-			if colIdx < len(prev.values) {
-				lagVal = prev.values[colIdx]
+			if colI < len(prev.values) {
+				lagVal = prev.values[colI]
 			}
 		}
 		vals := make(slice.Slice[string], 0, len(row.values)+1)
@@ -41,18 +43,21 @@ func (t Table) Lag(col, outCol string, n int) Table {
 //
 //	t.Lead("revenue", "revenue_next", 1)
 func (t Table) Lead(col, outCol string, n int) Table {
+	colI, ok := t.headerIdx[col]
+	if !ok {
+		return t
+	}
 	newHeaders := make(slice.Slice[string], 0, len(t.Headers)+1)
 	newHeaders = append(newHeaders, t.Headers...)
 	newHeaders = append(newHeaders, outCol)
 
-	colIdx := t.headerIdx[col]
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
 		leadVal := ""
 		if i+n < len(t.Rows) {
 			next := t.Rows[i+n]
-			if colIdx < len(next.values) {
-				leadVal = next.values[colIdx]
+			if colI < len(next.values) {
+				leadVal = next.values[colI]
 			}
 		}
 		vals := make(slice.Slice[string], 0, len(row.values)+1)
@@ -68,16 +73,19 @@ func (t Table) Lead(col, outCol string, n int) Table {
 //
 //	t.CumSum("revenue", "revenue_cum")
 func (t Table) CumSum(col, outCol string) Table {
+	colI, ok := t.headerIdx[col]
+	if !ok {
+		return t
+	}
 	newHeaders := make(slice.Slice[string], 0, len(t.Headers)+1)
 	newHeaders = append(newHeaders, t.Headers...)
 	newHeaders = append(newHeaders, outCol)
 
-	colIdx := t.headerIdx[col]
 	rows := make(slice.Slice[Row], len(t.Rows))
 	var running float64
 	for i, row := range t.Rows {
-		if colIdx < len(row.values) {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[colIdx]), 64); err == nil {
+		if colI < len(row.values) {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[colI]), 64); err == nil {
 				running += f
 			}
 		}
@@ -101,14 +109,17 @@ func (t Table) Rank(col, outCol string, asc bool) Table {
 		val   float64
 		valid bool
 	}
-	colIdx := t.headerIdx[col]
+	colI, ok := t.headerIdx[col]
+	if !ok {
+		return t
+	}
 	entries := make([]entry, len(t.Rows))
 	var numericVals []float64
 	seen := make(map[float64]bool)
 	for i, row := range t.Rows {
 		var v string
-		if colIdx < len(row.values) {
-			v = row.values[colIdx]
+		if colI < len(row.values) {
+			v = row.values[colI]
 		}
 		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
 		entries[i] = entry{idx: i, val: f, valid: err == nil}
@@ -148,6 +159,3 @@ func (t Table) Rank(col, outCol string, asc bool) Table {
 	return newTable(newHeaders, rows)
 }
 
-// ensure math and sort are used (they're used above — this line just
-// suppresses lint warnings during incremental development).
-var _, _ = math.Sqrt, sort.Float64s

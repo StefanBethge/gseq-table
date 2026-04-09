@@ -129,6 +129,66 @@ func TestGroupByAgg_PreservesOrder(t *testing.T) {
 	assertEqual(t, result.Rows[1].Get("region").UnwrapOr(""), "US")
 }
 
+// --- Missing column edge cases ---
+
+func TestGroupByAgg_MissingGroupCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"nonexistent"},
+		[]AggDef{{Col: "total", Agg: Sum("revenue")}},
+	)
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestGroupByAgg_MissingAggCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "total", Agg: Sum("nonexistent")}},
+	)
+	// grouping works, but Sum on missing col returns "0"
+	assertEqual(t, len(result.Rows), 2)
+	assertEqual(t, result.Rows[0].Get("total").UnwrapOr(""), "0")
+}
+
+func TestMean_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "avg", Agg: Mean("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("avg").UnwrapOr("x"), "")
+}
+
+func TestCount_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "n", Agg: Count("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("n").UnwrapOr(""), "0")
+}
+
+func TestStringJoin_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "labels", Agg: StringJoin("nonexistent", ",")}},
+	)
+	assertEqual(t, result.Rows[0].Get("labels").UnwrapOr("x"), "")
+}
+
+func TestFirst_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "f", Agg: First("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("f").UnwrapOr("x"), "")
+}
+
+func TestLast_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "l", Agg: Last("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("l").UnwrapOr("x"), "")
+}
+
 // --- AddColSwitch ---
 
 func TestAddColSwitch_FirstMatch(t *testing.T) {

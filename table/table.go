@@ -298,7 +298,10 @@ func (t Table) AddCol(name string, fn func(Row) string) Table {
 //	groups := t.GroupBy("country")
 //	deRows := groups["DE"].Rows
 func (t Table) GroupBy(col string) map[string]Table {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return map[string]Table{}
+	}
 	groups := make(map[string]Table)
 	for _, row := range t.Rows {
 		key := ""
@@ -351,7 +354,10 @@ func (t Table) Sort(col string, asc bool) Table {
 //
 //	orders.Join(customers, "customer_id", "id")
 func (t Table) Join(other Table, leftCol, rightCol string) Table {
-	rightKeyIdx := other.headerIdx[rightCol]
+	rightKeyIdx, rok := other.headerIdx[rightCol]
+	if !rok {
+		return t
+	}
 	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
 		key := ""
@@ -371,7 +377,10 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 		}
 	}
 
-	leftKeyIdx := t.headerIdx[leftCol]
+	leftKeyIdx, lok := t.headerIdx[leftCol]
+	if !lok {
+		return t
+	}
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
 		key := ""
@@ -413,6 +422,9 @@ func (t Table) Shape() (int, int) { return len(t.Rows), len(t.Headers) }
 
 // Head returns the first n rows. If n >= Len the full table is returned.
 func (t Table) Head(n int) Table {
+	if n <= 0 {
+		return newTable(t.Headers, slice.Slice[Row]{})
+	}
 	if n >= len(t.Rows) {
 		return t
 	}
@@ -421,6 +433,9 @@ func (t Table) Head(n int) Table {
 
 // Tail returns the last n rows. If n >= Len the full table is returned.
 func (t Table) Tail(n int) Table {
+	if n <= 0 {
+		return newTable(t.Headers, slice.Slice[Row]{})
+	}
 	if n >= len(t.Rows) {
 		return t
 	}
@@ -460,9 +475,25 @@ func (t Table) DropEmpty(cols ...string) Table {
 	if len(check) == 0 {
 		check = t.Headers
 	}
+	// pre-compute column indices; skip nonexistent columns
+	type colCheck struct {
+		idx int
+	}
+	checks := make([]colCheck, 0, len(check))
+	for _, c := range check {
+		if idx, ok := t.headerIdx[c]; ok {
+			checks = append(checks, colCheck{idx})
+		}
+	}
+	if len(checks) == 0 {
+		return t
+	}
 	return t.Where(func(r Row) bool {
-		for _, c := range check {
-			if r.Get(c).UnwrapOr("") == "" {
+		for _, cc := range checks {
+			if cc.idx < len(r.values) && r.values[cc.idx] == "" {
+				return false
+			}
+			if cc.idx >= len(r.values) {
 				return false
 			}
 		}
@@ -497,7 +528,11 @@ func (t Table) Distinct(cols ...string) Table {
 	}
 	checkIdx := make([]int, len(check))
 	for i, c := range check {
-		checkIdx[i] = t.headerIdx[c]
+		idx, ok := t.headerIdx[c]
+		if !ok {
+			return t
+		}
+		checkIdx[i] = idx
 	}
 	seen := make(map[string]bool)
 	var rows slice.Slice[Row]
@@ -676,7 +711,10 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 //	// Keep all orders, attach customer name where available
 //	orders.LeftJoin(customers, "customer_id", "id")
 func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
-	rightKeyIdx := other.headerIdx[rightCol]
+	rightKeyIdx, rok := other.headerIdx[rightCol]
+	if !rok {
+		return t
+	}
 	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
 		key := ""
@@ -694,7 +732,10 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 			rightExtraIdx = append(rightExtraIdx, i)
 		}
 	}
-	leftKeyIdx := t.headerIdx[leftCol]
+	leftKeyIdx, lok := t.headerIdx[leftCol]
+	if !lok {
+		return t
+	}
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
 		key := ""
@@ -742,7 +783,10 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 //	// US      37
 //	// FR      15
 func (t Table) ValueCounts(col string) Table {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return newTable(slice.Slice[string]{"value", "count"}, slice.Slice[Row]{})
+	}
 	counts := make(map[string]int)
 	order := make([]string, 0, len(t.Rows))
 	for _, row := range t.Rows {
@@ -845,9 +889,12 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 //	// wide:  name  q1   q2
 //	//        Alice 100  200
 func (t Table) Pivot(index, col, val string) Table {
-	indexIdx := t.headerIdx[index]
-	colIdx := t.headerIdx[col]
-	valIdx := t.headerIdx[val]
+	indexIdx, ok1 := t.headerIdx[index]
+	colIdx, ok2 := t.headerIdx[col]
+	valIdx, ok3 := t.headerIdx[val]
+	if !ok1 || !ok2 || !ok3 {
+		return t
+	}
 
 	colVals := make([]string, 0, len(t.Rows))
 	colSeen := make(map[string]bool)

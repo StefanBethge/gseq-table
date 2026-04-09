@@ -17,7 +17,10 @@ import (
 
 // Eq returns a predicate: col == val.
 func (t Table) Eq(col, val string) func(Row) bool {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return val == "" }
+	}
 	return func(r Row) bool {
 		v := ""
 		if idx < len(r.values) {
@@ -29,7 +32,10 @@ func (t Table) Eq(col, val string) func(Row) bool {
 
 // Ne returns a predicate: col != val.
 func (t Table) Ne(col, val string) func(Row) bool {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return val != "" }
+	}
 	return func(r Row) bool {
 		v := ""
 		if idx < len(r.values) {
@@ -41,7 +47,10 @@ func (t Table) Ne(col, val string) func(Row) bool {
 
 // Contains returns a predicate: strings.Contains(col, sub).
 func (t Table) Contains(col, sub string) func(Row) bool {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return strings.Contains("", sub) }
+	}
 	return func(r Row) bool {
 		v := ""
 		if idx < len(r.values) {
@@ -53,7 +62,10 @@ func (t Table) Contains(col, sub string) func(Row) bool {
 
 // Prefix returns a predicate: strings.HasPrefix(col, prefix).
 func (t Table) Prefix(col, prefix string) func(Row) bool {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return strings.HasPrefix("", prefix) }
+	}
 	return func(r Row) bool {
 		v := ""
 		if idx < len(r.values) {
@@ -65,7 +77,10 @@ func (t Table) Prefix(col, prefix string) func(Row) bool {
 
 // Suffix returns a predicate: strings.HasSuffix(col, suffix).
 func (t Table) Suffix(col, suffix string) func(Row) bool {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return strings.HasSuffix("", suffix) }
+	}
 	return func(r Row) bool {
 		v := ""
 		if idx < len(r.values) {
@@ -81,7 +96,10 @@ func (t Table) Suffix(col, suffix string) func(Row) bool {
 //	t.Where(t.Matches("email", `^[^@]+@gmail\.com$`))
 func (t Table) Matches(col, pattern string) func(Row) bool {
 	re := regexp.MustCompile(pattern)
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return re.MatchString("") }
+	}
 	return func(r Row) bool {
 		v := ""
 		if idx < len(r.values) {
@@ -93,7 +111,10 @@ func (t Table) Matches(col, pattern string) func(Row) bool {
 
 // Empty returns a predicate: col == "".
 func (t Table) Empty(col string) func(Row) bool {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return true }
+	}
 	return func(r Row) bool {
 		if idx < len(r.values) {
 			return r.values[idx] == ""
@@ -104,7 +125,10 @@ func (t Table) Empty(col string) func(Row) bool {
 
 // NotEmpty returns a predicate: col != "".
 func (t Table) NotEmpty(col string) func(Row) bool {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return func(Row) bool { return false }
+	}
 	return func(r Row) bool {
 		if idx < len(r.values) {
 			return r.values[idx] != ""

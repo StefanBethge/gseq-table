@@ -85,13 +85,16 @@ func (t Table) Explode(col, sep string) Table {
 
 	var records [][]string
 	for _, row := range t.Rows {
-		val := row.values[idx]
+		val := ""
+		if idx < len(row.values) {
+			val = row.values[idx]
+		}
 		parts := splitNonEmpty(val, sep)
 		if len(parts) == 0 {
 			parts = []string{val} // keep the row even if empty
 		}
 		for _, part := range parts {
-			rec := make([]string, len(row.values))
+			rec := make([]string, len(t.Headers))
 			copy(rec, row.values)
 			rec[idx] = part
 			records = append(records, rec)
@@ -102,51 +105,17 @@ func (t Table) Explode(col, sep string) Table {
 
 // splitNonEmpty splits s on sep and returns non-empty, trimmed parts.
 func splitNonEmpty(s, sep string) []string {
+	if sep == "" {
+		return []string{s}
+	}
 	var parts []string
-	for _, p := range splitString(s, sep) {
-		p = trimSpace(p)
+	for _, p := range strings.Split(s, sep) {
+		p = strings.TrimSpace(p)
 		if p != "" {
 			parts = append(parts, p)
 		}
 	}
 	return parts
-}
-
-func splitString(s, sep string) []string {
-	if sep == "" {
-		return []string{s}
-	}
-	var result []string
-	for {
-		i := indexOf(s, sep)
-		if i < 0 {
-			result = append(result, s)
-			break
-		}
-		result = append(result, s[:i])
-		s = s[i+len(sep):]
-	}
-	return result
-}
-
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
-}
-
-func trimSpace(s string) string {
-	start, end := 0, len(s)
-	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
-		start++
-	}
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
-		end--
-	}
-	return s[start:end]
 }
 
 // --- Transpose ---
@@ -193,7 +162,7 @@ func (t Table) Transpose() Table {
 //	// region: ["EU", "", "", "US", ""]  →  ["EU", "EU", "EU", "US", "US"]
 //	t.FillForward("region")
 func (t Table) FillForward(col string) Table {
-	idx := colIdx(t, col)
+	idx := t.ColIndex(col)
 	if idx < 0 {
 		return t
 	}
@@ -220,7 +189,7 @@ func (t Table) FillForward(col string) Table {
 //	// region: ["", "", "EU", "", "US"]  →  ["EU", "EU", "EU", "US", "US"]
 //	t.FillBackward("region")
 func (t Table) FillBackward(col string) Table {
-	idx := colIdx(t, col)
+	idx := t.ColIndex(col)
 	if idx < 0 {
 		return t
 	}
@@ -371,8 +340,11 @@ func (t Table) Coalesce(name string, cols ...string) Table {
 //	// enrich orders with customer name
 //	orders.Lookup("customer_id", "customer_name", customers, "id", "name")
 func (t Table) Lookup(col, outCol string, lookupTable Table, keyCol, valCol string) Table {
-	keyIdx := lookupTable.headerIdx[keyCol]
-	valIdx := lookupTable.headerIdx[valCol]
+	keyIdx, ok1 := lookupTable.headerIdx[keyCol]
+	valIdx, ok2 := lookupTable.headerIdx[valCol]
+	if !ok1 || !ok2 {
+		return t
+	}
 	lkp := make(map[string]string, len(lookupTable.Rows))
 	for _, row := range lookupTable.Rows {
 		k, v := "", ""
@@ -384,11 +356,14 @@ func (t Table) Lookup(col, outCol string, lookupTable Table, keyCol, valCol stri
 		}
 		lkp[k] = v
 	}
-	colIdx := t.headerIdx[col]
+	colI, ok3 := t.headerIdx[col]
+	if !ok3 {
+		return t
+	}
 	return t.AddCol(outCol, func(r Row) string {
 		k := ""
-		if colIdx < len(r.values) {
-			k = r.values[colIdx]
+		if colI < len(r.values) {
+			k = r.values[colI]
 		}
 		return lkp[k]
 	})
@@ -434,8 +409,13 @@ func (t Table) Intersect(other Table, cols ...string) Table {
 	tIdx := make([]int, len(check))
 	oIdx := make([]int, len(check))
 	for i, c := range check {
-		tIdx[i] = t.headerIdx[c]
-		oIdx[i] = other.headerIdx[c]
+		ti, ok1 := t.headerIdx[c]
+		oi, ok2 := other.headerIdx[c]
+		if !ok1 || !ok2 {
+			return t
+		}
+		tIdx[i] = ti
+		oIdx[i] = oi
 	}
 	otherKeys := make(map[string]bool, len(other.Rows))
 	parts := make([]string, len(check))
@@ -479,7 +459,10 @@ type BinDef struct {
 //	    {Max: 999, Label: "senior"},
 //	})
 func (t Table) Bin(col, name string, bins []BinDef) Table {
-	colI := t.headerIdx[col]
+	colI, ok := t.headerIdx[col]
+	if !ok {
+		return t
+	}
 	return t.AddCol(name, func(r Row) string {
 		v := ""
 		if colI < len(r.values) {
@@ -506,12 +489,3 @@ func (t Table) Bin(col, name string, bins []BinDef) Table {
 	})
 }
 
-// --- helpers ---
-
-// colIdx returns the index of col in t.Headers, or -1.
-func colIdx(t Table, col string) int {
-	if i, ok := t.headerIdx[col]; ok {
-		return i
-	}
-	return -1
-}

@@ -31,7 +31,7 @@ func (t Table) TransformParallel(fn func(Row) map[string]string) Table {
 //
 //	t.MapParallel("url", func(v string) string { return fetchTitle(v) })
 func (t Table) MapParallel(col string, fn func(string) string) Table {
-	idx := colIdx(t, col)
+	idx := t.ColIndex(col)
 	if idx < 0 {
 		return t
 	}
