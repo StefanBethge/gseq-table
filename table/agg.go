@@ -77,7 +77,7 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 	}
 
 	index := make(map[string]*groupEntry)
-	var keyOrder []string
+	keyOrder := make([]string, 0, len(t.Rows))
 
 	for _, row := range t.Rows {
 		parts := make([]string, len(groupCols))
@@ -176,7 +176,7 @@ type stringJoinAgg struct {
 
 func (a stringJoinAgg) reduce(g Table) string {
 	idx := g.headerIdx[a.col]
-	var parts []string
+	parts := make([]string, 0, len(g.Rows))
 	for _, row := range g.Rows {
 		if idx < len(row.values) && row.values[idx] != "" {
 			parts = append(parts, row.values[idx])

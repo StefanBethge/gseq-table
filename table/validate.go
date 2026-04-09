@@ -36,10 +36,18 @@ func (t Table) AssertNoEmpty(cols ...string) error {
 	if err := t.AssertColumns(check...); err != nil {
 		return err
 	}
+	checkIdx := make([]int, len(check))
+	for i, col := range check {
+		checkIdx[i] = t.headerIdx[col]
+	}
 	for ri, row := range t.Rows {
-		for _, col := range check {
-			if row.Get(col).UnwrapOr("") == "" {
-				return fmt.Errorf("row %d: column %q is empty", ri, col)
+		for i, idx := range checkIdx {
+			v := ""
+			if idx < len(row.values) {
+				v = row.values[idx]
+			}
+			if v == "" {
+				return fmt.Errorf("row %d: column %q is empty", ri, check[i])
 			}
 		}
 	}

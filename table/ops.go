@@ -448,14 +448,15 @@ func (t Table) Intersect(other Table, cols ...string) Table {
 		}
 		otherKeys[strings.Join(parts, "\x00")] = true
 	}
+	queryParts := make([]string, len(check))
 	return t.Where(func(r Row) bool {
 		for i, idx := range tIdx {
-			parts[i] = ""
+			queryParts[i] = ""
 			if idx < len(r.values) {
-				parts[i] = r.values[idx]
+				queryParts[i] = r.values[idx]
 			}
 		}
-		return otherKeys[strings.Join(parts, "\x00")]
+		return otherKeys[strings.Join(queryParts, "\x00")]
 	})
 }
 
@@ -478,20 +479,30 @@ type BinDef struct {
 //	    {Max: 999, Label: "senior"},
 //	})
 func (t Table) Bin(col, name string, bins []BinDef) Table {
+	colI := t.headerIdx[col]
 	return t.AddCol(name, func(r Row) string {
-		f, err := strconv.ParseFloat(strings.TrimSpace(r.Get(col).UnwrapOr("")), 64)
-		if err != nil {
+		v := ""
+		if colI < len(r.values) {
+			v = r.values[colI]
+		}
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil || len(bins) == 0 {
 			return ""
 		}
-		for _, bin := range bins {
-			if f < bin.Max {
-				return bin.Label
+		// binary search: find first bin where f < bin.Max (bins must be sorted by Max)
+		lo, hi := 0, len(bins)
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if f < bins[mid].Max {
+				hi = mid
+			} else {
+				lo = mid + 1
 			}
 		}
-		if len(bins) > 0 {
-			return bins[len(bins)-1].Label
+		if lo < len(bins) {
+			return bins[lo].Label
 		}
-		return ""
+		return bins[len(bins)-1].Label
 	})
 }
 

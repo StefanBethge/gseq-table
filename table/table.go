@@ -744,7 +744,7 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 func (t Table) ValueCounts(col string) Table {
 	idx := t.headerIdx[col]
 	counts := make(map[string]int)
-	var order []string
+	order := make([]string, 0, len(t.Rows))
 	for _, row := range t.Rows {
 		v := ""
 		if idx < len(row.values) {
@@ -797,7 +797,7 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 		name string
 		idx  int
 	}
-	var meltCols []meltCol
+	meltCols := make([]meltCol, 0, len(t.Headers)-len(idCols))
 	for i, h := range t.Headers {
 		if !idSet[h] {
 			meltCols = append(meltCols, meltCol{name: h, idx: i})
@@ -808,7 +808,7 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 		newHeaders = append(newHeaders, c)
 	}
 	newHeaders = append(newHeaders, varName, valName)
-	var records [][]string
+	records := make([][]string, 0, len(t.Rows)*len(meltCols))
 	for _, row := range t.Rows {
 		for _, mc := range meltCols {
 			rec := make([]string, 0, len(newHeaders))
@@ -849,7 +849,7 @@ func (t Table) Pivot(index, col, val string) Table {
 	colIdx := t.headerIdx[col]
 	valIdx := t.headerIdx[val]
 
-	var colVals []string
+	colVals := make([]string, 0, len(t.Rows))
 	colSeen := make(map[string]bool)
 	for _, row := range t.Rows {
 		c := ""
