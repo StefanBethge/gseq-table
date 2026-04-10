@@ -11,6 +11,8 @@ import (
 // Use MutableTable when you want to incrementally build or update rows
 // without allocating a new Table on every step. Call Freeze to obtain an
 // immutable Table snapshot again.
+//
+// For ownership-transfer or zero-copy flows, use MutableView / FreezeView.
 type MutableTable struct {
 	headers   slice.Slice[string]
 	rows      [][]string
@@ -20,29 +22,35 @@ type MutableTable struct {
 // NewMutable constructs a MutableTable from headers and records.
 // Input slices are copied so later caller mutations do not affect the table.
 func NewMutable(headers slice.Slice[string], records [][]string) *MutableTable {
-	copiedHeaders := append(slice.Slice[string](nil), headers...)
-	copiedRows := cloneRecords(records)
-	return &MutableTable{
-		headers:   copiedHeaders,
-		rows:      copiedRows,
-		headerIdx: buildHeaderIndex(copiedHeaders),
-	}
+	return newMutableOwned(copyHeaders(headers), cloneRecordsPacked(records))
 }
 
 // Mutable returns a mutable copy of t.
 // Later in-place updates on the returned table do not affect t.
 func (t Table) Mutable() *MutableTable {
-	records := make([][]string, len(t.Rows))
+	return newMutableOwned(copyHeaders(t.Headers), cloneRowValuesPacked(t.Rows))
+}
+
+// MutableView returns a mutable view onto t without copying row storage.
+// Mutating the returned table also mutates t.
+func (t Table) MutableView() *MutableTable {
+	rows := make([][]string, len(t.Rows))
 	for i, row := range t.Rows {
-		records[i] = append([]string(nil), row.values...)
+		rows[i] = row.values
 	}
-	return NewMutable(t.Headers, records)
+	return newMutableOwned(t.Headers, rows)
 }
 
 // Freeze returns an immutable snapshot of m.
 // The returned Table is isolated from subsequent changes to m.
 func (m *MutableTable) Freeze() Table {
-	return New(copyHeaders(m.headers), cloneRecords(m.rows))
+	return New(copyHeaders(m.headers), cloneRecordsPacked(m.rows))
+}
+
+// FreezeView returns an immutable view onto m without copying row storage.
+// Later in-place updates to m are reflected in the returned Table.
+func (m *MutableTable) FreezeView() Table {
+	return newTable(m.headers, rowsToRowViews(m.headers, m.rows))
 }
 
 // Headers returns a copy of the column names.
@@ -158,14 +166,14 @@ func (m *MutableTable) Drop(cols ...string) {
 	}
 
 	rows := make([][]string, len(m.rows))
-	for i, row := range m.rows {
-		vals := make([]string, len(keepIdx))
-		for j, idx := range keepIdx {
-			if idx < len(row) {
-				vals[j] = row[idx]
+	if len(keepIdx) > 0 {
+		rows = newPackedRecords(len(m.rows), len(keepIdx))
+		for i, row := range m.rows {
+			vals := rows[i]
+			for j, idx := range keepIdx {
+				vals[j] = valueAt(row, idx)
 			}
 		}
-		rows[i] = vals
 	}
 
 	m.headers = keepHeaders
@@ -200,4 +208,71 @@ func cloneRecords(records [][]string) [][]string {
 		cloned[i] = append([]string(nil), row...)
 	}
 	return cloned
+}
+
+func cloneRecordsPacked(records [][]string) [][]string {
+	rows := make([][]string, len(records))
+	total := 0
+	for _, row := range records {
+		total += len(row)
+	}
+	flat := make([]string, total)
+	pos := 0
+	for i, row := range records {
+		next := pos + len(row)
+		rows[i] = flat[pos:next:next]
+		copy(rows[i], row)
+		pos = next
+	}
+	return rows
+}
+
+func cloneRowValuesPacked(rows slice.Slice[Row]) [][]string {
+	records := make([][]string, len(rows))
+	total := 0
+	for _, row := range rows {
+		total += len(row.values)
+	}
+	flat := make([]string, total)
+	pos := 0
+	for i, row := range rows {
+		next := pos + len(row.values)
+		records[i] = flat[pos:next:next]
+		copy(records[i], row.values)
+		pos = next
+	}
+	return records
+}
+
+func rowsToRowViews(headers slice.Slice[string], records [][]string) slice.Slice[Row] {
+	rows := make(slice.Slice[Row], len(records))
+	for i, row := range records {
+		rows[i] = NewRow(headers, row)
+	}
+	return rows
+}
+
+func newMutableOwned(headers slice.Slice[string], rows [][]string) *MutableTable {
+	return &MutableTable{
+		headers:   headers,
+		rows:      rows,
+		headerIdx: buildHeaderIndex(headers),
+	}
+}
+
+func newPackedRecords(rowCount, width int) [][]string {
+	rows := make([][]string, rowCount)
+	if rowCount == 0 || width == 0 {
+		for i := range rows {
+			rows[i] = []string{}
+		}
+		return rows
+	}
+	flat := make([]string, rowCount*width)
+	for i := range rows {
+		start := i * width
+		end := start + width
+		rows[i] = flat[start:end:end]
+	}
+	return rows
 }

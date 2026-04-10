@@ -29,8 +29,8 @@
 package table
 
 import (
+	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/stefanbethge/gseq/option"
 	"github.com/stefanbethge/gseq/slice"
@@ -539,19 +539,38 @@ func (t Table) Distinct(cols ...string) Table {
 		}
 		checkIdx[i] = idx
 	}
-	seen := make(map[string]bool)
 	var rows slice.Slice[Row]
-	for _, row := range t.Rows {
-		parts := make([]string, len(checkIdx))
-		for i, idx := range checkIdx {
-			if idx < len(row.values) {
-				parts[i] = row.values[idx]
+	switch len(checkIdx) {
+	case 1:
+		seen := make(map[string]bool, len(t.Rows))
+		idx := checkIdx[0]
+		for _, row := range t.Rows {
+			key := valueAtRow(row.values, idx)
+			if !seen[key] {
+				seen[key] = true
+				rows = append(rows, NewRow(t.Headers, row.values))
 			}
 		}
-		key := strings.Join(parts, "\x00")
-		if !seen[key] {
-			seen[key] = true
-			rows = append(rows, NewRow(t.Headers, row.values))
+	case 2:
+		seen := make(map[pairKey]bool, len(t.Rows))
+		idx0, idx1 := checkIdx[0], checkIdx[1]
+		for _, row := range t.Rows {
+			key := pairKey{a: valueAtRow(row.values, idx0), b: valueAtRow(row.values, idx1)}
+			if !seen[key] {
+				seen[key] = true
+				rows = append(rows, NewRow(t.Headers, row.values))
+			}
+		}
+	default:
+		seen := make(map[string]bool, len(t.Rows))
+		keyScratch := make([]byte, 0, len(checkIdx)*8)
+		for _, row := range t.Rows {
+			key, nextScratch := keyFromRowValues(row.values, checkIdx, keyScratch)
+			keyScratch = nextScratch
+			if !seen[key] {
+				seen[key] = true
+				rows = append(rows, NewRow(t.Headers, row.values))
+			}
 		}
 	}
 	if rows == nil {
@@ -795,21 +814,21 @@ func (t Table) ValueCounts(col string) Table {
 	counts := make(map[string]int)
 	order := make([]string, 0, len(t.Rows))
 	for _, row := range t.Rows {
-		v := ""
-		if idx < len(row.values) {
-			v = row.values[idx]
-		}
+		v := valueAtRow(row.values, idx)
 		if counts[v] == 0 {
 			order = append(order, v)
 		}
 		counts[v]++
 	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return counts[order[i]] > counts[order[j]]
+	})
 	headers := slice.Slice[string]{"value", "count"}
 	records := make([][]string, len(order))
 	for i, v := range order {
 		records[i] = []string{v, strconv.Itoa(counts[v])}
 	}
-	return New(headers, records).SortMulti(Desc("count"))
+	return New(headers, records)
 }
 
 // --- Reshape ---

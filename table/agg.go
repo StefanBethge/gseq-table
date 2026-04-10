@@ -12,12 +12,36 @@ import (
 // rather than implementing this interface directly.
 type Agg interface {
 	reduce(group aggRows) string
+	plan(cols aggColIndex) aggPlan
+}
+
+type aggColIndex interface {
+	ColIndex(col string) int
 }
 
 type aggRows interface {
-	ColIndex(col string) int
+	aggColIndex
 	Len() int
 	ValueAt(row, col int) string
+}
+
+type aggHeaderIndex map[string]int
+
+func (m aggHeaderIndex) ColIndex(col string) int {
+	if idx, ok := m[col]; ok {
+		return idx
+	}
+	return -1
+}
+
+type aggPlan struct {
+	colIdx int
+	state  aggState
+}
+
+type aggState interface {
+	step(value string)
+	result() string
 }
 
 type tableAggRows struct {
@@ -35,14 +59,10 @@ func (g tableAggRows) ColIndex(col string) int {
 func (g tableAggRows) Len() int { return len(g.rows) }
 
 func (g tableAggRows) ValueAt(row, col int) string {
-	if row < 0 || row >= len(g.rows) || col < 0 {
+	if row < 0 || row >= len(g.rows) {
 		return ""
 	}
-	values := g.rows[row].values
-	if col >= len(values) {
-		return ""
-	}
-	return values[col]
+	return valueAtRow(g.rows[row].values, col)
 }
 
 type mutableAggRows struct {
@@ -60,14 +80,10 @@ func (g mutableAggRows) ColIndex(col string) int {
 func (g mutableAggRows) Len() int { return len(g.rows) }
 
 func (g mutableAggRows) ValueAt(row, col int) string {
-	if row < 0 || row >= len(g.rows) || col < 0 {
+	if row < 0 || row >= len(g.rows) {
 		return ""
 	}
-	values := g.rows[row]
-	if col >= len(values) {
-		return ""
-	}
-	return values[col]
+	return valueAt(g.rows[row], col)
 }
 
 // AggDef pairs an output column name with an aggregation function.
@@ -123,7 +139,7 @@ func Last(col string) Agg { return lastAgg{col} }
 func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 	type groupEntry struct {
 		keyVals []string
-		rows    slice.Slice[Row]
+		plans   []aggPlan
 	}
 
 	// pre-compute group column indices once
@@ -136,25 +152,76 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 		groupIdx[i] = idx
 	}
 
-	index := make(map[string]*groupEntry)
-	keyOrder := make([]string, 0, len(t.Rows))
-
-	for _, row := range t.Rows {
-		parts := make([]string, len(groupCols))
-		for i, idx := range groupIdx {
-			if idx < len(row.values) {
-				parts[i] = row.values[idx]
+	ordered := make([]*groupEntry, 0, len(t.Rows))
+	headerIdx := aggHeaderIndex(t.headerIdx)
+	switch len(groupIdx) {
+	case 1:
+		groupMap := make(map[string]*groupEntry, len(t.Rows))
+		idx := groupIdx[0]
+		for _, row := range t.Rows {
+			key := valueAtRow(row.values, idx)
+			e, ok := groupMap[key]
+			if !ok {
+				plans := make([]aggPlan, len(aggs))
+				for i, agg := range aggs {
+					plans[i] = agg.Agg.plan(headerIdx)
+				}
+				e = &groupEntry{keyVals: []string{key}, plans: plans}
+				groupMap[key] = e
+				ordered = append(ordered, e)
+			}
+			for i := range e.plans {
+				if e.plans[i].colIdx >= 0 {
+					e.plans[i].state.step(valueAtRow(row.values, e.plans[i].colIdx))
+				}
 			}
 		}
-		key := strings.Join(parts, "\x00")
-		if e, ok := index[key]; ok {
-			e.rows = append(e.rows, row)
-		} else {
-			// copy keyVals so the slice is stable
-			kv := make([]string, len(parts))
-			copy(kv, parts)
-			index[key] = &groupEntry{keyVals: kv, rows: slice.Slice[Row]{row}}
-			keyOrder = append(keyOrder, key)
+	case 2:
+		groupMap := make(map[pairKey]*groupEntry, len(t.Rows))
+		idx0, idx1 := groupIdx[0], groupIdx[1]
+		for _, row := range t.Rows {
+			key := pairKey{a: valueAtRow(row.values, idx0), b: valueAtRow(row.values, idx1)}
+			e, ok := groupMap[key]
+			if !ok {
+				plans := make([]aggPlan, len(aggs))
+				for i, agg := range aggs {
+					plans[i] = agg.Agg.plan(headerIdx)
+				}
+				e = &groupEntry{keyVals: []string{key.a, key.b}, plans: plans}
+				groupMap[key] = e
+				ordered = append(ordered, e)
+			}
+			for i := range e.plans {
+				if e.plans[i].colIdx >= 0 {
+					e.plans[i].state.step(valueAtRow(row.values, e.plans[i].colIdx))
+				}
+			}
+		}
+	default:
+		index := make(map[string]*groupEntry)
+		keyScratch := make([]byte, 0, len(groupCols)*8)
+		for _, row := range t.Rows {
+			key, nextScratch := keyFromRowValues(row.values, groupIdx, keyScratch)
+			keyScratch = nextScratch
+			e, ok := index[key]
+			if !ok {
+				kv := make([]string, len(groupIdx))
+				for i, idx := range groupIdx {
+					kv[i] = valueAtRow(row.values, idx)
+				}
+				plans := make([]aggPlan, len(aggs))
+				for i, agg := range aggs {
+					plans[i] = agg.Agg.plan(headerIdx)
+				}
+				e = &groupEntry{keyVals: kv, plans: plans}
+				index[key] = e
+				ordered = append(ordered, e)
+			}
+			for i := range e.plans {
+				if e.plans[i].colIdx >= 0 {
+					e.plans[i].state.step(valueAtRow(row.values, e.plans[i].colIdx))
+				}
+			}
 		}
 	}
 
@@ -164,16 +231,14 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 		newHeaders = append(newHeaders, a.Col)
 	}
 
-	records := make([][]string, len(keyOrder))
-	for i, key := range keyOrder {
-		e := index[key]
-		grp := tableAggRows{headerIdx: t.headerIdx, rows: e.rows}
-		rec := make([]string, 0, len(newHeaders))
-		rec = append(rec, e.keyVals...)
-		for _, a := range aggs {
-			rec = append(rec, a.Agg.reduce(grp))
+	records := newPackedRecords(len(ordered), len(newHeaders))
+	for i, e := range ordered {
+		copy(records[i], e.keyVals)
+		dst := len(groupCols)
+		for _, plan := range e.plans {
+			records[i][dst] = plan.state.result()
+			dst++
 		}
-		records[i] = rec
 	}
 
 	return New(newHeaders, records)
@@ -184,54 +249,31 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 type sumAgg struct{ col string }
 
 func (a sumAgg) reduce(g aggRows) string {
-	idx := g.ColIndex(a.col)
-	if idx < 0 {
-		return "0"
-	}
-	var sum float64
-	for i := 0; i < g.Len(); i++ {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(g.ValueAt(i, idx)), 64); err == nil {
-			sum += f
-		}
-	}
-	return strconv.FormatFloat(sum, 'f', -1, 64)
+	return reduceAgg(g, a.plan(g))
+}
+
+func (a sumAgg) plan(cols aggColIndex) aggPlan {
+	return aggPlan{colIdx: cols.ColIndex(a.col), state: &sumAggState{}}
 }
 
 type meanAgg struct{ col string }
 
 func (a meanAgg) reduce(g aggRows) string {
-	idx := g.ColIndex(a.col)
-	if idx < 0 {
-		return ""
-	}
-	var sum float64
-	var n int
-	for i := 0; i < g.Len(); i++ {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(g.ValueAt(i, idx)), 64); err == nil {
-			sum += f
-			n++
-		}
-	}
-	if n == 0 {
-		return ""
-	}
-	return strconv.FormatFloat(sum/float64(n), 'f', -1, 64)
+	return reduceAgg(g, a.plan(g))
+}
+
+func (a meanAgg) plan(cols aggColIndex) aggPlan {
+	return aggPlan{colIdx: cols.ColIndex(a.col), state: &meanAggState{}}
 }
 
 type countAgg struct{ col string }
 
 func (a countAgg) reduce(g aggRows) string {
-	idx := g.ColIndex(a.col)
-	if idx < 0 {
-		return "0"
-	}
-	var n int
-	for i := 0; i < g.Len(); i++ {
-		if g.ValueAt(i, idx) != "" {
-			n++
-		}
-	}
-	return strconv.Itoa(n)
+	return reduceAgg(g, a.plan(g))
+}
+
+func (a countAgg) plan(cols aggColIndex) aggPlan {
+	return aggPlan{colIdx: cols.ColIndex(a.col), state: &countAggState{}}
 }
 
 type stringJoinAgg struct {
@@ -240,43 +282,31 @@ type stringJoinAgg struct {
 }
 
 func (a stringJoinAgg) reduce(g aggRows) string {
-	idx := g.ColIndex(a.col)
-	if idx < 0 {
-		return ""
-	}
-	parts := make([]string, 0, g.Len())
-	for i := 0; i < g.Len(); i++ {
-		if v := g.ValueAt(i, idx); v != "" {
-			parts = append(parts, v)
-		}
-	}
-	return strings.Join(parts, a.sep)
+	return reduceAgg(g, a.plan(g))
+}
+
+func (a stringJoinAgg) plan(cols aggColIndex) aggPlan {
+	return aggPlan{colIdx: cols.ColIndex(a.col), state: &stringJoinAggState{sep: a.sep}}
 }
 
 type firstAgg struct{ col string }
 
 func (a firstAgg) reduce(g aggRows) string {
-	if g.Len() == 0 {
-		return ""
-	}
-	idx := g.ColIndex(a.col)
-	if idx < 0 {
-		return ""
-	}
-	return g.ValueAt(0, idx)
+	return reduceAgg(g, a.plan(g))
+}
+
+func (a firstAgg) plan(cols aggColIndex) aggPlan {
+	return aggPlan{colIdx: cols.ColIndex(a.col), state: &firstAggState{}}
 }
 
 type lastAgg struct{ col string }
 
 func (a lastAgg) reduce(g aggRows) string {
-	if g.Len() == 0 {
-		return ""
-	}
-	idx := g.ColIndex(a.col)
-	if idx < 0 {
-		return ""
-	}
-	return g.ValueAt(g.Len()-1, idx)
+	return reduceAgg(g, a.plan(g))
+}
+
+func (a lastAgg) plan(cols aggColIndex) aggPlan {
+	return aggPlan{colIdx: cols.ColIndex(a.col), state: &lastAggState{}}
 }
 
 // RollingAgg computes a sliding-window aggregation over the rows of t in their
@@ -308,4 +338,111 @@ func (t Table) RollingAgg(outCol string, size int, agg Agg) Table {
 		rows[i] = NewRow(newHeaders, vals)
 	}
 	return newTable(newHeaders, rows)
+}
+
+func reduceAgg(g aggRows, plan aggPlan) string {
+	if plan.colIdx >= 0 {
+		for i := 0; i < g.Len(); i++ {
+			plan.state.step(g.ValueAt(i, plan.colIdx))
+		}
+	}
+	return plan.state.result()
+}
+
+type sumAggState struct {
+	sum float64
+}
+
+func (s *sumAggState) step(value string) {
+	if f, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
+		s.sum += f
+	}
+}
+
+func (s *sumAggState) result() string {
+	return strconv.FormatFloat(s.sum, 'f', -1, 64)
+}
+
+type meanAggState struct {
+	sum float64
+	n   int
+}
+
+func (s *meanAggState) step(value string) {
+	if f, err := strconv.ParseFloat(strings.TrimSpace(value), 64); err == nil {
+		s.sum += f
+		s.n++
+	}
+}
+
+func (s *meanAggState) result() string {
+	if s.n == 0 {
+		return ""
+	}
+	return strconv.FormatFloat(s.sum/float64(s.n), 'f', -1, 64)
+}
+
+type countAggState struct {
+	n int
+}
+
+func (s *countAggState) step(value string) {
+	if value != "" {
+		s.n++
+	}
+}
+
+func (s *countAggState) result() string {
+	return strconv.Itoa(s.n)
+}
+
+type stringJoinAggState struct {
+	sep     string
+	builder strings.Builder
+	started bool
+}
+
+func (s *stringJoinAggState) step(value string) {
+	if value == "" {
+		return
+	}
+	if s.started {
+		s.builder.WriteString(s.sep)
+	} else {
+		s.started = true
+	}
+	s.builder.WriteString(value)
+}
+
+func (s *stringJoinAggState) result() string {
+	return s.builder.String()
+}
+
+type firstAggState struct {
+	set   bool
+	value string
+}
+
+func (s *firstAggState) step(value string) {
+	if s.set {
+		return
+	}
+	s.set = true
+	s.value = value
+}
+
+func (s *firstAggState) result() string {
+	return s.value
+}
+
+type lastAggState struct {
+	value string
+}
+
+func (s *lastAggState) step(value string) {
+	s.value = value
+}
+
+func (s *lastAggState) result() string {
+	return s.value
 }

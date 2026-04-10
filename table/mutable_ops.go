@@ -39,15 +39,12 @@ func (m *MutableTable) Select(cols ...string) {
 			indices = append(indices, idx)
 		}
 	}
-	rows := make([][]string, len(m.rows))
+	rows := newPackedRecords(len(m.rows), len(indices))
 	for i, row := range m.rows {
-		vals := make([]string, len(indices))
+		vals := rows[i]
 		for j, idx := range indices {
-			if idx < len(row) {
-				vals[j] = row[idx]
-			}
+			vals[j] = valueAt(row, idx)
 		}
-		rows[i] = vals
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -242,21 +239,42 @@ func (m *MutableTable) Distinct(cols ...string) {
 		}
 		checkIdx[i] = idx
 	}
-	seen := make(map[string]bool)
 	rows := make([][]string, 0, len(m.rows))
-	for _, row := range m.rows {
-		parts := make([]string, len(checkIdx))
-		for i, idx := range checkIdx {
-			if idx < len(row) {
-				parts[i] = row[idx]
+	switch len(checkIdx) {
+	case 1:
+		seen := make(map[string]bool, len(m.rows))
+		idx := checkIdx[0]
+		for _, row := range m.rows {
+			key := valueAt(row, idx)
+			if seen[key] {
+				continue
 			}
+			seen[key] = true
+			rows = append(rows, row)
 		}
-		key := strings.Join(parts, "\x00")
-		if seen[key] {
-			continue
+	case 2:
+		seen := make(map[pairKey]bool, len(m.rows))
+		idx0, idx1 := checkIdx[0], checkIdx[1]
+		for _, row := range m.rows {
+			key := pairKey{a: valueAt(row, idx0), b: valueAt(row, idx1)}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			rows = append(rows, row)
 		}
-		seen[key] = true
-		rows = append(rows, row)
+	default:
+		seen := make(map[string]bool, len(m.rows))
+		keyScratch := make([]byte, 0, len(checkIdx)*8)
+		for _, row := range m.rows {
+			key, nextScratch := keyFromValues(row, checkIdx, keyScratch)
+			keyScratch = nextScratch
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			rows = append(rows, row)
+		}
 	}
 	m.rows = rows
 }
@@ -358,12 +376,15 @@ func (m *MutableTable) AddRowIndex(name string) {
 	newHeaders := make(slice.Slice[string], 0, len(m.headers)+1)
 	newHeaders = append(newHeaders, name)
 	newHeaders = append(newHeaders, m.headers...)
-	rows := make([][]string, len(m.rows))
+	rows := newPackedRecords(len(m.rows), len(newHeaders))
 	for i, row := range m.rows {
-		vals := make([]string, 0, len(row)+1)
-		vals = append(vals, strconv.Itoa(i))
-		vals = append(vals, row...)
-		rows[i] = vals
+		vals := rows[i]
+		vals[0] = strconv.Itoa(i)
+		copyLen := len(row)
+		if copyLen > len(m.headers) {
+			copyLen = len(m.headers)
+		}
+		copy(vals[1:1+copyLen], row[:copyLen])
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -374,8 +395,9 @@ func (m *MutableTable) Explode(col, sep string) {
 	if !ok {
 		return
 	}
-	rows := make([][]string, 0, len(m.rows))
-	for _, row := range m.rows {
+	rowCount := 0
+	splits := make([][]string, len(m.rows))
+	for rowI, row := range m.rows {
 		val := ""
 		if idx < len(row) {
 			val = row[idx]
@@ -384,11 +406,21 @@ func (m *MutableTable) Explode(col, sep string) {
 		if len(parts) == 0 {
 			parts = []string{val}
 		}
-		for _, part := range parts {
-			rec := make([]string, len(m.headers))
-			copy(rec, row)
+		rowCount += len(parts)
+		splits[rowI] = parts
+	}
+	rows := newPackedRecords(rowCount, len(m.headers))
+	out := 0
+	for rowI, row := range m.rows {
+		for _, part := range splits[rowI] {
+			rec := rows[out]
+			out++
+			copyLen := len(row)
+			if copyLen > len(m.headers) {
+				copyLen = len(m.headers)
+			}
+			copy(rec[:copyLen], row[:copyLen])
 			rec[idx] = part
-			rows = append(rows, rec)
 		}
 	}
 	m.rows = rows
@@ -401,18 +433,15 @@ func (m *MutableTable) Transpose() {
 	for i := range m.rows {
 		newHeaders = append(newHeaders, strconv.Itoa(i))
 	}
-	rows := make([][]string, len(m.headers))
+	rows := newPackedRecords(len(m.headers), len(newHeaders))
 	for ci, col := range m.headers {
-		rec := make([]string, 0, len(m.rows)+1)
-		rec = append(rec, col)
+		rec := rows[ci]
+		rec[0] = col
+		dst := 1
 		for _, row := range m.rows {
-			v := ""
-			if ci < len(row) {
-				v = row[ci]
-			}
-			rec = append(rec, v)
+			rec[dst] = valueAt(row, ci)
+			dst++
 		}
-		rows[ci] = rec
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -557,28 +586,47 @@ func (m *MutableTable) Intersect(other Table, cols ...string) {
 		mIdx[i] = mi
 		oIdx[i] = oi
 	}
-	otherKeys := make(map[string]bool, len(other.Rows))
-	parts := make([]string, len(check))
-	for _, row := range other.Rows {
-		for i, idx := range oIdx {
-			parts[i] = ""
-			if idx < len(row.values) {
-				parts[i] = row.values[idx]
-			}
-		}
-		otherKeys[strings.Join(parts, "\x00")] = true
-	}
 	rows := make([][]string, 0, len(m.rows))
-	queryParts := make([]string, len(check))
-	for _, row := range m.rows {
-		for i, idx := range mIdx {
-			queryParts[i] = ""
-			if idx < len(row) {
-				queryParts[i] = row[idx]
+	switch len(mIdx) {
+	case 1:
+		otherKeys := make(map[string]bool, len(other.Rows))
+		oi := oIdx[0]
+		mi := mIdx[0]
+		for _, row := range other.Rows {
+			otherKeys[valueAtRow(row.values, oi)] = true
+		}
+		for _, row := range m.rows {
+			if otherKeys[valueAt(row, mi)] {
+				rows = append(rows, row)
 			}
 		}
-		if otherKeys[strings.Join(queryParts, "\x00")] {
-			rows = append(rows, row)
+	case 2:
+		otherKeys := make(map[pairKey]bool, len(other.Rows))
+		oi0, oi1 := oIdx[0], oIdx[1]
+		mi0, mi1 := mIdx[0], mIdx[1]
+		for _, row := range other.Rows {
+			otherKeys[pairKey{a: valueAtRow(row.values, oi0), b: valueAtRow(row.values, oi1)}] = true
+		}
+		for _, row := range m.rows {
+			if otherKeys[pairKey{a: valueAt(row, mi0), b: valueAt(row, mi1)}] {
+				rows = append(rows, row)
+			}
+		}
+	default:
+		otherKeys := make(map[string]bool, len(other.Rows))
+		keyScratch := make([]byte, 0, len(check)*8)
+		for _, row := range other.Rows {
+			key, nextScratch := keyFromRowValues(row.values, oIdx, keyScratch)
+			keyScratch = nextScratch
+			otherKeys[key] = true
+		}
+		queryScratch := make([]byte, 0, len(check)*8)
+		for _, row := range m.rows {
+			key, nextScratch := keyFromValues(row, mIdx, queryScratch)
+			queryScratch = nextScratch
+			if otherKeys[key] {
+				rows = append(rows, row)
+			}
 		}
 	}
 	m.rows = rows
@@ -622,13 +670,10 @@ func (m *MutableTable) Join(other Table, leftCol, rightCol string) {
 	if rightKeyIdx < 0 || leftKeyIdx < 0 {
 		return
 	}
-	rightIdx := make(map[string][][]string, len(other.Rows))
+	rightIdx := make(map[string]rowBucket, len(other.Rows))
 	for _, row := range other.Rows {
-		key := ""
-		if rightKeyIdx < len(row.values) {
-			key = row.values[rightKeyIdx]
-		}
-		rightIdx[key] = append(rightIdx[key], append([]string(nil), row.values...))
+		key := valueAtRow(row.values, rightKeyIdx)
+		addRowBucket(rightIdx, key, row.values)
 	}
 	newHeaders := copyHeaders(m.headers)
 	rightExtraIdx := make([]int, 0, len(other.Headers))
@@ -638,28 +683,32 @@ func (m *MutableTable) Join(other Table, leftCol, rightCol string) {
 			rightExtraIdx = append(rightExtraIdx, i)
 		}
 	}
-	rows := make([][]string, 0, len(m.rows))
+	rowCount := 0
 	for _, lRow := range m.rows {
-		key := ""
-		if leftKeyIdx < len(lRow) {
-			key = lRow[leftKeyIdx]
-		}
-		rRows, ok := rightIdx[key]
-		if !ok {
+		rowCount += rightIdx[valueAt(lRow, leftKeyIdx)].len()
+	}
+	rows := newPackedRecords(rowCount, len(newHeaders))
+	out := 0
+	for _, lRow := range m.rows {
+		key := valueAt(lRow, leftKeyIdx)
+		bucket, ok := rightIdx[key]
+		if !ok || bucket.len() == 0 {
 			continue
 		}
-		for _, rRow := range rRows {
-			vals := make([]string, 0, len(newHeaders))
-			vals = append(vals, lRow...)
-			for _, idx := range rightExtraIdx {
-				if idx < len(rRow) {
-					vals = append(vals, rRow[idx])
-				} else {
-					vals = append(vals, "")
-				}
+		forEachRowBucket(bucket, func(rRow slice.Slice[string]) {
+			vals := rows[out]
+			out++
+			copyLen := len(lRow)
+			if copyLen > len(m.headers) {
+				copyLen = len(m.headers)
 			}
-			rows = append(rows, vals)
-		}
+			copy(vals[:copyLen], lRow[:copyLen])
+			dst := len(m.headers)
+			for _, idx := range rightExtraIdx {
+				vals[dst] = valueAtRow(rRow, idx)
+				dst++
+			}
+		})
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -671,13 +720,10 @@ func (m *MutableTable) LeftJoin(other Table, leftCol, rightCol string) {
 	if rightKeyIdx < 0 || leftKeyIdx < 0 {
 		return
 	}
-	rightIdx := make(map[string][][]string, len(other.Rows))
+	rightIdx := make(map[string]rowBucket, len(other.Rows))
 	for _, row := range other.Rows {
-		key := ""
-		if rightKeyIdx < len(row.values) {
-			key = row.values[rightKeyIdx]
-		}
-		rightIdx[key] = append(rightIdx[key], append([]string(nil), row.values...))
+		key := valueAtRow(row.values, rightKeyIdx)
+		addRowBucket(rightIdx, key, row.values)
 	}
 	newHeaders := copyHeaders(m.headers)
 	rightExtraIdx := make([]int, 0, len(other.Headers))
@@ -687,34 +733,43 @@ func (m *MutableTable) LeftJoin(other Table, leftCol, rightCol string) {
 			rightExtraIdx = append(rightExtraIdx, i)
 		}
 	}
-	rows := make([][]string, 0, len(m.rows))
+	rowCount := 0
 	for _, lRow := range m.rows {
-		key := ""
-		if leftKeyIdx < len(lRow) {
-			key = lRow[leftKeyIdx]
+		n := rightIdx[valueAt(lRow, leftKeyIdx)].len()
+		if n == 0 {
+			n = 1
 		}
-		rRows := rightIdx[key]
-		if len(rRows) == 0 {
-			vals := make([]string, 0, len(newHeaders))
-			vals = append(vals, lRow...)
-			for range rightExtraIdx {
-				vals = append(vals, "")
+		rowCount += n
+	}
+	rows := newPackedRecords(rowCount, len(newHeaders))
+	out := 0
+	for _, lRow := range m.rows {
+		key := valueAt(lRow, leftKeyIdx)
+		bucket := rightIdx[key]
+		if bucket.len() == 0 {
+			vals := rows[out]
+			out++
+			copyLen := len(lRow)
+			if copyLen > len(m.headers) {
+				copyLen = len(m.headers)
 			}
-			rows = append(rows, vals)
+			copy(vals[:copyLen], lRow[:copyLen])
 			continue
 		}
-		for _, rRow := range rRows {
-			vals := make([]string, 0, len(newHeaders))
-			vals = append(vals, lRow...)
-			for _, idx := range rightExtraIdx {
-				if idx < len(rRow) {
-					vals = append(vals, rRow[idx])
-				} else {
-					vals = append(vals, "")
-				}
+		forEachRowBucket(bucket, func(rRow slice.Slice[string]) {
+			vals := rows[out]
+			out++
+			copyLen := len(lRow)
+			if copyLen > len(m.headers) {
+				copyLen = len(m.headers)
 			}
-			rows = append(rows, vals)
-		}
+			copy(vals[:copyLen], lRow[:copyLen])
+			dst := len(m.headers)
+			for _, idx := range rightExtraIdx {
+				vals[dst] = valueAtRow(rRow, idx)
+				dst++
+			}
+		})
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -726,13 +781,10 @@ func (m *MutableTable) RightJoin(other Table, leftCol, rightCol string) {
 	if leftKeyIdx < 0 || rightKeyIdx < 0 {
 		return
 	}
-	leftIdx := make(map[string][][]string, len(m.rows))
+	leftIdx := make(map[string]rowBucket, len(m.rows))
 	for _, row := range m.rows {
-		key := ""
-		if leftKeyIdx < len(row) {
-			key = row[leftKeyIdx]
-		}
-		leftIdx[key] = append(leftIdx[key], append([]string(nil), row...))
+		key := valueAt(row, leftKeyIdx)
+		addRowBucket(leftIdx, key, row)
 	}
 	newHeaders := copyHeaders(m.headers)
 	rightExtraIdx := make([]int, 0, len(other.Headers))
@@ -743,40 +795,46 @@ func (m *MutableTable) RightJoin(other Table, leftCol, rightCol string) {
 		}
 	}
 	leftColPos := m.ColIndex(leftCol)
-	rows := make([][]string, 0, len(other.Rows))
+	rowCount := 0
 	for _, rRow := range other.Rows {
-		key := ""
-		if rightKeyIdx < len(rRow.values) {
-			key = rRow.values[rightKeyIdx]
+		n := leftIdx[valueAtRow(rRow.values, rightKeyIdx)].len()
+		if n == 0 {
+			n = 1
 		}
-		lRows := leftIdx[key]
-		if len(lRows) == 0 {
-			vals := make([]string, len(m.headers), len(newHeaders))
+		rowCount += n
+	}
+	rows := newPackedRecords(rowCount, len(newHeaders))
+	out := 0
+	for _, rRow := range other.Rows {
+		key := valueAtRow(rRow.values, rightKeyIdx)
+		bucket := leftIdx[key]
+		if bucket.len() == 0 {
+			vals := rows[out]
+			out++
 			if leftColPos >= 0 && leftColPos < len(vals) {
 				vals[leftColPos] = key
 			}
+			dst := len(m.headers)
 			for _, idx := range rightExtraIdx {
-				v := ""
-				if idx < len(rRow.values) {
-					v = rRow.values[idx]
-				}
-				vals = append(vals, v)
+				vals[dst] = valueAtRow(rRow.values, idx)
+				dst++
 			}
-			rows = append(rows, vals)
 			continue
 		}
-		for _, lRow := range lRows {
-			vals := make([]string, 0, len(newHeaders))
-			vals = append(vals, lRow...)
-			for _, idx := range rightExtraIdx {
-				v := ""
-				if idx < len(rRow.values) {
-					v = rRow.values[idx]
-				}
-				vals = append(vals, v)
+		forEachRowBucket(bucket, func(lRow slice.Slice[string]) {
+			vals := rows[out]
+			out++
+			copyLen := len(lRow)
+			if copyLen > len(m.headers) {
+				copyLen = len(m.headers)
 			}
-			rows = append(rows, vals)
-		}
+			copy(vals[:copyLen], lRow[:copyLen])
+			dst := len(m.headers)
+			for _, idx := range rightExtraIdx {
+				vals[dst] = valueAtRow(rRow.values, idx)
+				dst++
+			}
+		})
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -789,13 +847,10 @@ func (m *MutableTable) OuterJoin(other Table, leftCol, rightCol string) {
 		return
 	}
 
-	leftKeys := make(map[string]bool, len(m.rows))
-	for _, row := range m.rows {
-		key := ""
-		if leftKeyIdx < len(row) {
-			key = row[leftKeyIdx]
-		}
-		leftKeys[key] = true
+	rightIdx := make(map[string]rowBucket, len(other.Rows))
+	for _, row := range other.Rows {
+		key := valueAtRow(row.values, rightKeyIdx)
+		addRowBucket(rightIdx, key, row.values)
 	}
 
 	newHeaders := copyHeaders(m.headers)
@@ -807,66 +862,70 @@ func (m *MutableTable) OuterJoin(other Table, leftCol, rightCol string) {
 		}
 	}
 
-	rows := make([][]string, 0, len(m.rows)+len(other.Rows))
+	rowCount := 0
+	leftKeys := make(map[string]bool, len(m.rows))
 	for _, lRow := range m.rows {
-		key := ""
-		if leftKeyIdx < len(lRow) {
-			key = lRow[leftKeyIdx]
+		key := valueAt(lRow, leftKeyIdx)
+		leftKeys[key] = true
+		n := rightIdx[key].len()
+		if n == 0 {
+			n = 1
 		}
-		rMatches := make([][]string, 0)
-		for _, rRow := range other.Rows {
-			rKey := ""
-			if rightKeyIdx < len(rRow.values) {
-				rKey = rRow.values[rightKeyIdx]
-			}
-			if rKey == key {
-				rMatches = append(rMatches, rRow.values)
-			}
-		}
-		if len(rMatches) == 0 {
-			vals := make([]string, 0, len(newHeaders))
-			vals = append(vals, lRow...)
-			for range rightExtraIdx {
-				vals = append(vals, "")
-			}
-			rows = append(rows, vals)
-			continue
-		}
-		for _, rRow := range rMatches {
-			vals := make([]string, 0, len(newHeaders))
-			vals = append(vals, lRow...)
-			for _, idx := range rightExtraIdx {
-				if idx < len(rRow) {
-					vals = append(vals, rRow[idx])
-				} else {
-					vals = append(vals, "")
-				}
-			}
-			rows = append(rows, vals)
-		}
+		rowCount += n
 	}
-
 	leftColPos := leftKeyIdx
 	for _, rRow := range other.Rows {
-		key := ""
-		if rightKeyIdx < len(rRow.values) {
-			key = rRow.values[rightKeyIdx]
-		}
+		key := valueAtRow(rRow.values, rightKeyIdx)
 		if leftKeys[key] {
 			continue
 		}
-		rec := make([]string, len(newHeaders))
+		rowCount++
+	}
+	rows := newPackedRecords(rowCount, len(newHeaders))
+	out := 0
+	for _, lRow := range m.rows {
+		key := valueAt(lRow, leftKeyIdx)
+		bucket := rightIdx[key]
+		if bucket.len() == 0 {
+			vals := rows[out]
+			out++
+			copyLen := len(lRow)
+			if copyLen > len(m.headers) {
+				copyLen = len(m.headers)
+			}
+			copy(vals[:copyLen], lRow[:copyLen])
+			continue
+		}
+		forEachRowBucket(bucket, func(rRow slice.Slice[string]) {
+			vals := rows[out]
+			out++
+			copyLen := len(lRow)
+			if copyLen > len(m.headers) {
+				copyLen = len(m.headers)
+			}
+			copy(vals[:copyLen], lRow[:copyLen])
+			dst := len(m.headers)
+			for _, idx := range rightExtraIdx {
+				vals[dst] = valueAtRow(rRow, idx)
+				dst++
+			}
+		})
+	}
+	for _, rRow := range other.Rows {
+		key := valueAtRow(rRow.values, rightKeyIdx)
+		if leftKeys[key] {
+			continue
+		}
+		rec := rows[out]
+		out++
 		if leftColPos >= 0 && leftColPos < len(rec) {
 			rec[leftColPos] = key
 		}
 		dst := len(m.headers)
 		for _, idx := range rightExtraIdx {
-			if idx < len(rRow.values) {
-				rec[dst] = rRow.values[idx]
-			}
+			rec[dst] = valueAtRow(rRow.values, idx)
 			dst++
 		}
-		rows = append(rows, rec)
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -909,21 +968,21 @@ func (m *MutableTable) ValueCounts(col string) {
 	counts := make(map[string]int)
 	order := make([]string, 0, len(m.rows))
 	for _, row := range m.rows {
-		v := ""
-		if idx < len(row) {
-			v = row[idx]
-		}
+		v := valueAt(row, idx)
 		if counts[v] == 0 {
 			order = append(order, v)
 		}
 		counts[v]++
 	}
-	rows := make([][]string, len(order))
+	sort.SliceStable(order, func(i, j int) bool {
+		return counts[order[i]] > counts[order[j]]
+	})
+	rows := newPackedRecords(len(order), 2)
 	for i, v := range order {
-		rows[i] = []string{v, strconv.Itoa(counts[v])}
+		rows[i][0] = v
+		rows[i][1] = strconv.Itoa(counts[v])
 	}
 	m.replaceAll(slice.Slice[string]{"value", "count"}, rows)
-	m.SortMulti(Desc("count"))
 }
 
 // Melt converts wide format to long format in place.
@@ -947,23 +1006,19 @@ func (m *MutableTable) Melt(idCols []string, varName, valName string) {
 	newHeaders := make(slice.Slice[string], 0, len(idCols)+2)
 	newHeaders = append(newHeaders, idCols...)
 	newHeaders = append(newHeaders, varName, valName)
-	rows := make([][]string, 0, len(m.rows)*len(meltCols))
+	rows := newPackedRecords(len(m.rows)*len(meltCols), len(newHeaders))
+	out := 0
 	for _, row := range m.rows {
 		for _, mc := range meltCols {
-			rec := make([]string, 0, len(newHeaders))
+			rec := rows[out]
+			out++
+			dst := 0
 			for _, idx := range idIdx {
-				v := ""
-				if idx >= 0 && idx < len(row) {
-					v = row[idx]
-				}
-				rec = append(rec, v)
+				rec[dst] = valueAt(row, idx)
+				dst++
 			}
-			v := ""
-			if mc.idx < len(row) {
-				v = row[mc.idx]
-			}
-			rec = append(rec, mc.name, v)
-			rows = append(rows, rec)
+			rec[dst] = mc.name
+			rec[dst+1] = valueAt(row, mc.idx)
 		}
 	}
 	m.replaceAll(newHeaders, rows)
@@ -1016,14 +1071,15 @@ func (m *MutableTable) Pivot(index, col, val string) {
 		}
 		e.vals[colVal] = cellVal
 	}
-	rows := make([][]string, len(rowOrder))
+	rows := newPackedRecords(len(rowOrder), len(newHeaders))
 	for i, idxVal := range rowOrder {
-		rec := make([]string, 0, len(newHeaders))
-		rec = append(rec, idxVal)
+		rec := rows[i]
+		rec[0] = idxVal
+		dst := 1
 		for _, cv := range colVals {
-			rec = append(rec, rowMap[idxVal].vals[cv])
+			rec[dst] = rowMap[idxVal].vals[cv]
+			dst++
 		}
-		rows[i] = rec
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -1032,7 +1088,7 @@ func (m *MutableTable) Pivot(index, col, val string) {
 func (m *MutableTable) GroupByAgg(groupCols []string, aggs []AggDef) {
 	type groupEntry struct {
 		keyVals []string
-		rows    [][]string
+		plans   []aggPlan
 	}
 	groupIdx := make([]int, len(groupCols))
 	for i, col := range groupCols {
@@ -1043,22 +1099,76 @@ func (m *MutableTable) GroupByAgg(groupCols []string, aggs []AggDef) {
 		}
 		groupIdx[i] = idx
 	}
-	index := make(map[string]*groupEntry)
-	keyOrder := make([]string, 0, len(m.rows))
-	for _, row := range m.rows {
-		parts := make([]string, len(groupCols))
-		for i, idx := range groupIdx {
-			if idx < len(row) {
-				parts[i] = row[idx]
+	ordered := make([]*groupEntry, 0, len(m.rows))
+	headerIdx := aggHeaderIndex(m.headerIdx)
+	switch len(groupIdx) {
+	case 1:
+		groupMap := make(map[string]*groupEntry, len(m.rows))
+		idx := groupIdx[0]
+		for _, row := range m.rows {
+			key := valueAt(row, idx)
+			e, ok := groupMap[key]
+			if !ok {
+				plans := make([]aggPlan, len(aggs))
+				for i, agg := range aggs {
+					plans[i] = agg.Agg.plan(headerIdx)
+				}
+				e = &groupEntry{keyVals: []string{key}, plans: plans}
+				groupMap[key] = e
+				ordered = append(ordered, e)
+			}
+			for i := range e.plans {
+				if e.plans[i].colIdx >= 0 {
+					e.plans[i].state.step(valueAt(row, e.plans[i].colIdx))
+				}
 			}
 		}
-		key := strings.Join(parts, "\x00")
-		if e, ok := index[key]; ok {
-			e.rows = append(e.rows, row)
-		} else {
-			kv := append([]string(nil), parts...)
-			index[key] = &groupEntry{keyVals: kv, rows: [][]string{row}}
-			keyOrder = append(keyOrder, key)
+	case 2:
+		groupMap := make(map[pairKey]*groupEntry, len(m.rows))
+		idx0, idx1 := groupIdx[0], groupIdx[1]
+		for _, row := range m.rows {
+			key := pairKey{a: valueAt(row, idx0), b: valueAt(row, idx1)}
+			e, ok := groupMap[key]
+			if !ok {
+				plans := make([]aggPlan, len(aggs))
+				for i, agg := range aggs {
+					plans[i] = agg.Agg.plan(headerIdx)
+				}
+				e = &groupEntry{keyVals: []string{key.a, key.b}, plans: plans}
+				groupMap[key] = e
+				ordered = append(ordered, e)
+			}
+			for i := range e.plans {
+				if e.plans[i].colIdx >= 0 {
+					e.plans[i].state.step(valueAt(row, e.plans[i].colIdx))
+				}
+			}
+		}
+	default:
+		index := make(map[string]*groupEntry)
+		keyScratch := make([]byte, 0, len(groupCols)*8)
+		for _, row := range m.rows {
+			key, nextScratch := keyFromValues(row, groupIdx, keyScratch)
+			keyScratch = nextScratch
+			e, ok := index[key]
+			if !ok {
+				kv := make([]string, len(groupIdx))
+				for i, idx := range groupIdx {
+					kv[i] = valueAt(row, idx)
+				}
+				plans := make([]aggPlan, len(aggs))
+				for i, agg := range aggs {
+					plans[i] = agg.Agg.plan(headerIdx)
+				}
+				e = &groupEntry{keyVals: kv, plans: plans}
+				index[key] = e
+				ordered = append(ordered, e)
+			}
+			for i := range e.plans {
+				if e.plans[i].colIdx >= 0 {
+					e.plans[i].state.step(valueAt(row, e.plans[i].colIdx))
+				}
+			}
 		}
 	}
 	newHeaders := make(slice.Slice[string], 0, len(groupCols)+len(aggs))
@@ -1066,16 +1176,15 @@ func (m *MutableTable) GroupByAgg(groupCols []string, aggs []AggDef) {
 	for _, agg := range aggs {
 		newHeaders = append(newHeaders, agg.Col)
 	}
-	rows := make([][]string, len(keyOrder))
-	for i, key := range keyOrder {
-		entry := index[key]
-		rec := make([]string, 0, len(newHeaders))
-		rec = append(rec, entry.keyVals...)
-		groupTable := mutableAggRows{headerIdx: m.headerIdx, rows: entry.rows}
-		for _, agg := range aggs {
-			rec = append(rec, agg.Agg.reduce(groupTable))
+	rows := newPackedRecords(len(ordered), len(newHeaders))
+	for i, entry := range ordered {
+		rec := rows[i]
+		copy(rec, entry.keyVals)
+		dst := len(groupCols)
+		for _, plan := range entry.plans {
+			rec[dst] = plan.state.result()
+			dst++
 		}
-		rows[i] = rec
 	}
 	m.replaceAll(newHeaders, rows)
 }
@@ -1146,59 +1255,42 @@ func (m *MutableTable) CumSum(col, outCol string) {
 		return
 	}
 	values := make([]string, len(m.rows))
-	var running float64
+	var runningFloat float64
+	var runningInt int64
+	intOnly := true
 	for i, row := range m.rows {
-		if colIdx < len(row) {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(row[colIdx]), 64); err == nil {
-				running += f
+		entry := parseNumericEntry(valueAt(row, colIdx))
+		if entry.valid {
+			if intOnly && entry.intOnly {
+				runningInt += entry.intValue
+			} else {
+				if intOnly {
+					runningFloat = float64(runningInt)
+					intOnly = false
+				}
+				runningFloat += entry.floatValue
 			}
 		}
-		values[i] = strconv.FormatFloat(running, 'f', -1, 64)
+		if intOnly {
+			values[i] = strconv.FormatInt(runningInt, 10)
+		} else {
+			values[i] = strconv.FormatFloat(runningFloat, 'f', -1, 64)
+		}
 	}
 	m.appendDerivedCol(outCol, func(i int) string { return values[i] })
 }
 
 // Rank adds a dense rank column in place.
 func (m *MutableTable) Rank(col, outCol string, asc bool) {
-	type entry struct {
-		val   float64
-		valid bool
-	}
 	colIdx := m.ColIndex(col)
 	if colIdx < 0 {
 		return
 	}
-	entries := make([]entry, len(m.rows))
-	numericVals := make([]float64, 0, len(m.rows))
-	seen := make(map[float64]bool)
+	entries := make([]numericEntry, len(m.rows))
 	for i, row := range m.rows {
-		v := ""
-		if colIdx < len(row) {
-			v = row[colIdx]
-		}
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		entries[i] = entry{val: f, valid: err == nil}
-		if err == nil && !seen[f] {
-			seen[f] = true
-			numericVals = append(numericVals, f)
-		}
+		entries[i] = parseNumericEntry(valueAt(row, colIdx))
 	}
-	sort.Float64s(numericVals)
-	if !asc {
-		for i, j := 0, len(numericVals)-1; i < j; i, j = i+1, j-1 {
-			numericVals[i], numericVals[j] = numericVals[j], numericVals[i]
-		}
-	}
-	rankMap := make(map[float64]string, len(numericVals))
-	for rank, v := range numericVals {
-		rankMap[v] = strconv.Itoa(rank + 1)
-	}
-	values := make([]string, len(m.rows))
-	for i := range m.rows {
-		if entries[i].valid {
-			values[i] = rankMap[entries[i].val]
-		}
-	}
+	values := denseRankValues(entries, asc)
 	m.appendDerivedCol(outCol, func(i int) string { return values[i] })
 }
 
@@ -1426,8 +1518,14 @@ func (m *MutableTable) appendDerivedCol(outCol string, valueAt func(i int) strin
 	copy(newHeaders, m.headers)
 	newHeaders[len(m.headers)] = outCol
 	rows := make([][]string, len(m.rows))
+	if len(m.rows) == 0 {
+		m.replaceAll(newHeaders, rows)
+		return
+	}
+	width := len(newHeaders)
+	data := make([]string, len(m.rows)*width)
 	for i, row := range m.rows {
-		vals := make([]string, len(newHeaders))
+		vals := data[i*width : (i+1)*width]
 		copyLen := len(row)
 		if copyLen > len(m.headers) {
 			copyLen = len(m.headers)

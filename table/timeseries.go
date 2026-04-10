@@ -1,9 +1,7 @@
 package table
 
 import (
-	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/stefanbethge/gseq/slice"
 )
@@ -67,15 +65,28 @@ func (t Table) CumSum(col, outCol string) Table {
 	if !ok {
 		return t
 	}
-	var running float64
+	var runningFloat float64
+	var runningInt int64
+	intOnly := true
 	values := make([]string, len(t.Rows))
 	for i, row := range t.Rows {
-		if colI < len(row.values) {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[colI]), 64); err == nil {
-				running += f
+		entry := parseNumericEntry(valueAtRow(row.values, colI))
+		if entry.valid {
+			if intOnly && entry.intOnly {
+				runningInt += entry.intValue
+			} else {
+				if intOnly {
+					runningFloat = float64(runningInt)
+					intOnly = false
+				}
+				runningFloat += entry.floatValue
 			}
 		}
-		values[i] = strconv.FormatFloat(running, 'f', -1, 64)
+		if intOnly {
+			values[i] = strconv.FormatInt(runningInt, 10)
+		} else {
+			values[i] = strconv.FormatFloat(runningFloat, 'f', -1, 64)
+		}
 	}
 	return t.appendDerivedCol(outCol, func(i int) string { return values[i] })
 }
@@ -86,49 +97,15 @@ func (t Table) CumSum(col, outCol string) Table {
 //
 //	t.Rank("score", "score_rank", false) // rank 1 = highest score
 func (t Table) Rank(col, outCol string, asc bool) Table {
-	// collect parseable values with their original indices
-	type entry struct {
-		val   float64
-		valid bool
-	}
 	colI, ok := t.headerIdx[col]
 	if !ok {
 		return t
 	}
-	entries := make([]entry, len(t.Rows))
-	var numericVals []float64
-	seen := make(map[float64]bool)
+	entries := make([]numericEntry, len(t.Rows))
 	for i, row := range t.Rows {
-		var v string
-		if colI < len(row.values) {
-			v = row.values[colI]
-		}
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		entries[i] = entry{val: f, valid: err == nil}
-		if err == nil && !seen[f] {
-			seen[f] = true
-			numericVals = append(numericVals, f)
-		}
+		entries[i] = parseNumericEntry(valueAtRow(row.values, colI))
 	}
-
-	// sort unique values to assign dense ranks
-	sort.Float64s(numericVals)
-	if !asc {
-		for i, j := 0, len(numericVals)-1; i < j; i, j = i+1, j-1 {
-			numericVals[i], numericVals[j] = numericVals[j], numericVals[i]
-		}
-	}
-	rankMap := make(map[float64]string, len(numericVals))
-	for rank, v := range numericVals {
-		rankMap[v] = strconv.Itoa(rank + 1)
-	}
-
-	ranks := make([]string, len(t.Rows))
-	for i := range t.Rows {
-		if entries[i].valid {
-			ranks[i] = rankMap[entries[i].val]
-		}
-	}
+	ranks := denseRankValues(entries, asc)
 	return t.appendDerivedCol(outCol, func(i int) string { return ranks[i] })
 }
 

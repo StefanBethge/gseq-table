@@ -108,6 +108,10 @@ m := table.NewMutable(
 )
 _ = m.Set(0, "city", "Hamburg")
 t = m.Freeze()
+
+// Zero-copy ownership transfer when you explicitly want shared storage
+fast := t.MutableView()
+t = fast.FreezeView()
 ```
 
 ### Row access

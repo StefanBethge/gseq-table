@@ -2,6 +2,7 @@ package table
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 )
 
@@ -39,6 +40,28 @@ func TestMutableTable_FreezeIsolatedFromFutureMutations(t *testing.T) {
 	}
 
 	assertEqual(t, frozen.Rows[0].Get("name").UnwrapOr(""), "Alice")
+}
+
+func TestTable_MutableViewSharesSource(t *testing.T) {
+	original := makeTable()
+	m := original.MutableView()
+
+	if err := m.Set(0, "name", "Ann"); err != nil {
+		t.Fatal(err)
+	}
+
+	assertEqual(t, original.Rows[0].Get("name").UnwrapOr(""), "Ann")
+}
+
+func TestMutableTable_FreezeViewSharesFutureMutations(t *testing.T) {
+	m := NewMutable([]string{"id", "name"}, [][]string{{"1", "Alice"}})
+	view := m.FreezeView()
+
+	if err := m.Set(0, "name", "Ann"); err != nil {
+		t.Fatal(err)
+	}
+
+	assertEqual(t, view.Rows[0].Get("name").UnwrapOr(""), "Ann")
 }
 
 func TestMutableTable_SetPadsShortRows(t *testing.T) {
@@ -160,6 +183,22 @@ func TestMutableTable_AppendJoinAndValueCounts(t *testing.T) {
 	assertEqual(t, frozen.Rows[0].Get("count").UnwrapOr(""), "2")
 }
 
+func TestMutableTable_ValueCounts_SortsNumerically(t *testing.T) {
+	records := make([][]string, 0, 14)
+	for i := 0; i < 12; i++ {
+		records = append(records, []string{"Berlin"})
+	}
+	for i := 0; i < 2; i++ {
+		records = append(records, []string{"Munich"})
+	}
+	m := NewMutable([]string{"city"}, records)
+	m.ValueCounts("city")
+	frozen := m.Freeze()
+	assertEqual(t, frozen.Rows[0].Get("value").UnwrapOr(""), "Berlin")
+	assertEqual(t, frozen.Rows[0].Get("count").UnwrapOr(""), "12")
+	assertEqual(t, frozen.Rows[1].Get("value").UnwrapOr(""), "Munich")
+}
+
 func TestMutableTable_TimeSeriesAndAggWrappers(t *testing.T) {
 	m := NewMutable([]string{"day", "revenue"}, [][]string{
 		{"1", "10"},
@@ -252,4 +291,157 @@ func TestMutableTable_GroupByPartitionChunkSnapshotsAreIsolated(t *testing.T) {
 	assertEqual(t, matched.Rows[0].Get("city").UnwrapOr(""), "Berlin")
 	assertEqual(t, rest.Rows[0].Get("city").UnwrapOr(""), "Munich")
 	assertEqual(t, chunks[0].Rows[0].Get("city").UnwrapOr(""), "Berlin")
+}
+
+func BenchmarkTableMutable(b *testing.B) {
+	base := benchmarkMutableBaseTable(50_000)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = base.Mutable()
+	}
+}
+
+func BenchmarkTableMutableView(b *testing.B) {
+	base := benchmarkMutableBaseTable(50_000)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = base.MutableView()
+	}
+}
+
+func BenchmarkMutableFreeze(b *testing.B) {
+	m := benchmarkMutableBaseTable(50_000).Mutable()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = m.Freeze()
+	}
+}
+
+func BenchmarkMutableFreezeView(b *testing.B) {
+	m := benchmarkMutableBaseTable(50_000).Mutable()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = m.FreezeView()
+	}
+}
+
+func BenchmarkMutableDistinct(b *testing.B) {
+	headers, records := benchmarkMutableRecords(50_000)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m := NewMutable(headers, records)
+		b.StartTimer()
+		m.Distinct("city", "name")
+	}
+}
+
+func BenchmarkMutableIntersect(b *testing.B) {
+	headers, records := benchmarkMutableRecords(50_000)
+	other := benchmarkMutableBaseTable(50_000).Select("city", "name").Distinct("city", "name")
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m := NewMutable(headers, records)
+		b.StartTimer()
+		m.Intersect(other, "city", "name")
+	}
+}
+
+func BenchmarkMutableValueCounts(b *testing.B) {
+	headers, records := benchmarkMutableRecords(50_000)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m := NewMutable(headers, records)
+		b.StartTimer()
+		m.ValueCounts("city")
+	}
+}
+
+func BenchmarkMutableGroupByAgg(b *testing.B) {
+	headers, records := benchmarkMutableRecords(50_000)
+	aggs := []AggDef{
+		{Col: "total", Agg: Sum("revenue")},
+		{Col: "count", Agg: Count("revenue")},
+		{Col: "names", Agg: StringJoin("name", ",")},
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m := NewMutable(headers, records)
+		b.StartTimer()
+		m.GroupByAgg([]string{"city"}, aggs)
+	}
+}
+
+func BenchmarkMutableOuterJoin(b *testing.B) {
+	headers, records := benchmarkMutableRecords(50_000)
+	other := benchmarkMutableJoinTable(50_000)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m := NewMutable(headers, records)
+		b.StartTimer()
+		m.OuterJoin(other, "id", "id")
+	}
+}
+
+func BenchmarkMutableCumSum(b *testing.B) {
+	headers, records := benchmarkMutableRecords(50_000)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m := NewMutable(headers, records)
+		b.StartTimer()
+		m.CumSum("revenue", "cum")
+	}
+}
+
+func BenchmarkMutableRank(b *testing.B) {
+	headers, records := benchmarkMutableRecords(50_000)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m := NewMutable(headers, records)
+		b.StartTimer()
+		m.Rank("revenue", "rank", true)
+	}
+}
+
+func benchmarkMutableBaseTable(n int) Table {
+	headers, records := benchmarkMutableRecords(n)
+	return New(headers, records)
+}
+
+func benchmarkMutableRecords(n int) ([]string, [][]string) {
+	headers := []string{"id", "city", "revenue", "name"}
+	records := make([][]string, n)
+	for i := 0; i < n; i++ {
+		city := "Berlin"
+		if i%3 == 1 {
+			city = "Munich"
+		}
+		if i%3 == 2 {
+			city = "Hamburg"
+		}
+		records[i] = []string{
+			strconv.Itoa(i),
+			city,
+			strconv.Itoa(100 + i%1000),
+			"name_" + strconv.Itoa(n-i),
+		}
+	}
+	return headers, records
+}
+
+func benchmarkMutableJoinTable(n int) Table {
+	records := make([][]string, n)
+	for i := 0; i < n; i++ {
+		records[i] = []string{
+			strconv.Itoa(i),
+			"group_" + strconv.Itoa(i%100),
+		}
+	}
+	return New([]string{"id", "group"}, records)
 }

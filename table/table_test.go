@@ -272,6 +272,20 @@ func TestTable_ValueCounts(t *testing.T) {
 	assertEqual(t, vc.Rows[1].Get("count").UnwrapOr(""), "1")
 }
 
+func TestTable_ValueCounts_SortsNumerically(t *testing.T) {
+	records := make([][]string, 0, 14)
+	for i := 0; i < 12; i++ {
+		records = append(records, []string{"Berlin"})
+	}
+	for i := 0; i < 2; i++ {
+		records = append(records, []string{"Munich"})
+	}
+	vc := New([]string{"city"}, records).ValueCounts("city")
+	assertEqual(t, vc.Rows[0].Get("value").UnwrapOr(""), "Berlin")
+	assertEqual(t, vc.Rows[0].Get("count").UnwrapOr(""), "12")
+	assertEqual(t, vc.Rows[1].Get("value").UnwrapOr(""), "Munich")
+}
+
 func TestTable_Melt(t *testing.T) {
 	tb := New([]string{"name", "q1", "q2"}, [][]string{
 		{"Alice", "100", "200"},

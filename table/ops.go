@@ -417,27 +417,41 @@ func (t Table) Intersect(other Table, cols ...string) Table {
 		tIdx[i] = ti
 		oIdx[i] = oi
 	}
-	otherKeys := make(map[string]bool, len(other.Rows))
-	parts := make([]string, len(check))
-	for _, row := range other.Rows {
-		for i, idx := range oIdx {
-			parts[i] = ""
-			if idx < len(row.values) {
-				parts[i] = row.values[idx]
-			}
+	switch len(tIdx) {
+	case 1:
+		otherKeys := make(map[string]bool, len(other.Rows))
+		oi, ti := oIdx[0], tIdx[0]
+		for _, row := range other.Rows {
+			otherKeys[valueAtRow(row.values, oi)] = true
 		}
-		otherKeys[strings.Join(parts, "\x00")] = true
+		return t.Where(func(r Row) bool {
+			return otherKeys[valueAtRow(r.values, ti)]
+		})
+	case 2:
+		otherKeys := make(map[pairKey]bool, len(other.Rows))
+		oi0, oi1 := oIdx[0], oIdx[1]
+		ti0, ti1 := tIdx[0], tIdx[1]
+		for _, row := range other.Rows {
+			otherKeys[pairKey{a: valueAtRow(row.values, oi0), b: valueAtRow(row.values, oi1)}] = true
+		}
+		return t.Where(func(r Row) bool {
+			return otherKeys[pairKey{a: valueAtRow(r.values, ti0), b: valueAtRow(r.values, ti1)}]
+		})
+	default:
+		otherKeys := make(map[string]bool, len(other.Rows))
+		keyScratch := make([]byte, 0, len(check)*8)
+		for _, row := range other.Rows {
+			key, nextScratch := keyFromRowValues(row.values, oIdx, keyScratch)
+			keyScratch = nextScratch
+			otherKeys[key] = true
+		}
+		queryScratch := make([]byte, 0, len(check)*8)
+		return t.Where(func(r Row) bool {
+			key, nextScratch := keyFromRowValues(r.values, tIdx, queryScratch)
+			queryScratch = nextScratch
+			return otherKeys[key]
+		})
 	}
-	queryParts := make([]string, len(check))
-	return t.Where(func(r Row) bool {
-		for i, idx := range tIdx {
-			queryParts[i] = ""
-			if idx < len(r.values) {
-				queryParts[i] = r.values[idx]
-			}
-		}
-		return otherKeys[strings.Join(queryParts, "\x00")]
-	})
 }
 
 // --- Binning ---
@@ -488,4 +502,3 @@ func (t Table) Bin(col, name string, bins []BinDef) Table {
 		return bins[len(bins)-1].Label
 	})
 }
-
