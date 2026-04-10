@@ -126,6 +126,18 @@ func TestMutableTable_AddColKeepsShortRowAlignment(t *testing.T) {
 	assertEqual(t, frozen.Rows[0].Get("c").UnwrapOr(""), "1")
 }
 
+func TestMutableTable_ClampsWideRowsAndDeduplicatesHeaders(t *testing.T) {
+	m := NewMutable([]string{"name"}, [][]string{{"Alice", "ignored"}})
+	m.AddCol("name", func(r Row) string { return "derived-" + r.Get("name").UnwrapOr("") })
+
+	frozen := m.Freeze()
+	assertEqual(t, frozen.Headers[0], "name")
+	assertEqual(t, frozen.Headers[1], "name_2")
+	assertEqual(t, frozen.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEqual(t, frozen.Rows[0].Get("name_2").UnwrapOr(""), "derived-Alice")
+	assertEqual(t, len(frozen.Rows[0].Values()), 2)
+}
+
 func TestMutableTable_SetErrors(t *testing.T) {
 	m := NewMutable([]string{"id"}, [][]string{{"1"}})
 

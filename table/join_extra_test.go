@@ -67,6 +67,16 @@ func TestOuterJoin_BothUnmatched(t *testing.T) {
 	assertEqual(t, finance.Rows[0].Get("name").UnwrapOr("x"), "") // no left match
 }
 
+func TestOuterJoin_DeduplicatesCollidingColumns(t *testing.T) {
+	left := New([]string{"dept_id", "name"}, [][]string{{"10", "Alice"}})
+	right := New([]string{"dept_id", "name"}, [][]string{{"10", "Engineering"}})
+	result := left.OuterJoin(right, "dept_id", "dept_id")
+	assertEqual(t, result.Headers[1], "name")
+	assertEqual(t, result.Headers[2], "name_2")
+	assertEqual(t, result.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEqual(t, result.Rows[0].Get("name_2").UnwrapOr(""), "Engineering")
+}
+
 // --- AntiJoin ---
 
 func TestAntiJoin_Basic(t *testing.T) {

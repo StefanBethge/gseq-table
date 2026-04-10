@@ -4,7 +4,8 @@ import "github.com/stefanbethge/gseq/slice"
 
 // RightJoin keeps every row from other and attaches matching rows from t on
 // leftCol = rightCol. Unmatched rows from other get empty strings for the
-// left-side columns. The join-key column from other is excluded from the result.
+// left-side columns. The join-key column from other is excluded from the
+// result. Remaining name collisions are disambiguated with numeric suffixes.
 //
 //	// Keep all customers, attach orders where available
 //	orders.RightJoin(customers, "customer_id", "id")
@@ -85,7 +86,8 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 
 // OuterJoin (full outer join) keeps every row from both tables. Rows that
 // match on leftCol = rightCol are merged; unmatched rows from either side
-// receive empty strings for the other side's columns.
+// receive empty strings for the other side's columns. Remaining name
+// collisions are disambiguated with numeric suffixes.
 //
 //	t.OuterJoin(other, "id", "id")
 func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
@@ -111,8 +113,8 @@ func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
 
 	// pre-compute positions in result for the join key and each rightExtra column
 	resultLeftColPos := result.headerIdx[leftCol]
-	var rightExtraIdx []int   // indices in other.Rows
-	var rightExtraPos []int   // positions in result.Headers
+	var rightExtraIdx []int // indices in other.Rows
+	var rightExtraPos []int // positions in result.Headers
 	for i, h := range other.Headers {
 		if h != rightCol {
 			rightExtraIdx = append(rightExtraIdx, i)

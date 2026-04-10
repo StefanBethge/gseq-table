@@ -101,6 +101,9 @@ func (r Row) ToMap() map[string]string {
 //	    Where(func(r table.Row) bool { return r.Get("active").UnwrapOr("") == "true" }).
 //	    Select("name", "email").
 //	    Sort("name", true)
+//
+// Header names are normalised to remain unique. If an operation would create
+// duplicates, numeric suffixes are appended ("name", "name_2", ...).
 type Table struct {
 	Headers   slice.Slice[string]
 	Rows      slice.Slice[Row]
@@ -110,11 +113,19 @@ type Table struct {
 // newTable is the internal constructor. It builds the header index once so all
 // subsequent column lookups are O(1) instead of O(k).
 func newTable(headers slice.Slice[string], rows slice.Slice[Row]) Table {
+	headers = normalizeHeaders(headers)
 	idx := make(map[string]int, len(headers))
 	for i, h := range headers {
-		idx[h] = i
+		if _, ok := idx[h]; !ok {
+			idx[h] = i
+		}
 	}
-	return Table{Headers: headers, Rows: rows, headerIdx: idx}
+	normalizedRows := make(slice.Slice[Row], len(rows))
+	width := len(headers)
+	for i, row := range rows {
+		normalizedRows[i] = NewRow(headers, clampRowValues(row.values, width))
+	}
+	return Table{Headers: headers, Rows: normalizedRows, headerIdx: idx}
 }
 
 // New builds a Table from a header slice and a slice of raw string records.
@@ -208,7 +219,8 @@ func (t Table) Col(name string) slice.Slice[string] {
 }
 
 // Rename returns a new table with column old renamed to new. If old does not
-// exist the original table is returned unchanged.
+// exist the original table is returned unchanged. If new already exists, a
+// numeric suffix is appended to keep headers unique.
 //
 //	t.Rename("cust_id", "customer_id")
 func (t Table) Rename(old, new string) Table {
@@ -279,6 +291,7 @@ func (t Table) Map(col string, fn func(string) string) Table {
 }
 
 // AddCol appends a new column whose value for each row is computed by fn.
+// If name already exists, a numeric suffix is appended to keep headers unique.
 //
 //	t.AddCol("full_name", func(r table.Row) string {
 //	    return r.Get("first").UnwrapOr("") + " " + r.Get("last").UnwrapOr("")
@@ -355,7 +368,8 @@ func (t Table) Sort(col string, asc bool) Table {
 // Join performs an inner join on leftCol = rightCol.
 // Only rows that have a matching key in other are kept.
 // The join-key column from other is excluded from the result to avoid
-// duplication.
+// duplication. Remaining name collisions are disambiguated with numeric
+// suffixes.
 //
 //	orders.Join(customers, "customer_id", "id")
 func (t Table) Join(other Table, leftCol, rightCol string) Table {
@@ -727,7 +741,8 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 // LeftJoin keeps every row from t and attaches matching rows from other on
 // leftCol = rightCol. When no match is found the right-side columns are filled
 // with empty strings. The join-key column from other is excluded from the
-// result to avoid duplication.
+// result to avoid duplication. Remaining name collisions are disambiguated
+// with numeric suffixes.
 //
 //	// Keep all orders, attach customer name where available
 //	orders.LeftJoin(customers, "customer_id", "id")

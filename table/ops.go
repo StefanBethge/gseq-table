@@ -216,7 +216,7 @@ func (t Table) FillBackward(col string) Table {
 // --- Sampling ---
 
 // Sample returns n randomly selected rows without replacement. If n >= Len,
-// the full table is returned (unordered).
+// the full table is returned unchanged.
 //
 //	t.Sample(100)
 func (t Table) Sample(n int) Table {

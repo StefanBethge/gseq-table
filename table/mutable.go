@@ -103,7 +103,8 @@ func (m *MutableTable) Set(row int, col, val string) error {
 
 // AppendRow appends values as a new row. The input slice is copied.
 func (m *MutableTable) AppendRow(values []string) {
-	m.rows = append(m.rows, append([]string(nil), values...))
+	row := append([]string(nil), values...)
+	m.rows = append(m.rows, clampRecordValues(row, len(m.headers)))
 }
 
 // Rename renames a column in place.
@@ -113,6 +114,7 @@ func (m *MutableTable) Rename(old, new string) error {
 		return fmt.Errorf("unknown column %q", old)
 	}
 	m.headers[idx] = new
+	m.headers = normalizeHeaders(m.headers)
 	m.headerIdx = buildHeaderIndex(m.headers)
 	return nil
 }
@@ -149,6 +151,7 @@ func (m *MutableTable) AddCol(name string, fn func(Row) string) {
 		m.rows[i] = append(m.rows[i], fn(view))
 	}
 	m.headers = append(m.headers, name)
+	m.headers = normalizeHeaders(m.headers)
 	m.headerIdx = buildHeaderIndex(m.headers)
 }
 
@@ -188,7 +191,11 @@ func (m *MutableTable) Drop(cols ...string) {
 }
 
 func (m *MutableTable) ensureRowWidth(row, width int) {
-	if len(m.rows[row]) >= width {
+	if len(m.rows[row]) == width {
+		return
+	}
+	if len(m.rows[row]) > width {
+		m.rows[row] = m.rows[row][:width:width]
 		return
 	}
 	padded := make([]string, width)
@@ -199,7 +206,9 @@ func (m *MutableTable) ensureRowWidth(row, width int) {
 func buildHeaderIndex(headers slice.Slice[string]) map[string]int {
 	idx := make(map[string]int, len(headers))
 	for i, h := range headers {
-		idx[h] = i
+		if _, ok := idx[h]; !ok {
+			idx[h] = i
+		}
 	}
 	return idx
 }
@@ -259,6 +268,10 @@ func rowsToRowViews(headers slice.Slice[string], records [][]string) slice.Slice
 }
 
 func newMutableOwned(headers slice.Slice[string], rows [][]string) *MutableTable {
+	headers = normalizeHeaders(headers)
+	for i, row := range rows {
+		rows[i] = clampRecordValues(row, len(headers))
+	}
 	return &MutableTable{
 		headers:   headers,
 		rows:      rows,

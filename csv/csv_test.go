@@ -58,6 +58,17 @@ func TestRead_WithHeaderNames(t *testing.T) {
 	assertEqual(t, tb.Rows[0].Get("ort").UnwrapOr(""), "Berlin")
 }
 
+func TestRead_WithShortHeaderNames_ClampsExtraFields(t *testing.T) {
+	r := New(WithHeaderNames("vorname", "ort"))
+	result := r.Read(strings.NewReader(csvNoHeader))
+	assertEqual(t, result.IsOk(), true)
+	tb := result.Unwrap()
+	assertEqual(t, len(tb.Headers), 2)
+	assertEqual(t, len(tb.Rows[0].Values()), 2)
+	assertEqual(t, tb.Rows[0].Get("vorname").UnwrapOr(""), "Alice")
+	assertEqual(t, tb.Rows[0].Get("ort").UnwrapOr(""), "Berlin")
+}
+
 func TestRead_Semicolon(t *testing.T) {
 	r := New(WithSeparator(';'))
 	result := r.Read(strings.NewReader(csvSemicolon))

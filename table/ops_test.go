@@ -21,6 +21,16 @@ func TestRenameMany_UnknownIgnored(t *testing.T) {
 	assertEqual(t, result.Headers[0], "a") // unchanged
 }
 
+func TestRenameMany_DeduplicatesCollisions(t *testing.T) {
+	tb := New([]string{"a", "b"}, [][]string{{"1", "2"}})
+	result := tb.RenameMany(map[string]string{"b": "a"})
+	assertEqual(t, result.Headers[0], "a")
+	assertEqual(t, result.Headers[1], "a_2")
+	assertEqual(t, result.Rows[0].Get("a").UnwrapOr(""), "1")
+	assertEqual(t, result.Rows[0].Get("a_2").UnwrapOr(""), "2")
+	assertEqual(t, result.Col("a_2")[0], "2")
+}
+
 // --- Concat ---
 
 func TestConcat(t *testing.T) {
@@ -188,7 +198,7 @@ func TestPartition_HeadersPreserved(t *testing.T) {
 func TestChunk(t *testing.T) {
 	tb := New([]string{"v"}, [][]string{{"1"}, {"2"}, {"3"}, {"4"}, {"5"}})
 	chunks := tb.Chunk(2)
-	assertEqual(t, len(chunks), 3)      // [1,2] [3,4] [5]
+	assertEqual(t, len(chunks), 3) // [1,2] [3,4] [5]
 	assertEqual(t, len(chunks[0].Rows), 2)
 	assertEqual(t, len(chunks[1].Rows), 2)
 	assertEqual(t, len(chunks[2].Rows), 1)

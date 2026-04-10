@@ -392,6 +392,7 @@ func (m *MutableTable) RenameMany(renames map[string]string) {
 			m.headers[i] = newName
 		}
 	}
+	m.headers = normalizeHeaders(m.headers)
 	m.headerIdx = buildHeaderIndex(m.headers)
 }
 
@@ -510,6 +511,7 @@ func (m *MutableTable) FillBackward(col string) {
 // Sample keeps a random sample in place.
 func (m *MutableTable) Sample(n int) {
 	if n >= len(m.rows) {
+		m.rows = append([][]string(nil), slice.Slice[[]string](m.rows).Samples(len(m.rows))...)
 		return
 	}
 	sampled := slice.Slice[[]string](m.rows).Samples(n)
@@ -1545,6 +1547,10 @@ func (m *MutableTable) NotEmpty(col string) func(Row) bool {
 }
 
 func (m *MutableTable) replaceAll(headers slice.Slice[string], rows [][]string) {
+	headers = normalizeHeaders(headers)
+	for i, row := range rows {
+		rows[i] = clampRecordValues(row, len(headers))
+	}
 	m.headers = headers
 	m.rows = rows
 	m.headerIdx = buildHeaderIndex(headers)

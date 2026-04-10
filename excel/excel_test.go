@@ -145,6 +145,21 @@ func TestReadFile_WithHeaderNames(t *testing.T) {
 	assertEqual(t, tb.Rows[0].Get("location").UnwrapOr(""), "Berlin")
 }
 
+func TestReadFile_WithShortHeaderNames_ClampsExtraFields(t *testing.T) {
+	path := createTestFile(t, "Data", [][]string{
+		{"Alice", "Berlin", "30"},
+	})
+	defer os.Remove(path)
+
+	res := New(WithHeaderNames("first", "location")).ReadFile(path)
+	assertEqual(t, res.IsOk(), true)
+	tb := res.Unwrap()
+	assertEqual(t, len(tb.Headers), 2)
+	assertEqual(t, len(tb.Rows[0].Values()), 2)
+	assertEqual(t, tb.Rows[0].Get("first").UnwrapOr(""), "Alice")
+	assertEqual(t, tb.Rows[0].Get("location").UnwrapOr(""), "Berlin")
+}
+
 func TestReadFile_Empty(t *testing.T) {
 	path := createTestFile(t, "Empty", [][]string{})
 	defer os.Remove(path)

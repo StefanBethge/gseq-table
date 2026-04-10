@@ -122,6 +122,16 @@ func TestTable_AddCol(t *testing.T) {
 	assertEqual(t, tb.Rows[1].Get("label").UnwrapOr(""), "Bob@Munich")
 }
 
+func TestTable_AddCol_DeduplicatesNameAndClampsWideRows(t *testing.T) {
+	tb := New([]string{"name"}, [][]string{{"Alice", "ignored"}}).
+		AddCol("name", func(r Row) string { return "derived-" + r.Get("name").UnwrapOr("") })
+	assertEqual(t, tb.Headers[0], "name")
+	assertEqual(t, tb.Headers[1], "name_2")
+	assertEqual(t, tb.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEqual(t, tb.Rows[0].Get("name_2").UnwrapOr(""), "derived-Alice")
+	assertEqual(t, len(tb.Rows[0].Values()), 2)
+}
+
 func TestTable_GroupBy(t *testing.T) {
 	groups := makeTable().GroupBy("city")
 	assertEqual(t, len(groups), 2)
@@ -164,6 +174,19 @@ func TestTable_Join_MultiMatch(t *testing.T) {
 	right := New([]string{"id", "extra"}, [][]string{{"1", "x"}, {"1", "y"}})
 	tb := left.Join(right, "id", "id")
 	assertEqual(t, len(tb.Rows), 2)
+}
+
+func TestTable_Join_DeduplicatesCollidingColumns(t *testing.T) {
+	left := New([]string{"id", "name"}, [][]string{{"1", "Alice"}})
+	right := New([]string{"id", "name"}, [][]string{{"1", "Admin"}})
+	result := left.Join(right, "id", "id")
+	assertEqual(t, result.Headers[0], "id")
+	assertEqual(t, result.Headers[1], "name")
+	assertEqual(t, result.Headers[2], "name_2")
+	assertEqual(t, result.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEqual(t, result.Rows[0].Get("name_2").UnwrapOr(""), "Admin")
+	assertEqual(t, result.ColIndex("name"), 1)
+	assertEqual(t, result.ColIndex("name_2"), 2)
 }
 
 func TestTable_Len(t *testing.T) {
