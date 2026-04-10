@@ -1,6 +1,7 @@
 package table
 
 import (
+	"strconv"
 	"testing"
 )
 
@@ -129,6 +130,66 @@ func TestGroupByAgg_PreservesOrder(t *testing.T) {
 	assertEqual(t, result.Rows[1].Get("region").UnwrapOr(""), "US")
 }
 
+// --- Missing column edge cases ---
+
+func TestGroupByAgg_MissingGroupCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"nonexistent"},
+		[]AggDef{{Col: "total", Agg: Sum("revenue")}},
+	)
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestGroupByAgg_MissingAggCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "total", Agg: Sum("nonexistent")}},
+	)
+	// grouping works, but Sum on missing col returns "0"
+	assertEqual(t, len(result.Rows), 2)
+	assertEqual(t, result.Rows[0].Get("total").UnwrapOr(""), "0")
+}
+
+func TestMean_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "avg", Agg: Mean("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("avg").UnwrapOr("x"), "")
+}
+
+func TestCount_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "n", Agg: Count("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("n").UnwrapOr(""), "0")
+}
+
+func TestStringJoin_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "labels", Agg: StringJoin("nonexistent", ",")}},
+	)
+	assertEqual(t, result.Rows[0].Get("labels").UnwrapOr("x"), "")
+}
+
+func TestFirst_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "f", Agg: First("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("f").UnwrapOr("x"), "")
+}
+
+func TestLast_MissingCol(t *testing.T) {
+	result := salesTable().GroupByAgg(
+		[]string{"region"},
+		[]AggDef{{Col: "l", Agg: Last("nonexistent")}},
+	)
+	assertEqual(t, result.Rows[0].Get("l").UnwrapOr("x"), "")
+}
+
 // --- AddColSwitch ---
 
 func TestAddColSwitch_FirstMatch(t *testing.T) {
@@ -198,6 +259,36 @@ func TestCartesianProduct_EmptyTable(t *testing.T) {
 	assertEqual(t, len(result.Rows), 0)
 }
 
+func BenchmarkGroupByAgg(b *testing.B) {
+	records := make([][]string, 50_000)
+	for i := 0; i < len(records); i++ {
+		region := "EU"
+		if i%3 == 1 {
+			region = "US"
+		}
+		if i%3 == 2 {
+			region = "APAC"
+		}
+		records[i] = []string{
+			region,
+			"product_" + strconv.Itoa(i%50),
+			strconv.Itoa(100 + i%1000),
+			"label_" + strconv.Itoa(i%20),
+		}
+	}
+	tb := New([]string{"region", "product", "revenue", "label"}, records)
+	aggs := []AggDef{
+		{Col: "total", Agg: Sum("revenue")},
+		{Col: "count", Agg: Count("revenue")},
+		{Col: "labels", Agg: StringJoin("label", ",")},
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = tb.GroupByAgg([]string{"region", "product"}, aggs)
+	}
+}
+
 // --- RollingAgg ---
 
 func TestRollingAgg_Sum(t *testing.T) {
@@ -219,9 +310,9 @@ func TestRollingAgg_Sum(t *testing.T) {
 func TestRollingAgg_Mean(t *testing.T) {
 	tb := New([]string{"v"}, [][]string{{"2"}, {"4"}, {"6"}})
 	result := tb.RollingAgg("avg", 2, Mean("v"))
-	assertEqual(t, result.Rows[0].Get("avg").UnwrapOr(""), "2")  // window=[2], mean=2
-	assertEqual(t, result.Rows[1].Get("avg").UnwrapOr(""), "3")  // window=[2,4], mean=3
-	assertEqual(t, result.Rows[2].Get("avg").UnwrapOr(""), "5")  // window=[4,6], mean=5
+	assertEqual(t, result.Rows[0].Get("avg").UnwrapOr(""), "2") // window=[2], mean=2
+	assertEqual(t, result.Rows[1].Get("avg").UnwrapOr(""), "3") // window=[2,4], mean=3
+	assertEqual(t, result.Rows[2].Get("avg").UnwrapOr(""), "5") // window=[4,6], mean=5
 }
 
 func TestRollingAgg_WindowSize1(t *testing.T) {

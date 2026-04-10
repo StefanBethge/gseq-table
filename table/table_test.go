@@ -272,6 +272,20 @@ func TestTable_ValueCounts(t *testing.T) {
 	assertEqual(t, vc.Rows[1].Get("count").UnwrapOr(""), "1")
 }
 
+func TestTable_ValueCounts_SortsNumerically(t *testing.T) {
+	records := make([][]string, 0, 14)
+	for i := 0; i < 12; i++ {
+		records = append(records, []string{"Berlin"})
+	}
+	for i := 0; i < 2; i++ {
+		records = append(records, []string{"Munich"})
+	}
+	vc := New([]string{"city"}, records).ValueCounts("city")
+	assertEqual(t, vc.Rows[0].Get("value").UnwrapOr(""), "Berlin")
+	assertEqual(t, vc.Rows[0].Get("count").UnwrapOr(""), "12")
+	assertEqual(t, vc.Rows[1].Get("value").UnwrapOr(""), "Munich")
+}
+
 func TestTable_Melt(t *testing.T) {
 	tb := New([]string{"name", "q1", "q2"}, [][]string{
 		{"Alice", "100", "200"},
@@ -307,4 +321,95 @@ func TestTable_Melt_Pivot_Roundtrip(t *testing.T) {
 	pivoted := melted.Pivot("name", "quarter", "value")
 	assertEqual(t, pivoted.Rows[0].Get("q1").UnwrapOr(""), "100")
 	assertEqual(t, pivoted.Rows[0].Get("q2").UnwrapOr(""), "200")
+}
+
+// --- Missing column edge cases ---
+
+func TestTable_GroupBy_MissingCol(t *testing.T) {
+	groups := makeTable().GroupBy("nonexistent")
+	assertEqual(t, len(groups), 0)
+}
+
+func TestTable_ValueCounts_MissingCol(t *testing.T) {
+	vc := makeTable().ValueCounts("nonexistent")
+	assertEqual(t, len(vc.Rows), 0)
+	assertEqual(t, len(vc.Headers), 2) // still has "value" and "count" headers
+}
+
+func TestTable_Join_MissingLeftCol(t *testing.T) {
+	left := New([]string{"name"}, [][]string{{"Alice"}})
+	right := New([]string{"id", "city"}, [][]string{{"1", "Berlin"}})
+	result := left.Join(right, "nonexistent", "id")
+	assertEqual(t, len(result.Rows), 1) // returns left unchanged
+	assertEqual(t, result.Rows[0].Get("name").UnwrapOr(""), "Alice")
+}
+
+func TestTable_Join_MissingRightCol(t *testing.T) {
+	left := New([]string{"id", "name"}, [][]string{{"1", "Alice"}})
+	right := New([]string{"city"}, [][]string{{"Berlin"}})
+	result := left.Join(right, "id", "nonexistent")
+	assertEqual(t, len(result.Rows), 1)
+	assertEqual(t, result.Rows[0].Get("name").UnwrapOr(""), "Alice")
+}
+
+func TestTable_LeftJoin_MissingCol(t *testing.T) {
+	left := New([]string{"name"}, [][]string{{"Alice"}})
+	right := New([]string{"id"}, [][]string{{"1"}})
+	result := left.LeftJoin(right, "nonexistent", "id")
+	assertEqual(t, len(result.Rows), 1)
+}
+
+func TestTable_Pivot_MissingCol(t *testing.T) {
+	tb := New([]string{"a", "b", "c"}, [][]string{{"1", "2", "3"}})
+	result := tb.Pivot("a", "nonexistent", "c")
+	assertEqual(t, len(result.Rows), 1) // returns unchanged
+}
+
+func TestTable_Distinct_MissingCol(t *testing.T) {
+	tb := New([]string{"a"}, [][]string{{"1"}, {"2"}})
+	result := tb.Distinct("nonexistent")
+	assertEqual(t, len(result.Rows), 2) // returns unchanged
+}
+
+func TestTable_DropEmpty_MissingCol(t *testing.T) {
+	tb := New([]string{"a"}, [][]string{{"1"}, {"2"}, {"3"}})
+	result := tb.DropEmpty("nonexistent")
+	assertEqual(t, len(result.Rows), 3) // no rows dropped
+}
+
+func TestTable_DropEmpty_MixedExistingAndMissing(t *testing.T) {
+	tb := New([]string{"a", "b"}, [][]string{
+		{"1", "x"},
+		{"", "y"},
+	})
+	// "a" exists, "nonexistent" is ignored → only checks "a"
+	result := tb.DropEmpty("a", "nonexistent")
+	assertEqual(t, len(result.Rows), 1)
+	assertEqual(t, result.Rows[0].Get("a").UnwrapOr(""), "1")
+}
+
+// --- Head/Tail negative n ---
+
+func TestTable_Head_Negative(t *testing.T) {
+	tb := makeTable()
+	result := tb.Head(-1)
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestTable_Head_Zero(t *testing.T) {
+	tb := makeTable()
+	result := tb.Head(0)
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestTable_Tail_Negative(t *testing.T) {
+	tb := makeTable()
+	result := tb.Tail(-1)
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestTable_Tail_Zero(t *testing.T) {
+	tb := makeTable()
+	result := tb.Tail(0)
+	assertEqual(t, len(result.Rows), 0)
 }

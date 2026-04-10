@@ -90,3 +90,37 @@ func TestAntiJoin_AllUnmatched(t *testing.T) {
 	result := left.AntiJoin(right, "id", "id")
 	assertEqual(t, len(result.Rows), 2)
 }
+
+// --- Missing column edge cases ---
+
+func TestRightJoin_MissingLeftCol(t *testing.T) {
+	left, right := joinTables()
+	result := left.RightJoin(right, "nonexistent", "dept_id")
+	assertEqual(t, len(result.Rows), len(left.Rows)) // returns left unchanged
+}
+
+func TestRightJoin_MissingRightCol(t *testing.T) {
+	left, right := joinTables()
+	result := left.RightJoin(right, "dept_id", "nonexistent")
+	assertEqual(t, len(result.Rows), len(left.Rows))
+}
+
+func TestOuterJoin_MissingCol(t *testing.T) {
+	left, right := joinTables()
+	result := left.OuterJoin(right, "nonexistent", "dept_id")
+	assertEqual(t, len(result.Rows), len(left.Rows))
+}
+
+func TestAntiJoin_MissingLeftCol(t *testing.T) {
+	left := New([]string{"id"}, [][]string{{"1"}, {"2"}})
+	right := New([]string{"id"}, [][]string{{"1"}})
+	result := left.AntiJoin(right, "nonexistent", "id")
+	assertEqual(t, len(result.Rows), 2) // returns left unchanged
+}
+
+func TestAntiJoin_MissingRightCol(t *testing.T) {
+	left := New([]string{"id"}, [][]string{{"1"}, {"2"}})
+	right := New([]string{"id"}, [][]string{{"1"}})
+	result := left.AntiJoin(right, "id", "nonexistent")
+	assertEqual(t, len(result.Rows), 2) // returns left unchanged
+}

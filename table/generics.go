@@ -22,7 +22,10 @@ func AddColOf[T any](t Table, name string, fn func(Row) T, stringify func(T) str
 //	    return strconv.ParseInt(v, 10, 64)
 //	})
 func ColAs[T any](t Table, col string, parse func(string) (T, error)) []T {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return nil
+	}
 	var result []T
 	for _, row := range t.Rows {
 		v := ""
@@ -42,7 +45,10 @@ func ColAs[T any](t Table, col string, parse func(string) (T, error)) []T {
 //
 //	upper := table.MapColTo(t, "name", strings.ToUpper)
 func MapColTo[T any](t Table, col string, fn func(string) T) []T {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return nil
+	}
 	result := make([]T, len(t.Rows))
 	for i, row := range t.Rows {
 		v := ""

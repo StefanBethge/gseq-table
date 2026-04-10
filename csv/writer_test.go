@@ -3,6 +3,7 @@ package csv
 import (
 	"bytes"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -112,5 +113,52 @@ func TestWriter_Write_QuotesSpecialChars(t *testing.T) {
 	content := buf.String()
 	if !strings.Contains(content, `"hello, world"`) {
 		t.Errorf("expected quoted value, got: %s", content)
+	}
+}
+
+func TestWriter_Write_PadsShortRowsToHeaderWidth(t *testing.T) {
+	tb := table.New([]string{"a", "b"}, [][]string{{"1"}})
+
+	var buf bytes.Buffer
+	if err := NewWriter().Write(&buf, tb); err != nil {
+		t.Fatal(err)
+	}
+
+	assertEqual(t, buf.String(), "a,b\n1,\n")
+
+	res := New().Read(strings.NewReader(buf.String()))
+	assertEqual(t, res.IsOk(), true)
+	assertEqual(t, res.Unwrap().Rows[0].Get("b").UnwrapOr("x"), "")
+}
+
+func TestWriter_Write_WithoutHeader_PadsToWidestRow(t *testing.T) {
+	tb := table.New(nil, [][]string{{"1"}, {"2", "3"}})
+
+	var buf bytes.Buffer
+	if err := NewWriter(WithoutHeader()).Write(&buf, tb); err != nil {
+		t.Fatal(err)
+	}
+
+	assertEqual(t, buf.String(), "1,\n2,3\n")
+}
+
+func BenchmarkWriter_Write(b *testing.B) {
+	records := make([][]string, 10_000)
+	for i := range records {
+		records[i] = []string{
+			"user_" + strconv.Itoa(i),
+			"city_" + strconv.Itoa(i%100),
+			strconv.Itoa(20 + i%50),
+		}
+	}
+	tb := table.New([]string{"name", "city", "age"}, records)
+	w := NewWriter()
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		var buf bytes.Buffer
+		if err := w.Write(&buf, tb); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

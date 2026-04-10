@@ -1,2 +1,4 @@
 .idea/
 *.log
+go.work
+go.work.sum

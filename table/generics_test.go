@@ -62,3 +62,21 @@ func TestAddColInt(t *testing.T) {
 	assertEqual(t, result.Rows[0].Get("doubled").UnwrapOr(""), "10")
 	assertEqual(t, result.Rows[1].Get("doubled").UnwrapOr(""), "20")
 }
+
+// --- Missing column edge cases ---
+
+func TestColAs_MissingCol(t *testing.T) {
+	tb := New([]string{"a"}, [][]string{{"1"}, {"2"}})
+	vals := ColAs(tb, "nonexistent", func(v string) (int64, error) {
+		return strconv.ParseInt(v, 10, 64)
+	})
+	// nil result for missing column
+	assertEqual(t, len(vals), 0)
+}
+
+func TestMapColTo_MissingCol(t *testing.T) {
+	tb := New([]string{"a"}, [][]string{{"1"}, {"2"}})
+	result := MapColTo(tb, "nonexistent", strings.ToUpper)
+	// nil result for missing column
+	assertEqual(t, len(result), 0)
+}

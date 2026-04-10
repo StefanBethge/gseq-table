@@ -80,3 +80,58 @@ func TestNot(t *testing.T) {
 	result := tb.Where(Not(tb.Empty("email")))
 	assertEqual(t, len(result.Rows), 3) // same as NotEmpty
 }
+
+// --- Predicates with missing columns ---
+
+func TestEq_MissingCol(t *testing.T) {
+	tb := predTable()
+	// missing column treated as "" → Eq("nonexistent", "") matches all
+	result := tb.Where(tb.Eq("nonexistent", ""))
+	assertEqual(t, len(result.Rows), 4)
+	// Eq("nonexistent", "x") matches none
+	result2 := tb.Where(tb.Eq("nonexistent", "x"))
+	assertEqual(t, len(result2.Rows), 0)
+}
+
+func TestNe_MissingCol(t *testing.T) {
+	tb := predTable()
+	// missing column treated as "" → Ne("nonexistent", "") matches none
+	result := tb.Where(tb.Ne("nonexistent", ""))
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestContains_MissingCol(t *testing.T) {
+	tb := predTable()
+	result := tb.Where(tb.Contains("nonexistent", "x"))
+	assertEqual(t, len(result.Rows), 0) // "" doesn't contain "x"
+}
+
+func TestPrefix_MissingCol(t *testing.T) {
+	tb := predTable()
+	result := tb.Where(tb.Prefix("nonexistent", "x"))
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestSuffix_MissingCol(t *testing.T) {
+	tb := predTable()
+	result := tb.Where(tb.Suffix("nonexistent", "x"))
+	assertEqual(t, len(result.Rows), 0)
+}
+
+func TestMatches_MissingCol(t *testing.T) {
+	tb := predTable()
+	result := tb.Where(tb.Matches("nonexistent", `^$`))
+	assertEqual(t, len(result.Rows), 4) // "" matches ^$
+}
+
+func TestEmpty_MissingCol(t *testing.T) {
+	tb := predTable()
+	result := tb.Where(tb.Empty("nonexistent"))
+	assertEqual(t, len(result.Rows), 4) // missing → always empty
+}
+
+func TestNotEmpty_MissingCol(t *testing.T) {
+	tb := predTable()
+	result := tb.Where(tb.NotEmpty("nonexistent"))
+	assertEqual(t, len(result.Rows), 0) // missing → never not-empty
+}

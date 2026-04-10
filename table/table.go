@@ -1,7 +1,12 @@
-// Package table provides an in-memory, column-oriented data table.
+// Package table provides in-memory data tables with immutable and mutable APIs.
 //
-// All operations return new Tables and leave the original unchanged, making
-// it safe to branch a transformation without defensive copies.
+// Table exposes the functional, immutable API: all operations return new
+// Tables and leave the original unchanged, making it safe to branch a
+// transformation without defensive copies.
+//
+// MutableTable is the opt-in in-place variant for incremental updates and
+// lower-allocation build paths. Call Table.Mutable to obtain a mutable copy
+// and MutableTable.Freeze to return to an immutable Table.
 //
 // Every cell value is a plain string. Type conversions (string → int, etc.)
 // are the caller's responsibility; helper packages may be added in the future.
@@ -24,8 +29,8 @@
 package table
 
 import (
+	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/stefanbethge/gseq/option"
 	"github.com/stefanbethge/gseq/slice"
@@ -298,7 +303,10 @@ func (t Table) AddCol(name string, fn func(Row) string) Table {
 //	groups := t.GroupBy("country")
 //	deRows := groups["DE"].Rows
 func (t Table) GroupBy(col string) map[string]Table {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return map[string]Table{}
+	}
 	groups := make(map[string]Table)
 	for _, row := range t.Rows {
 		key := ""
@@ -351,7 +359,10 @@ func (t Table) Sort(col string, asc bool) Table {
 //
 //	orders.Join(customers, "customer_id", "id")
 func (t Table) Join(other Table, leftCol, rightCol string) Table {
-	rightKeyIdx := other.headerIdx[rightCol]
+	rightKeyIdx, rok := other.headerIdx[rightCol]
+	if !rok {
+		return t
+	}
 	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
 		key := ""
@@ -371,7 +382,10 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 		}
 	}
 
-	leftKeyIdx := t.headerIdx[leftCol]
+	leftKeyIdx, lok := t.headerIdx[leftCol]
+	if !lok {
+		return t
+	}
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
 		key := ""
@@ -413,6 +427,9 @@ func (t Table) Shape() (int, int) { return len(t.Rows), len(t.Headers) }
 
 // Head returns the first n rows. If n >= Len the full table is returned.
 func (t Table) Head(n int) Table {
+	if n <= 0 {
+		return newTable(t.Headers, slice.Slice[Row]{})
+	}
 	if n >= len(t.Rows) {
 		return t
 	}
@@ -421,6 +438,9 @@ func (t Table) Head(n int) Table {
 
 // Tail returns the last n rows. If n >= Len the full table is returned.
 func (t Table) Tail(n int) Table {
+	if n <= 0 {
+		return newTable(t.Headers, slice.Slice[Row]{})
+	}
 	if n >= len(t.Rows) {
 		return t
 	}
@@ -460,9 +480,25 @@ func (t Table) DropEmpty(cols ...string) Table {
 	if len(check) == 0 {
 		check = t.Headers
 	}
+	// pre-compute column indices; skip nonexistent columns
+	type colCheck struct {
+		idx int
+	}
+	checks := make([]colCheck, 0, len(check))
+	for _, c := range check {
+		if idx, ok := t.headerIdx[c]; ok {
+			checks = append(checks, colCheck{idx})
+		}
+	}
+	if len(checks) == 0 {
+		return t
+	}
 	return t.Where(func(r Row) bool {
-		for _, c := range check {
-			if r.Get(c).UnwrapOr("") == "" {
+		for _, cc := range checks {
+			if cc.idx < len(r.values) && r.values[cc.idx] == "" {
+				return false
+			}
+			if cc.idx >= len(r.values) {
 				return false
 			}
 		}
@@ -497,21 +533,44 @@ func (t Table) Distinct(cols ...string) Table {
 	}
 	checkIdx := make([]int, len(check))
 	for i, c := range check {
-		checkIdx[i] = t.headerIdx[c]
+		idx, ok := t.headerIdx[c]
+		if !ok {
+			return t
+		}
+		checkIdx[i] = idx
 	}
-	seen := make(map[string]bool)
 	var rows slice.Slice[Row]
-	for _, row := range t.Rows {
-		parts := make([]string, len(checkIdx))
-		for i, idx := range checkIdx {
-			if idx < len(row.values) {
-				parts[i] = row.values[idx]
+	switch len(checkIdx) {
+	case 1:
+		seen := make(map[string]bool, len(t.Rows))
+		idx := checkIdx[0]
+		for _, row := range t.Rows {
+			key := valueAtRow(row.values, idx)
+			if !seen[key] {
+				seen[key] = true
+				rows = append(rows, NewRow(t.Headers, row.values))
 			}
 		}
-		key := strings.Join(parts, "\x00")
-		if !seen[key] {
-			seen[key] = true
-			rows = append(rows, NewRow(t.Headers, row.values))
+	case 2:
+		seen := make(map[pairKey]bool, len(t.Rows))
+		idx0, idx1 := checkIdx[0], checkIdx[1]
+		for _, row := range t.Rows {
+			key := pairKey{a: valueAtRow(row.values, idx0), b: valueAtRow(row.values, idx1)}
+			if !seen[key] {
+				seen[key] = true
+				rows = append(rows, NewRow(t.Headers, row.values))
+			}
+		}
+	default:
+		seen := make(map[string]bool, len(t.Rows))
+		keyScratch := make([]byte, 0, len(checkIdx)*8)
+		for _, row := range t.Rows {
+			key, nextScratch := keyFromRowValues(row.values, checkIdx, keyScratch)
+			keyScratch = nextScratch
+			if !seen[key] {
+				seen[key] = true
+				rows = append(rows, NewRow(t.Headers, row.values))
+			}
 		}
 	}
 	if rows == nil {
@@ -676,7 +735,10 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 //	// Keep all orders, attach customer name where available
 //	orders.LeftJoin(customers, "customer_id", "id")
 func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
-	rightKeyIdx := other.headerIdx[rightCol]
+	rightKeyIdx, rok := other.headerIdx[rightCol]
+	if !rok {
+		return t
+	}
 	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
 		key := ""
@@ -694,7 +756,10 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 			rightExtraIdx = append(rightExtraIdx, i)
 		}
 	}
-	leftKeyIdx := t.headerIdx[leftCol]
+	leftKeyIdx, lok := t.headerIdx[leftCol]
+	if !lok {
+		return t
+	}
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
 		key := ""
@@ -742,25 +807,28 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 //	// US      37
 //	// FR      15
 func (t Table) ValueCounts(col string) Table {
-	idx := t.headerIdx[col]
+	idx, ok := t.headerIdx[col]
+	if !ok {
+		return newTable(slice.Slice[string]{"value", "count"}, slice.Slice[Row]{})
+	}
 	counts := make(map[string]int)
 	order := make([]string, 0, len(t.Rows))
 	for _, row := range t.Rows {
-		v := ""
-		if idx < len(row.values) {
-			v = row.values[idx]
-		}
+		v := valueAtRow(row.values, idx)
 		if counts[v] == 0 {
 			order = append(order, v)
 		}
 		counts[v]++
 	}
+	sort.SliceStable(order, func(i, j int) bool {
+		return counts[order[i]] > counts[order[j]]
+	})
 	headers := slice.Slice[string]{"value", "count"}
 	records := make([][]string, len(order))
 	for i, v := range order {
 		records[i] = []string{v, strconv.Itoa(counts[v])}
 	}
-	return New(headers, records).SortMulti(Desc("count"))
+	return New(headers, records)
 }
 
 // --- Reshape ---
@@ -845,9 +913,12 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 //	// wide:  name  q1   q2
 //	//        Alice 100  200
 func (t Table) Pivot(index, col, val string) Table {
-	indexIdx := t.headerIdx[index]
-	colIdx := t.headerIdx[col]
-	valIdx := t.headerIdx[val]
+	indexIdx, ok1 := t.headerIdx[index]
+	colIdx, ok2 := t.headerIdx[col]
+	valIdx, ok3 := t.headerIdx[val]
+	if !ok1 || !ok2 || !ok3 {
+		return t
+	}
 
 	colVals := make([]string, 0, len(t.Rows))
 	colSeen := make(map[string]bool)
