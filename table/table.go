@@ -349,13 +349,13 @@ func (t Table) Sort(col string, asc bool) Table {
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	copy(rows, t.Rows)
-	rows = rows.SortBy(func(a, b Row) bool {
+	sort.SliceStable(rows, func(i, j int) bool {
 		av, bv := "", ""
-		if idx < len(a.values) {
-			av = a.values[idx]
+		if idx < len(rows[i].values) {
+			av = rows[i].values[idx]
 		}
-		if idx < len(b.values) {
-			bv = b.values[idx]
+		if idx < len(rows[j].values) {
+			bv = rows[j].values[idx]
 		}
 		if asc {
 			return av < bv
@@ -711,16 +711,16 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	copy(rows, t.Rows)
-	rows = rows.SortBy(func(a, b Row) bool {
+	sort.SliceStable(rows, func(i, j int) bool {
 		for k, sk := range keys {
 			idx := indices[k]
 			av, bv := "", ""
 			if idx >= 0 {
-				if idx < len(a.values) {
-					av = a.values[idx]
+				if idx < len(rows[i].values) {
+					av = rows[i].values[idx]
 				}
-				if idx < len(b.values) {
-					bv = b.values[idx]
+				if idx < len(rows[j].values) {
+					bv = rows[j].values[idx]
 				}
 			}
 			if av == bv {
