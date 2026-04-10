@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -46,6 +47,11 @@ func TestInfer_EmptyCellsIgnored(t *testing.T) {
 		[][]string{{"42"}, {""}, {"17"}},
 	)
 	assertEqual(t, Infer(tb).Col("amount"), TypeInt)
+}
+
+func TestInfer_AllEmptyFallsBackToString(t *testing.T) {
+	tb := table.New([]string{"amount"}, [][]string{{""}, {""}})
+	assertEqual(t, Infer(tb).Col("amount"), TypeString)
 }
 
 func TestInfer_FallsBackToFloat(t *testing.T) {
@@ -136,6 +142,14 @@ func TestApplyStrict_EmptyCell_Error(t *testing.T) {
 	s := Schema{types: map[string]ColType{"age": TypeInt}}
 	res := s.ApplyStrict(tb)
 	assertEqual(t, res.IsErr(), true)
+}
+
+func TestApplyStrict_AllEmptyInferredColumn_Ok(t *testing.T) {
+	tb := table.New([]string{"age"}, [][]string{{""}, {""}})
+	s := Infer(tb)
+	res := s.ApplyStrict(tb)
+	assertEqual(t, s.Col("age"), TypeString)
+	assertEqual(t, res.IsOk(), true)
 }
 
 func TestApplyStrict_NoEmptyCells_Ok(t *testing.T) {
@@ -261,6 +275,28 @@ func TestCountWhere(t *testing.T) {
 	assertEqual(t, CountWhere(numTable(), "status", "active"), 3)
 	assertEqual(t, CountWhere(numTable(), "status", "inactive"), 1)
 	assertEqual(t, CountWhere(numTable(), "status", "unknown"), 0)
+}
+
+func BenchmarkInfer(b *testing.B) {
+	records := make([][]string, 20_000)
+	for i := range records {
+		records[i] = []string{
+			"user_" + strconv.Itoa(i),
+			strconv.Itoa(18 + i%70),
+			strconv.FormatFloat(float64(i%10_000)/100, 'f', 2, 64),
+			[]string{"true", "false"}[i%2],
+			"2024-01-15",
+		}
+	}
+	tb := table.New(
+		[]string{"name", "age", "price", "active", "created_at"},
+		records,
+	)
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_ = Infer(tb)
+	}
 }
 
 // --- StdDevCol / MedianCol / Describe ---
@@ -511,8 +547,8 @@ func TestDateYear(t *testing.T) {
 func TestDateMonth(t *testing.T) {
 	tb := dateTable()
 	result := tb.AddCol("month", DateMonth("start"))
-	assertEqual(t, result.Rows[0].Get("month").UnwrapOr(""), "1")  // January
-	assertEqual(t, result.Rows[1].Get("month").UnwrapOr(""), "6")  // June
+	assertEqual(t, result.Rows[0].Get("month").UnwrapOr(""), "1") // January
+	assertEqual(t, result.Rows[1].Get("month").UnwrapOr(""), "6") // June
 }
 
 func TestDateDay(t *testing.T) {

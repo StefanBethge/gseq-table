@@ -110,8 +110,8 @@ func (s Schema) Cols() map[string]ColType {
 // Date > String.
 func Infer(t table.Table) Schema {
 	types := make(map[string]ColType, len(t.Headers))
-	for _, col := range t.Headers {
-		types[col] = inferCol(t.Col(col))
+	for i, col := range t.Headers {
+		types[col] = inferColAt(t, i)
 	}
 	return Schema{types: types}
 }
@@ -247,14 +247,43 @@ func Time(r table.Row, col string, layout string) option.Option[time.Time] {
 
 func inferCol(vals slice.Slice[string]) ColType {
 	current := TypeInt
+	sawNonEmpty := false
 	for _, v := range vals {
 		if v == "" {
 			continue
 		}
+		sawNonEmpty = true
 		current = narrow(current, v)
 		if current == TypeString {
 			return TypeString
 		}
+	}
+	if !sawNonEmpty {
+		return TypeString
+	}
+	return current
+}
+
+func inferColAt(t table.Table, idx int) ColType {
+	current := TypeInt
+	sawNonEmpty := false
+	for _, row := range t.Rows {
+		vals := row.Values()
+		if idx >= len(vals) {
+			continue
+		}
+		v := vals[idx]
+		if v == "" {
+			continue
+		}
+		sawNonEmpty = true
+		current = narrow(current, v)
+		if current == TypeString {
+			return TypeString
+		}
+	}
+	if !sawNonEmpty {
+		return TypeString
 	}
 	return current
 }
@@ -500,10 +529,10 @@ func MedianCol(t table.Table, col string) float64 {
 // colStats computes count, sum, sumSq, min, max and all numeric values in a
 // single pass over the rows. Used by Describe to avoid repeated column scans.
 type colStats struct {
-	count          int
-	sum, sumSq     float64
-	min, max       float64
-	numericVals    []float64
+	count       int
+	sum, sumSq  float64
+	min, max    float64
+	numericVals []float64
 }
 
 func computeColStats(t table.Table, col string) colStats {

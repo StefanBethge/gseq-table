@@ -59,13 +59,24 @@ func (w *Writer) Write(wr io.Writer, t table.Table) error {
 		cw.Comma = w.config.Separator
 	}
 
+	width := len(t.Headers)
+	if width == 0 {
+		for _, row := range t.Rows {
+			if len(row.Values()) > width {
+				width = len(row.Values())
+			}
+		}
+	}
+
 	if w.config.HasHeader {
 		if err := cw.Write([]string(t.Headers)); err != nil {
 			return err
 		}
 	}
 	for _, row := range t.Rows {
-		if err := cw.Write([]string(row.Values())); err != nil {
+		record := make([]string, width)
+		copy(record, row.Values())
+		if err := cw.Write(record); err != nil {
 			return err
 		}
 	}

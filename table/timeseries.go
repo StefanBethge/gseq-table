@@ -10,62 +10,52 @@ import (
 
 // Lag adds outCol containing the value of col from n rows back.
 // The first n rows receive an empty string.
+// Negative n is treated as 0.
 //
 //	t.Lag("revenue", "revenue_prev", 1)
 func (t Table) Lag(col, outCol string, n int) Table {
-	newHeaders := make(slice.Slice[string], 0, len(t.Headers)+1)
-	newHeaders = append(newHeaders, t.Headers...)
-	newHeaders = append(newHeaders, outCol)
-
+	if n < 0 {
+		n = 0
+	}
 	colI, ok := t.headerIdx[col]
 	if !ok {
 		return t
 	}
-	rows := make(slice.Slice[Row], len(t.Rows))
-	for i, row := range t.Rows {
-		lagVal := ""
-		if i-n >= 0 {
-			prev := t.Rows[i-n]
-			if colI < len(prev.values) {
-				lagVal = prev.values[colI]
-			}
+	return t.appendDerivedCol(outCol, func(i int) string {
+		if i-n < 0 {
+			return ""
 		}
-		vals := make(slice.Slice[string], 0, len(row.values)+1)
-		vals = append(vals, row.values...)
-		vals = append(vals, lagVal)
-		rows[i] = NewRow(newHeaders, vals)
-	}
-	return newTable(newHeaders, rows)
+		prev := t.Rows[i-n]
+		if colI < len(prev.values) {
+			return prev.values[colI]
+		}
+		return ""
+	})
 }
 
 // Lead adds outCol containing the value of col from n rows ahead.
 // The last n rows receive an empty string.
+// Negative n is treated as 0.
 //
 //	t.Lead("revenue", "revenue_next", 1)
 func (t Table) Lead(col, outCol string, n int) Table {
+	if n < 0 {
+		n = 0
+	}
 	colI, ok := t.headerIdx[col]
 	if !ok {
 		return t
 	}
-	newHeaders := make(slice.Slice[string], 0, len(t.Headers)+1)
-	newHeaders = append(newHeaders, t.Headers...)
-	newHeaders = append(newHeaders, outCol)
-
-	rows := make(slice.Slice[Row], len(t.Rows))
-	for i, row := range t.Rows {
-		leadVal := ""
-		if i+n < len(t.Rows) {
-			next := t.Rows[i+n]
-			if colI < len(next.values) {
-				leadVal = next.values[colI]
-			}
+	return t.appendDerivedCol(outCol, func(i int) string {
+		if i+n >= len(t.Rows) {
+			return ""
 		}
-		vals := make(slice.Slice[string], 0, len(row.values)+1)
-		vals = append(vals, row.values...)
-		vals = append(vals, leadVal)
-		rows[i] = NewRow(newHeaders, vals)
-	}
-	return newTable(newHeaders, rows)
+		next := t.Rows[i+n]
+		if colI < len(next.values) {
+			return next.values[colI]
+		}
+		return ""
+	})
 }
 
 // CumSum adds outCol containing the running sum of col up to and including
@@ -77,24 +67,17 @@ func (t Table) CumSum(col, outCol string) Table {
 	if !ok {
 		return t
 	}
-	newHeaders := make(slice.Slice[string], 0, len(t.Headers)+1)
-	newHeaders = append(newHeaders, t.Headers...)
-	newHeaders = append(newHeaders, outCol)
-
-	rows := make(slice.Slice[Row], len(t.Rows))
 	var running float64
+	values := make([]string, len(t.Rows))
 	for i, row := range t.Rows {
 		if colI < len(row.values) {
 			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[colI]), 64); err == nil {
 				running += f
 			}
 		}
-		vals := make(slice.Slice[string], 0, len(row.values)+1)
-		vals = append(vals, row.values...)
-		vals = append(vals, strconv.FormatFloat(running, 'f', -1, 64))
-		rows[i] = NewRow(newHeaders, vals)
+		values[i] = strconv.FormatFloat(running, 'f', -1, 64)
 	}
-	return newTable(newHeaders, rows)
+	return t.appendDerivedCol(outCol, func(i int) string { return values[i] })
 }
 
 // Rank adds outCol containing the dense rank of col's numeric value for each
@@ -105,7 +88,6 @@ func (t Table) CumSum(col, outCol string) Table {
 func (t Table) Rank(col, outCol string, asc bool) Table {
 	// collect parseable values with their original indices
 	type entry struct {
-		idx   int
 		val   float64
 		valid bool
 	}
@@ -122,7 +104,7 @@ func (t Table) Rank(col, outCol string, asc bool) Table {
 			v = row.values[colI]
 		}
 		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		entries[i] = entry{idx: i, val: f, valid: err == nil}
+		entries[i] = entry{val: f, valid: err == nil}
 		if err == nil && !seen[f] {
 			seen[f] = true
 			numericVals = append(numericVals, f)
@@ -136,26 +118,41 @@ func (t Table) Rank(col, outCol string, asc bool) Table {
 			numericVals[i], numericVals[j] = numericVals[j], numericVals[i]
 		}
 	}
-	rankMap := make(map[float64]int, len(numericVals))
+	rankMap := make(map[float64]string, len(numericVals))
 	for rank, v := range numericVals {
-		rankMap[v] = rank + 1
+		rankMap[v] = strconv.Itoa(rank + 1)
 	}
 
-	newHeaders := make(slice.Slice[string], 0, len(t.Headers)+1)
-	newHeaders = append(newHeaders, t.Headers...)
-	newHeaders = append(newHeaders, outCol)
+	ranks := make([]string, len(t.Rows))
+	for i := range t.Rows {
+		if entries[i].valid {
+			ranks[i] = rankMap[entries[i].val]
+		}
+	}
+	return t.appendDerivedCol(outCol, func(i int) string { return ranks[i] })
+}
+
+func (t Table) appendDerivedCol(outCol string, valueAt func(i int) string) Table {
+	newHeaders := make(slice.Slice[string], len(t.Headers)+1)
+	copy(newHeaders, t.Headers)
+	newHeaders[len(t.Headers)] = outCol
 
 	rows := make(slice.Slice[Row], len(t.Rows))
+	if len(t.Rows) == 0 {
+		return newTable(newHeaders, rows)
+	}
+
+	width := len(newHeaders)
+	data := make(slice.Slice[string], len(t.Rows)*width)
 	for i, row := range t.Rows {
-		rankStr := ""
-		if entries[i].valid {
-			rankStr = strconv.Itoa(rankMap[entries[i].val])
+		vals := data[i*width : (i+1)*width]
+		copyLen := len(row.values)
+		if copyLen > len(t.Headers) {
+			copyLen = len(t.Headers)
 		}
-		vals := make(slice.Slice[string], 0, len(row.values)+1)
-		vals = append(vals, row.values...)
-		vals = append(vals, rankStr)
+		copy(vals[:copyLen], row.values[:copyLen])
+		vals[len(t.Headers)] = valueAt(i)
 		rows[i] = NewRow(newHeaders, vals)
 	}
 	return newTable(newHeaders, rows)
 }
-
