@@ -1,7 +1,12 @@
-// Package table provides an in-memory, column-oriented data table.
+// Package table provides in-memory data tables with immutable and mutable APIs.
 //
-// All operations return new Tables and leave the original unchanged, making
-// it safe to branch a transformation without defensive copies.
+// Table exposes the functional, immutable API: all operations return new
+// Tables and leave the original unchanged, making it safe to branch a
+// transformation without defensive copies.
+//
+// MutableTable is the opt-in in-place variant for incremental updates and
+// lower-allocation build paths. Call Table.Mutable to obtain a mutable copy
+// and MutableTable.Freeze to return to an immutable Table.
 //
 // Every cell value is a plain string. Type conversions (string → int, etc.)
 // are the caller's responsibility; helper packages may be added in the future.

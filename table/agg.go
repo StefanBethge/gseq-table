@@ -11,7 +11,63 @@ import (
 // Use the provided constructors (Sum, Mean, Count, StringJoin, First, Last)
 // rather than implementing this interface directly.
 type Agg interface {
-	reduce(group Table) string
+	reduce(group aggRows) string
+}
+
+type aggRows interface {
+	ColIndex(col string) int
+	Len() int
+	ValueAt(row, col int) string
+}
+
+type tableAggRows struct {
+	headerIdx map[string]int
+	rows      slice.Slice[Row]
+}
+
+func (g tableAggRows) ColIndex(col string) int {
+	if idx, ok := g.headerIdx[col]; ok {
+		return idx
+	}
+	return -1
+}
+
+func (g tableAggRows) Len() int { return len(g.rows) }
+
+func (g tableAggRows) ValueAt(row, col int) string {
+	if row < 0 || row >= len(g.rows) || col < 0 {
+		return ""
+	}
+	values := g.rows[row].values
+	if col >= len(values) {
+		return ""
+	}
+	return values[col]
+}
+
+type mutableAggRows struct {
+	headerIdx map[string]int
+	rows      [][]string
+}
+
+func (g mutableAggRows) ColIndex(col string) int {
+	if idx, ok := g.headerIdx[col]; ok {
+		return idx
+	}
+	return -1
+}
+
+func (g mutableAggRows) Len() int { return len(g.rows) }
+
+func (g mutableAggRows) ValueAt(row, col int) string {
+	if row < 0 || row >= len(g.rows) || col < 0 {
+		return ""
+	}
+	values := g.rows[row]
+	if col >= len(values) {
+		return ""
+	}
+	return values[col]
 }
 
 // AggDef pairs an output column name with an aggregation function.
@@ -111,7 +167,7 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 	records := make([][]string, len(keyOrder))
 	for i, key := range keyOrder {
 		e := index[key]
-		grp := newTable(t.Headers, e.rows)
+		grp := tableAggRows{headerIdx: t.headerIdx, rows: e.rows}
 		rec := make([]string, 0, len(newHeaders))
 		rec = append(rec, e.keyVals...)
 		for _, a := range aggs {
@@ -127,17 +183,15 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 
 type sumAgg struct{ col string }
 
-func (a sumAgg) reduce(g Table) string {
-	idx, ok := g.headerIdx[a.col]
-	if !ok {
+func (a sumAgg) reduce(g aggRows) string {
+	idx := g.ColIndex(a.col)
+	if idx < 0 {
 		return "0"
 	}
 	var sum float64
-	for _, row := range g.Rows {
-		if idx < len(row.values) {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[idx]), 64); err == nil {
-				sum += f
-			}
+	for i := 0; i < g.Len(); i++ {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(g.ValueAt(i, idx)), 64); err == nil {
+			sum += f
 		}
 	}
 	return strconv.FormatFloat(sum, 'f', -1, 64)
@@ -145,19 +199,17 @@ func (a sumAgg) reduce(g Table) string {
 
 type meanAgg struct{ col string }
 
-func (a meanAgg) reduce(g Table) string {
-	idx, ok := g.headerIdx[a.col]
-	if !ok {
+func (a meanAgg) reduce(g aggRows) string {
+	idx := g.ColIndex(a.col)
+	if idx < 0 {
 		return ""
 	}
 	var sum float64
 	var n int
-	for _, row := range g.Rows {
-		if idx < len(row.values) {
-			if f, err := strconv.ParseFloat(strings.TrimSpace(row.values[idx]), 64); err == nil {
-				sum += f
-				n++
-			}
+	for i := 0; i < g.Len(); i++ {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(g.ValueAt(i, idx)), 64); err == nil {
+			sum += f
+			n++
 		}
 	}
 	if n == 0 {
@@ -168,14 +220,14 @@ func (a meanAgg) reduce(g Table) string {
 
 type countAgg struct{ col string }
 
-func (a countAgg) reduce(g Table) string {
-	idx, ok := g.headerIdx[a.col]
-	if !ok {
+func (a countAgg) reduce(g aggRows) string {
+	idx := g.ColIndex(a.col)
+	if idx < 0 {
 		return "0"
 	}
 	var n int
-	for _, row := range g.Rows {
-		if idx < len(row.values) && row.values[idx] != "" {
+	for i := 0; i < g.Len(); i++ {
+		if g.ValueAt(i, idx) != "" {
 			n++
 		}
 	}
@@ -187,15 +239,15 @@ type stringJoinAgg struct {
 	sep string
 }
 
-func (a stringJoinAgg) reduce(g Table) string {
-	idx, ok := g.headerIdx[a.col]
-	if !ok {
+func (a stringJoinAgg) reduce(g aggRows) string {
+	idx := g.ColIndex(a.col)
+	if idx < 0 {
 		return ""
 	}
-	parts := make([]string, 0, len(g.Rows))
-	for _, row := range g.Rows {
-		if idx < len(row.values) && row.values[idx] != "" {
-			parts = append(parts, row.values[idx])
+	parts := make([]string, 0, g.Len())
+	for i := 0; i < g.Len(); i++ {
+		if v := g.ValueAt(i, idx); v != "" {
+			parts = append(parts, v)
 		}
 	}
 	return strings.Join(parts, a.sep)
@@ -203,35 +255,28 @@ func (a stringJoinAgg) reduce(g Table) string {
 
 type firstAgg struct{ col string }
 
-func (a firstAgg) reduce(g Table) string {
-	if len(g.Rows) == 0 {
+func (a firstAgg) reduce(g aggRows) string {
+	if g.Len() == 0 {
 		return ""
 	}
-	idx, ok := g.headerIdx[a.col]
-	if !ok {
+	idx := g.ColIndex(a.col)
+	if idx < 0 {
 		return ""
 	}
-	if idx < len(g.Rows[0].values) {
-		return g.Rows[0].values[idx]
-	}
-	return ""
+	return g.ValueAt(0, idx)
 }
 
 type lastAgg struct{ col string }
 
-func (a lastAgg) reduce(g Table) string {
-	if len(g.Rows) == 0 {
+func (a lastAgg) reduce(g aggRows) string {
+	if g.Len() == 0 {
 		return ""
 	}
-	idx, ok := g.headerIdx[a.col]
-	if !ok {
+	idx := g.ColIndex(a.col)
+	if idx < 0 {
 		return ""
 	}
-	last := g.Rows[len(g.Rows)-1]
-	if idx < len(last.values) {
-		return last.values[idx]
-	}
-	return ""
+	return g.ValueAt(g.Len()-1, idx)
 }
 
 // RollingAgg computes a sliding-window aggregation over the rows of t in their
@@ -254,8 +299,7 @@ func (t Table) RollingAgg(outCol string, size int, agg Agg) Table {
 		if start < 0 {
 			start = 0
 		}
-		// reuse t.headerIdx — no need to rebuild the map for each window
-		window := Table{Headers: t.Headers, Rows: t.Rows[start : i+1], headerIdx: t.headerIdx}
+		window := tableAggRows{headerIdx: t.headerIdx, rows: t.Rows[start : i+1]}
 		val := agg.reduce(window)
 
 		vals := make(slice.Slice[string], 0, len(row.values)+1)

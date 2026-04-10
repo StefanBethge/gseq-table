@@ -2,7 +2,7 @@
 
 In-memory data tables for Go — a functional ETL toolkit built on [gseq](https://github.com/stefanbethge/gseq).
 
-All values are strings. Every operation returns a new Table; nothing is mutated in place.
+All values are strings. `table.Table` is the immutable API; `table.MutableTable` is the opt-in in-place variant for incremental updates.
 
 ---
 
@@ -100,6 +100,14 @@ t := table.New(
         {"Carol", "Berlin", "5100"},
     },
 )
+
+// Opt into in-place updates
+m := table.NewMutable(
+    []string{"name", "city"},
+    [][]string{{"Alice", "Berlin"}},
+)
+_ = m.Set(0, "city", "Hamburg")
+t = m.Freeze()
 ```
 
 ### Row access
