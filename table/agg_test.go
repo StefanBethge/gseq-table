@@ -137,7 +137,8 @@ func TestGroupByAgg_MissingGroupCol(t *testing.T) {
 		[]string{"nonexistent"},
 		[]AggDef{{Col: "total", Agg: Sum("revenue")}},
 	)
-	assertEqual(t, len(result.Rows), 0)
+	assertEqual(t, result.HasErrs(), true)
+	assertEqual(t, len(result.Rows), 5)
 }
 
 func TestGroupByAgg_MissingAggCol(t *testing.T) {

@@ -13,7 +13,7 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 	// index left table by leftCol
 	leftKeyIdx, lok := t.headerIdx[leftCol]
 	if !lok {
-		return t
+		return t.withErrf("RightJoin: unknown column %q", leftCol)
 	}
 	leftIdx := make(map[string][]Row, len(t.Rows))
 	for _, row := range t.Rows {
@@ -40,7 +40,7 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 
 	rightKeyIdx, rok := other.headerIdx[rightCol]
 	if !rok {
-		return t
+		return t.withErrf("RightJoin: unknown column %q", rightCol)
 	}
 	var rows slice.Slice[Row]
 	for _, rRow := range other.Rows {
@@ -81,7 +81,7 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 // OuterJoin (full outer join) keeps every row from both tables. Rows that
@@ -92,10 +92,10 @@ func (t Table) RightJoin(other Table, leftCol, rightCol string) Table {
 //	t.OuterJoin(other, "id", "id")
 func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
 	if _, ok := t.headerIdx[leftCol]; !ok {
-		return t
+		return t.withErrf("OuterJoin: unknown column %q", leftCol)
 	}
 	if _, ok := other.headerIdx[rightCol]; !ok {
-		return t
+		return t.withErrf("OuterJoin: unknown column %q", rightCol)
 	}
 	// start with a left join (all left rows + matched right rows)
 	result := t.LeftJoin(other, leftCol, rightCol)
@@ -159,7 +159,7 @@ func (t Table) OuterJoin(other Table, leftCol, rightCol string) Table {
 func (t Table) AntiJoin(other Table, leftCol, rightCol string) Table {
 	rightKeyIdx, rok := other.headerIdx[rightCol]
 	if !rok {
-		return t
+		return t.withErrf("AntiJoin: unknown column %q", rightCol)
 	}
 	rightKeys := make(map[string]bool, len(other.Rows))
 	for _, row := range other.Rows {
@@ -171,7 +171,7 @@ func (t Table) AntiJoin(other Table, leftCol, rightCol string) Table {
 	}
 	leftKeyIdx, lok := t.headerIdx[leftCol]
 	if !lok {
-		return t
+		return t.withErrf("AntiJoin: unknown column %q", leftCol)
 	}
 	return t.Where(func(r Row) bool {
 		key := ""

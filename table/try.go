@@ -31,7 +31,7 @@ func (t Table) TryTransform(fn func(Row) (map[string]string, error)) result.Resu
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return result.Ok[Table, error](newTable(t.Headers, rows))
+	return result.Ok[Table, error](newTableFrom(t, t.Headers, rows))
 }
 
 // TryMap is like Map but fn may return an error. Processing stops at the
@@ -47,7 +47,7 @@ func (t Table) TryTransform(fn func(Row) (map[string]string, error)) result.Resu
 func (t Table) TryMap(col string, fn func(string) (string, error)) result.Result[Table, error] {
 	idx := t.ColIndex(col)
 	if idx < 0 {
-		return result.Ok[Table, error](t)
+		return result.Ok[Table, error](t.withErrf("TryMap: unknown column %q", col))
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
@@ -62,5 +62,5 @@ func (t Table) TryMap(col string, fn func(string) (string, error)) result.Result
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return result.Ok[Table, error](newTable(t.Headers, rows))
+	return result.Ok[Table, error](newTableFrom(t, t.Headers, rows))
 }

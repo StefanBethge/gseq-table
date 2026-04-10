@@ -1,7 +1,6 @@
 package table
 
 import (
-	"fmt"
 	"regexp"
 	"runtime"
 	"sort"
@@ -32,13 +31,15 @@ func (m *MutableTable) Col(name string) slice.Slice[string] {
 }
 
 // Select keeps only the named columns in place.
-func (m *MutableTable) Select(cols ...string) {
+func (m *MutableTable) Select(cols ...string) *MutableTable {
 	newHeaders := make(slice.Slice[string], 0, len(cols))
 	indices := make([]int, 0, len(cols))
 	for _, col := range cols {
 		if idx, ok := m.headerIdx[col]; ok {
 			newHeaders = append(newHeaders, col)
 			indices = append(indices, idx)
+		} else {
+			m.addErrf("Select: unknown column %q", col)
 		}
 	}
 	rows := newPackedRecords(len(m.rows), len(indices))
@@ -49,10 +50,11 @@ func (m *MutableTable) Select(cols ...string) {
 		}
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // Where keeps only rows matching fn in place.
-func (m *MutableTable) Where(fn func(Row) bool) {
+func (m *MutableTable) Where(fn func(Row) bool) *MutableTable {
 	rows := make([][]string, 0, len(m.rows))
 	for _, row := range m.rows {
 		if fn(NewRow(m.headers, row)) {
@@ -60,12 +62,14 @@ func (m *MutableTable) Where(fn func(Row) bool) {
 		}
 	}
 	m.rows = rows
+	return m
 }
 
 // GroupBy splits the current data into immutable sub-tables keyed by col.
 func (m *MutableTable) GroupBy(col string) map[string]Table {
 	idx, ok := m.headerIdx[col]
 	if !ok {
+		m.addErrf("GroupBy: unknown column %q", col)
 		return map[string]Table{}
 	}
 	grouped := make(map[string][][]string)
@@ -84,10 +88,11 @@ func (m *MutableTable) GroupBy(col string) map[string]Table {
 }
 
 // Sort sorts by a single column in place.
-func (m *MutableTable) Sort(col string, asc bool) {
+func (m *MutableTable) Sort(col string, asc bool) *MutableTable {
 	idx, ok := m.headerIdx[col]
 	if !ok {
-		return
+		m.addErrf("Sort: unknown column %q", col)
+		return m
 	}
 	sort.SliceStable(m.rows, func(i, j int) bool {
 		av, bv := "", ""
@@ -102,13 +107,18 @@ func (m *MutableTable) Sort(col string, asc bool) {
 		}
 		return av > bv
 	})
+	return m
 }
 
 // SortMulti sorts by multiple columns in place.
-func (m *MutableTable) SortMulti(keys ...SortKey) {
+func (m *MutableTable) SortMulti(keys ...SortKey) *MutableTable {
 	indices := make([]int, len(keys))
 	for i, key := range keys {
-		indices[i] = m.ColIndex(key.Col)
+		idx := m.ColIndex(key.Col)
+		if idx < 0 {
+			m.addErrf("SortMulti: unknown column %q", key.Col)
+		}
+		indices[i] = idx
 	}
 	sort.SliceStable(m.rows, func(i, j int) bool {
 		a, b := m.rows[i], m.rows[j]
@@ -133,10 +143,11 @@ func (m *MutableTable) SortMulti(keys ...SortKey) {
 		}
 		return false
 	})
+	return m
 }
 
 // Append appends other to m in place.
-func (m *MutableTable) Append(other Table) {
+func (m *MutableTable) Append(other Table) *MutableTable {
 	otherIdx := make([]int, len(m.headers))
 	for i, h := range m.headers {
 		otherIdx[i] = other.ColIndex(h)
@@ -153,10 +164,11 @@ func (m *MutableTable) Append(other Table) {
 		rows = append(rows, vals)
 	}
 	m.rows = rows
+	return m
 }
 
 // AppendMutable appends another mutable table to m in place.
-func (m *MutableTable) AppendMutable(other *MutableTable) {
+func (m *MutableTable) AppendMutable(other *MutableTable) *MutableTable {
 	otherIdx := make([]int, len(m.headers))
 	for i, h := range m.headers {
 		otherIdx[i] = other.ColIndex(h)
@@ -173,34 +185,37 @@ func (m *MutableTable) AppendMutable(other *MutableTable) {
 		rows = append(rows, vals)
 	}
 	m.rows = rows
+	return m
 }
 
 // Head keeps the first n rows in place.
-func (m *MutableTable) Head(n int) {
+func (m *MutableTable) Head(n int) *MutableTable {
 	if n <= 0 {
 		m.rows = [][]string{}
-		return
+		return m
 	}
 	if n >= len(m.rows) {
-		return
+		return m
 	}
 	m.rows = append([][]string(nil), m.rows[:n]...)
+	return m
 }
 
 // Tail keeps the last n rows in place.
-func (m *MutableTable) Tail(n int) {
+func (m *MutableTable) Tail(n int) *MutableTable {
 	if n <= 0 {
 		m.rows = [][]string{}
-		return
+		return m
 	}
 	if n >= len(m.rows) {
-		return
+		return m
 	}
 	m.rows = append([][]string(nil), m.rows[len(m.rows)-n:]...)
+	return m
 }
 
 // DropEmpty removes rows with empty values in place.
-func (m *MutableTable) DropEmpty(cols ...string) {
+func (m *MutableTable) DropEmpty(cols ...string) *MutableTable {
 	check := cols
 	if len(check) == 0 {
 		check = m.headers
@@ -209,10 +224,12 @@ func (m *MutableTable) DropEmpty(cols ...string) {
 	for _, col := range check {
 		if idx, ok := m.headerIdx[col]; ok {
 			checkIdx = append(checkIdx, idx)
+		} else {
+			m.addErrf("DropEmpty: unknown column %q", col)
 		}
 	}
 	if len(checkIdx) == 0 {
-		return
+		return m
 	}
 	rows := make([][]string, 0, len(m.rows))
 rowLoop:
@@ -225,10 +242,11 @@ rowLoop:
 		rows = append(rows, row)
 	}
 	m.rows = rows
+	return m
 }
 
 // Distinct removes duplicate rows in place.
-func (m *MutableTable) Distinct(cols ...string) {
+func (m *MutableTable) Distinct(cols ...string) *MutableTable {
 	check := cols
 	if len(check) == 0 {
 		check = m.headers
@@ -237,7 +255,8 @@ func (m *MutableTable) Distinct(cols ...string) {
 	for i, col := range check {
 		idx, ok := m.headerIdx[col]
 		if !ok {
-			return
+			m.addErrf("Distinct: unknown column %q", col)
+			return m
 		}
 		checkIdx[i] = idx
 	}
@@ -279,11 +298,12 @@ func (m *MutableTable) Distinct(cols ...string) {
 		}
 	}
 	m.rows = rows
+	return m
 }
 
 // AddColSwitch appends a conditional column in place.
-func (m *MutableTable) AddColSwitch(name string, cases []Case, else_ func(Row) string) {
-	m.AddCol(name, func(r Row) string {
+func (m *MutableTable) AddColSwitch(name string, cases []Case, else_ func(Row) string) *MutableTable {
+	return m.AddCol(name, func(r Row) string {
 		for _, c := range cases {
 			if c.When(r) {
 				return c.Then(r)
@@ -297,7 +317,7 @@ func (m *MutableTable) AddColSwitch(name string, cases []Case, else_ func(Row) s
 }
 
 // Transform applies partial row updates in place.
-func (m *MutableTable) Transform(fn func(Row) map[string]string) {
+func (m *MutableTable) Transform(fn func(Row) map[string]string) *MutableTable {
 	for i, row := range m.rows {
 		updates := fn(NewRow(m.headers, row))
 		for col, v := range updates {
@@ -306,15 +326,16 @@ func (m *MutableTable) Transform(fn func(Row) map[string]string) {
 			}
 		}
 	}
+	return m
 }
 
 // TransformParallel applies partial row updates concurrently in place.
 // Each worker processes a contiguous chunk of rows directly on m.rows,
 // avoiding any per-row allocation.
-func (m *MutableTable) TransformParallel(fn func(Row) map[string]string) {
+func (m *MutableTable) TransformParallel(fn func(Row) map[string]string) *MutableTable {
 	n := len(m.rows)
 	if n == 0 {
-		return
+		return m
 	}
 	workers := runtime.GOMAXPROCS(0)
 	if workers > n {
@@ -345,15 +366,17 @@ func (m *MutableTable) TransformParallel(fn func(Row) map[string]string) {
 		}(lo, hi)
 	}
 	wg.Wait()
+	return m
 }
 
 // TryTransform applies partial row updates and leaves m unchanged on error.
-func (m *MutableTable) TryTransform(fn func(Row) (map[string]string, error)) error {
+func (m *MutableTable) TryTransform(fn func(Row) (map[string]string, error)) *MutableTable {
 	rows := cloneRecords(m.rows)
 	for i, row := range m.rows {
 		updates, err := fn(NewRow(m.headers, row))
 		if err != nil {
-			return err
+			m.addErrf("TryTransform: %v", err)
+			return m
 		}
 		for col, v := range updates {
 			if idx, ok := m.headerIdx[col]; ok && idx < len(rows[i]) {
@@ -362,31 +385,33 @@ func (m *MutableTable) TryTransform(fn func(Row) (map[string]string, error)) err
 		}
 	}
 	m.rows = rows
-	return nil
+	return m
 }
 
 // TryMap maps a column in place and leaves m unchanged on error.
-func (m *MutableTable) TryMap(col string, fn func(string) (string, error)) error {
+func (m *MutableTable) TryMap(col string, fn func(string) (string, error)) *MutableTable {
 	idx, ok := m.headerIdx[col]
 	if !ok {
-		return nil
+		m.addErrf("TryMap: unknown column %q", col)
+		return m
 	}
 	rows := cloneRecords(m.rows)
 	for i := range rows {
 		if idx < len(rows[i]) {
 			newVal, err := fn(rows[i][idx])
 			if err != nil {
-				return err
+				m.addErrf("TryMap: %v", err)
+				return m
 			}
 			rows[i][idx] = newVal
 		}
 	}
 	m.rows = rows
-	return nil
+	return m
 }
 
 // RenameMany renames multiple columns in place.
-func (m *MutableTable) RenameMany(renames map[string]string) {
+func (m *MutableTable) RenameMany(renames map[string]string) *MutableTable {
 	for i, h := range m.headers {
 		if newName, ok := renames[h]; ok {
 			m.headers[i] = newName
@@ -394,10 +419,11 @@ func (m *MutableTable) RenameMany(renames map[string]string) {
 	}
 	m.headers = normalizeHeaders(m.headers)
 	m.headerIdx = buildHeaderIndex(m.headers)
+	return m
 }
 
 // AddRowIndex prepends a row-number column in place.
-func (m *MutableTable) AddRowIndex(name string) {
+func (m *MutableTable) AddRowIndex(name string) *MutableTable {
 	newHeaders := make(slice.Slice[string], 0, len(m.headers)+1)
 	newHeaders = append(newHeaders, name)
 	newHeaders = append(newHeaders, m.headers...)
@@ -412,13 +438,15 @@ func (m *MutableTable) AddRowIndex(name string) {
 		copy(vals[1:1+copyLen], row[:copyLen])
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // Explode splits one column into multiple rows in place.
-func (m *MutableTable) Explode(col, sep string) {
+func (m *MutableTable) Explode(col, sep string) *MutableTable {
 	idx, ok := m.headerIdx[col]
 	if !ok {
-		return
+		m.addErrf("Explode: unknown column %q", col)
+		return m
 	}
 	rowCount := 0
 	splits := make([][]string, len(m.rows))
@@ -449,10 +477,11 @@ func (m *MutableTable) Explode(col, sep string) {
 		}
 	}
 	m.rows = rows
+	return m
 }
 
 // Transpose pivots rows and columns in place.
-func (m *MutableTable) Transpose() {
+func (m *MutableTable) Transpose() *MutableTable {
 	newHeaders := make(slice.Slice[string], 0, len(m.rows)+1)
 	newHeaders = append(newHeaders, "column")
 	for i := range m.rows {
@@ -469,13 +498,15 @@ func (m *MutableTable) Transpose() {
 		}
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // FillForward fills empty cells from the previous non-empty value.
-func (m *MutableTable) FillForward(col string) {
+func (m *MutableTable) FillForward(col string) *MutableTable {
 	idx := m.ColIndex(col)
 	if idx < 0 {
-		return
+		m.addErrf("FillForward: unknown column %q", col)
+		return m
 	}
 	last := ""
 	for _, row := range m.rows {
@@ -487,13 +518,15 @@ func (m *MutableTable) FillForward(col string) {
 			}
 		}
 	}
+	return m
 }
 
 // FillBackward fills empty cells from the next non-empty value.
-func (m *MutableTable) FillBackward(col string) {
+func (m *MutableTable) FillBackward(col string) *MutableTable {
 	idx := m.ColIndex(col)
 	if idx < 0 {
-		return
+		m.addErrf("FillBackward: unknown column %q", col)
+		return m
 	}
 	next := ""
 	for i := len(m.rows) - 1; i >= 0; i-- {
@@ -506,41 +539,43 @@ func (m *MutableTable) FillBackward(col string) {
 			}
 		}
 	}
+	return m
 }
 
 // Sample keeps a random sample in place.
-func (m *MutableTable) Sample(n int) {
+func (m *MutableTable) Sample(n int) *MutableTable {
 	if n >= len(m.rows) {
 		m.rows = append([][]string(nil), slice.Slice[[]string](m.rows).Samples(len(m.rows))...)
-		return
+		return m
 	}
 	sampled := slice.Slice[[]string](m.rows).Samples(n)
 	m.rows = append([][]string(nil), sampled...)
+	return m
 }
 
 // SampleFrac keeps a random sample fraction in place.
-func (m *MutableTable) SampleFrac(f float64) {
+func (m *MutableTable) SampleFrac(f float64) *MutableTable {
 	n := int(float64(len(m.rows)) * f)
-	m.Sample(n)
+	return m.Sample(n)
 }
 
 // AddColFloat appends a float-derived column in place.
-func (m *MutableTable) AddColFloat(name string, fn func(Row) float64) {
-	m.AddCol(name, func(r Row) string {
+func (m *MutableTable) AddColFloat(name string, fn func(Row) float64) *MutableTable {
+	return m.AddCol(name, func(r Row) string {
 		return strconv.FormatFloat(fn(r), 'f', -1, 64)
 	})
 }
 
 // AddColInt appends an int-derived column in place.
-func (m *MutableTable) AddColInt(name string, fn func(Row) int64) {
-	m.AddCol(name, func(r Row) string {
+func (m *MutableTable) AddColInt(name string, fn func(Row) int64) *MutableTable {
+	return m.AddCol(name, func(r Row) string {
 		return strconv.FormatInt(fn(r), 10)
 	})
 }
 
 // Coalesce appends the first non-empty value across cols.
-func (m *MutableTable) Coalesce(name string, cols ...string) {
-	m.AddCol(name, func(r Row) string {
+func (m *MutableTable) Coalesce(name string, cols ...string) *MutableTable {
+	return m.AddCol(name, func(r Row) string {
 		for _, col := range cols {
 			if v := r.Get(col).UnwrapOr(""); v != "" {
 				return v
@@ -551,12 +586,21 @@ func (m *MutableTable) Coalesce(name string, cols ...string) {
 }
 
 // Lookup appends a lookup-derived column in place.
-func (m *MutableTable) Lookup(col, outCol string, lookupTable Table, keyCol, valCol string) {
+func (m *MutableTable) Lookup(col, outCol string, lookupTable Table, keyCol, valCol string) *MutableTable {
 	keyIdx := lookupTable.ColIndex(keyCol)
 	valIdx := lookupTable.ColIndex(valCol)
 	colIdx := m.ColIndex(col)
-	if keyIdx < 0 || valIdx < 0 || colIdx < 0 {
-		return
+	if colIdx < 0 {
+		m.addErrf("Lookup: unknown column %q", col)
+		return m
+	}
+	if keyIdx < 0 {
+		m.addErrf("Lookup: unknown column %q in lookup table", keyCol)
+		return m
+	}
+	if valIdx < 0 {
+		m.addErrf("Lookup: unknown column %q in lookup table", valCol)
+		return m
 	}
 	lkp := make(map[string]string, len(lookupTable.Rows))
 	for _, row := range lookupTable.Rows {
@@ -569,7 +613,7 @@ func (m *MutableTable) Lookup(col, outCol string, lookupTable Table, keyCol, val
 		}
 		lkp[k] = v
 	}
-	m.AddCol(outCol, func(r Row) string {
+	return m.AddCol(outCol, func(r Row) string {
 		k := ""
 		if colIdx < len(r.values) {
 			k = r.values[colIdx]
@@ -579,10 +623,11 @@ func (m *MutableTable) Lookup(col, outCol string, lookupTable Table, keyCol, val
 }
 
 // FormatCol formats parseable floats in place.
-func (m *MutableTable) FormatCol(col string, precision int) {
+func (m *MutableTable) FormatCol(col string, precision int) *MutableTable {
 	idx, ok := m.headerIdx[col]
 	if !ok {
-		return
+		m.addErrf("FormatCol: unknown column %q", col)
+		return m
 	}
 	for _, row := range m.rows {
 		if idx >= len(row) {
@@ -593,10 +638,11 @@ func (m *MutableTable) FormatCol(col string, precision int) {
 			row[idx] = strconv.FormatFloat(f, 'f', precision, 64)
 		}
 	}
+	return m
 }
 
 // Intersect keeps rows that also appear in other.
-func (m *MutableTable) Intersect(other Table, cols ...string) {
+func (m *MutableTable) Intersect(other Table, cols ...string) *MutableTable {
 	check := cols
 	if len(check) == 0 {
 		check = m.headers
@@ -607,7 +653,8 @@ func (m *MutableTable) Intersect(other Table, cols ...string) {
 		mi, ok1 := m.headerIdx[col]
 		oi := other.ColIndex(col)
 		if !ok1 || oi < 0 {
-			return
+			m.addErrf("Intersect: unknown column %q", col)
+			return m
 		}
 		mIdx[i] = mi
 		oIdx[i] = oi
@@ -656,15 +703,17 @@ func (m *MutableTable) Intersect(other Table, cols ...string) {
 		}
 	}
 	m.rows = rows
+	return m
 }
 
 // Bin appends a bin label column in place.
-func (m *MutableTable) Bin(col, name string, bins []BinDef) {
+func (m *MutableTable) Bin(col, name string, bins []BinDef) *MutableTable {
 	colIdx := m.ColIndex(col)
 	if colIdx < 0 {
-		return
+		m.addErrf("Bin: unknown column %q", col)
+		return m
 	}
-	m.AddCol(name, func(r Row) string {
+	return m.AddCol(name, func(r Row) string {
 		v := ""
 		if colIdx < len(r.values) {
 			v = r.values[colIdx]
@@ -690,11 +739,16 @@ func (m *MutableTable) Bin(col, name string, bins []BinDef) {
 }
 
 // Join performs an inner join in place.
-func (m *MutableTable) Join(other Table, leftCol, rightCol string) {
+func (m *MutableTable) Join(other Table, leftCol, rightCol string) *MutableTable {
 	rightKeyIdx := other.ColIndex(rightCol)
 	leftKeyIdx := m.ColIndex(leftCol)
-	if rightKeyIdx < 0 || leftKeyIdx < 0 {
-		return
+	if leftKeyIdx < 0 {
+		m.addErrf("Join: unknown column %q", leftCol)
+		return m
+	}
+	if rightKeyIdx < 0 {
+		m.addErrf("Join: unknown column %q in other table", rightCol)
+		return m
 	}
 	rightIdx := make(map[string]rowBucket, len(other.Rows))
 	for _, row := range other.Rows {
@@ -737,14 +791,20 @@ func (m *MutableTable) Join(other Table, leftCol, rightCol string) {
 		})
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // LeftJoin performs a left join in place.
-func (m *MutableTable) LeftJoin(other Table, leftCol, rightCol string) {
+func (m *MutableTable) LeftJoin(other Table, leftCol, rightCol string) *MutableTable {
 	rightKeyIdx := other.ColIndex(rightCol)
 	leftKeyIdx := m.ColIndex(leftCol)
-	if rightKeyIdx < 0 || leftKeyIdx < 0 {
-		return
+	if leftKeyIdx < 0 {
+		m.addErrf("LeftJoin: unknown column %q", leftCol)
+		return m
+	}
+	if rightKeyIdx < 0 {
+		m.addErrf("LeftJoin: unknown column %q in other table", rightCol)
+		return m
 	}
 	rightIdx := make(map[string]rowBucket, len(other.Rows))
 	for _, row := range other.Rows {
@@ -798,14 +858,20 @@ func (m *MutableTable) LeftJoin(other Table, leftCol, rightCol string) {
 		})
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // RightJoin performs a right join in place.
-func (m *MutableTable) RightJoin(other Table, leftCol, rightCol string) {
+func (m *MutableTable) RightJoin(other Table, leftCol, rightCol string) *MutableTable {
 	leftKeyIdx := m.ColIndex(leftCol)
 	rightKeyIdx := other.ColIndex(rightCol)
-	if leftKeyIdx < 0 || rightKeyIdx < 0 {
-		return
+	if leftKeyIdx < 0 {
+		m.addErrf("RightJoin: unknown column %q", leftCol)
+		return m
+	}
+	if rightKeyIdx < 0 {
+		m.addErrf("RightJoin: unknown column %q in other table", rightCol)
+		return m
 	}
 	leftIdx := make(map[string]rowBucket, len(m.rows))
 	for _, row := range m.rows {
@@ -863,14 +929,20 @@ func (m *MutableTable) RightJoin(other Table, leftCol, rightCol string) {
 		})
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // OuterJoin performs a full outer join in place.
-func (m *MutableTable) OuterJoin(other Table, leftCol, rightCol string) {
+func (m *MutableTable) OuterJoin(other Table, leftCol, rightCol string) *MutableTable {
 	leftKeyIdx := m.ColIndex(leftCol)
 	rightKeyIdx := other.ColIndex(rightCol)
-	if leftKeyIdx < 0 || rightKeyIdx < 0 {
-		return
+	if leftKeyIdx < 0 {
+		m.addErrf("OuterJoin: unknown column %q", leftCol)
+		return m
+	}
+	if rightKeyIdx < 0 {
+		m.addErrf("OuterJoin: unknown column %q in other table", rightCol)
+		return m
 	}
 
 	rightIdx := make(map[string]rowBucket, len(other.Rows))
@@ -954,14 +1026,20 @@ func (m *MutableTable) OuterJoin(other Table, leftCol, rightCol string) {
 		}
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // AntiJoin keeps only rows without a match in other.
-func (m *MutableTable) AntiJoin(other Table, leftCol, rightCol string) {
+func (m *MutableTable) AntiJoin(other Table, leftCol, rightCol string) *MutableTable {
 	leftKeyIdx := m.ColIndex(leftCol)
 	rightKeyIdx := other.ColIndex(rightCol)
-	if leftKeyIdx < 0 || rightKeyIdx < 0 {
-		return
+	if leftKeyIdx < 0 {
+		m.addErrf("AntiJoin: unknown column %q", leftCol)
+		return m
+	}
+	if rightKeyIdx < 0 {
+		m.addErrf("AntiJoin: unknown column %q in other table", rightCol)
+		return m
 	}
 	rightKeys := make(map[string]bool, len(other.Rows))
 	for _, row := range other.Rows {
@@ -982,14 +1060,16 @@ func (m *MutableTable) AntiJoin(other Table, leftCol, rightCol string) {
 		}
 	}
 	m.rows = rows
+	return m
 }
 
 // ValueCounts replaces the table with a frequency table.
-func (m *MutableTable) ValueCounts(col string) {
+func (m *MutableTable) ValueCounts(col string) *MutableTable {
 	idx, ok := m.headerIdx[col]
 	if !ok {
+		m.addErrf("ValueCounts: unknown column %q", col)
 		m.replaceAll(slice.Slice[string]{"value", "count"}, [][]string{})
-		return
+		return m
 	}
 	counts := make(map[string]int)
 	order := make([]string, 0, len(m.rows))
@@ -1009,10 +1089,11 @@ func (m *MutableTable) ValueCounts(col string) {
 		rows[i][1] = strconv.Itoa(counts[v])
 	}
 	m.replaceAll(slice.Slice[string]{"value", "count"}, rows)
+	return m
 }
 
 // Melt converts wide format to long format in place.
-func (m *MutableTable) Melt(idCols []string, varName, valName string) {
+func (m *MutableTable) Melt(idCols []string, varName, valName string) *MutableTable {
 	idSet := make(map[string]bool, len(idCols))
 	idIdx := make([]int, len(idCols))
 	for i, col := range idCols {
@@ -1048,15 +1129,25 @@ func (m *MutableTable) Melt(idCols []string, varName, valName string) {
 		}
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // Pivot converts long format to wide format in place.
-func (m *MutableTable) Pivot(index, col, val string) {
+func (m *MutableTable) Pivot(index, col, val string) *MutableTable {
 	indexIdx := m.ColIndex(index)
 	colIdx := m.ColIndex(col)
 	valIdx := m.ColIndex(val)
+	if indexIdx < 0 {
+		m.addErrf("Pivot: unknown column %q", index)
+	}
+	if colIdx < 0 {
+		m.addErrf("Pivot: unknown column %q", col)
+	}
+	if valIdx < 0 {
+		m.addErrf("Pivot: unknown column %q", val)
+	}
 	if indexIdx < 0 || colIdx < 0 || valIdx < 0 {
-		return
+		return m
 	}
 	colVals := make([]string, 0, len(m.rows))
 	colSeen := make(map[string]bool)
@@ -1108,10 +1199,11 @@ func (m *MutableTable) Pivot(index, col, val string) {
 		}
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // GroupByAgg groups in place and replaces the table with the aggregate result.
-func (m *MutableTable) GroupByAgg(groupCols []string, aggs []AggDef) {
+func (m *MutableTable) GroupByAgg(groupCols []string, aggs []AggDef) *MutableTable {
 	type groupEntry struct {
 		keyVals []string
 		plans   []aggPlan
@@ -1120,8 +1212,9 @@ func (m *MutableTable) GroupByAgg(groupCols []string, aggs []AggDef) {
 	for i, col := range groupCols {
 		idx, ok := m.headerIdx[col]
 		if !ok {
+			m.addErrf("GroupByAgg: unknown column %q", col)
 			m.replaceAll(slice.Slice[string]{}, [][]string{})
-			return
+			return m
 		}
 		groupIdx[i] = idx
 	}
@@ -1213,10 +1306,11 @@ func (m *MutableTable) GroupByAgg(groupCols []string, aggs []AggDef) {
 		}
 	}
 	m.replaceAll(newHeaders, rows)
+	return m
 }
 
 // RollingAgg computes a rolling aggregation in place.
-func (m *MutableTable) RollingAgg(outCol string, size int, agg Agg) {
+func (m *MutableTable) RollingAgg(outCol string, size int, agg Agg) *MutableTable {
 	if size < 1 {
 		size = 1
 	}
@@ -1230,16 +1324,18 @@ func (m *MutableTable) RollingAgg(outCol string, size int, agg Agg) {
 		values[i] = agg.reduce(window)
 	}
 	m.appendDerivedCol(outCol, func(i int) string { return values[i] })
+	return m
 }
 
 // Lag adds a lagged column in place.
-func (m *MutableTable) Lag(col, outCol string, n int) {
+func (m *MutableTable) Lag(col, outCol string, n int) *MutableTable {
 	if n < 0 {
 		n = 0
 	}
 	colIdx := m.ColIndex(col)
 	if colIdx < 0 {
-		return
+		m.addErrf("Lag: unknown column %q", col)
+		return m
 	}
 	m.appendDerivedCol(outCol, func(i int) string {
 		if i-n < 0 {
@@ -1251,16 +1347,18 @@ func (m *MutableTable) Lag(col, outCol string, n int) {
 		}
 		return ""
 	})
+	return m
 }
 
 // Lead adds a lead column in place.
-func (m *MutableTable) Lead(col, outCol string, n int) {
+func (m *MutableTable) Lead(col, outCol string, n int) *MutableTable {
 	if n < 0 {
 		n = 0
 	}
 	colIdx := m.ColIndex(col)
 	if colIdx < 0 {
-		return
+		m.addErrf("Lead: unknown column %q", col)
+		return m
 	}
 	m.appendDerivedCol(outCol, func(i int) string {
 		if i+n >= len(m.rows) {
@@ -1272,13 +1370,15 @@ func (m *MutableTable) Lead(col, outCol string, n int) {
 		}
 		return ""
 	})
+	return m
 }
 
 // CumSum adds a running sum column in place.
-func (m *MutableTable) CumSum(col, outCol string) {
+func (m *MutableTable) CumSum(col, outCol string) *MutableTable {
 	colIdx := m.ColIndex(col)
 	if colIdx < 0 {
-		return
+		m.addErrf("CumSum: unknown column %q", col)
+		return m
 	}
 	values := make([]string, len(m.rows))
 	var runningFloat float64
@@ -1304,13 +1404,15 @@ func (m *MutableTable) CumSum(col, outCol string) {
 		}
 	}
 	m.appendDerivedCol(outCol, func(i int) string { return values[i] })
+	return m
 }
 
 // Rank adds a dense rank column in place.
-func (m *MutableTable) Rank(col, outCol string, asc bool) {
+func (m *MutableTable) Rank(col, outCol string, asc bool) *MutableTable {
 	colIdx := m.ColIndex(col)
 	if colIdx < 0 {
-		return
+		m.addErrf("Rank: unknown column %q", col)
+		return m
 	}
 	entries := make([]numericEntry, len(m.rows))
 	for i, row := range m.rows {
@@ -1318,6 +1420,7 @@ func (m *MutableTable) Rank(col, outCol string, asc bool) {
 	}
 	values := denseRankValues(entries, asc)
 	m.appendDerivedCol(outCol, func(i int) string { return values[i] })
+	return m
 }
 
 // Partition splits the current table into immutable matching and rest tables.
@@ -1358,23 +1461,25 @@ func (m *MutableTable) ForEach(fn func(i int, r Row)) {
 }
 
 // AssertColumns validates required columns.
-func (m *MutableTable) AssertColumns(cols ...string) error {
+func (m *MutableTable) AssertColumns(cols ...string) *MutableTable {
 	for _, col := range cols {
 		if _, ok := m.headerIdx[col]; !ok {
-			return fmt.Errorf("missing required column: %q", col)
+			m.addErrf("AssertColumns: missing column %q", col)
 		}
 	}
-	return nil
+	return m
 }
 
 // AssertNoEmpty validates that the requested columns are non-empty.
-func (m *MutableTable) AssertNoEmpty(cols ...string) error {
+func (m *MutableTable) AssertNoEmpty(cols ...string) *MutableTable {
 	check := cols
 	if len(check) == 0 {
 		check = m.headers
 	}
-	if err := m.AssertColumns(check...); err != nil {
-		return err
+	errsBefore := len(m.errs)
+	m.AssertColumns(check...)
+	if len(m.errs) > errsBefore {
+		return m
 	}
 	checkIdx := make([]int, len(check))
 	for i, col := range check {
@@ -1387,23 +1492,25 @@ func (m *MutableTable) AssertNoEmpty(cols ...string) error {
 				v = row[idx]
 			}
 			if v == "" {
-				return fmt.Errorf("row %d: column %q is empty", ri, check[i])
+				m.addErrf("AssertNoEmpty: row %d: column %q is empty", ri, check[i])
+				return m
 			}
 		}
 	}
-	return nil
+	return m
 }
 
 // MapParallel maps a single column concurrently in place.
 // Each worker processes a disjoint chunk of rows, writing directly to m.rows.
-func (m *MutableTable) MapParallel(col string, fn func(string) string) error {
+func (m *MutableTable) MapParallel(col string, fn func(string) string) *MutableTable {
 	idx, ok := m.headerIdx[col]
 	if !ok {
-		return fmt.Errorf("unknown column %q", col)
+		m.addErrf("MapParallel: unknown column %q", col)
+		return m
 	}
 	n := len(m.rows)
 	if n == 0 {
-		return nil
+		return m
 	}
 	workers := runtime.GOMAXPROCS(0)
 	if workers > n {
@@ -1431,7 +1538,7 @@ func (m *MutableTable) MapParallel(col string, fn func(string) string) error {
 		}(lo, hi)
 	}
 	wg.Wait()
-	return nil
+	return m
 }
 
 // Predicate helpers mirror Table with direct mutable indices.

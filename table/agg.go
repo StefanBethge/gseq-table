@@ -147,7 +147,7 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 	for i, col := range groupCols {
 		idx, ok := t.headerIdx[col]
 		if !ok {
-			return Table{}
+			return t.withErrf("GroupByAgg: unknown column %q", col)
 		}
 		groupIdx[i] = idx
 	}
@@ -241,7 +241,9 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 		}
 	}
 
-	return New(newHeaders, records)
+	result := New(newHeaders, records)
+	result.errs = t.errs
+	return result
 }
 
 // --- Agg implementations ---
@@ -337,7 +339,7 @@ func (t Table) RollingAgg(outCol string, size int, agg Agg) Table {
 		vals = append(vals, val)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 func reduceAgg(g aggRows, plan aggPlan) string {

@@ -17,6 +17,7 @@ type MutableTable struct {
 	headers   slice.Slice[string]
 	rows      [][]string
 	headerIdx map[string]int
+	errs      []error
 }
 
 // NewMutable constructs a MutableTable from headers and records.
@@ -25,10 +26,27 @@ func NewMutable(headers slice.Slice[string], records [][]string) *MutableTable {
 	return newMutableOwned(copyHeaders(headers), cloneRecordsPacked(records))
 }
 
+// addErrf appends an error to the MutableTable's error list.
+func (m *MutableTable) addErrf(format string, args ...any) {
+	m.errs = append(m.errs, fmt.Errorf(format, args...))
+}
+
+// Errs returns all errors accumulated during the chain of operations.
+func (m *MutableTable) Errs() []error { return m.errs }
+
+// HasErrs reports whether any errors have been accumulated.
+func (m *MutableTable) HasErrs() bool { return len(m.errs) > 0 }
+
+// ResetErrs clears all accumulated errors.
+func (m *MutableTable) ResetErrs() { m.errs = nil }
+
 // Mutable returns a mutable copy of t.
 // Later in-place updates on the returned table do not affect t.
+// Accumulated errors from t are propagated.
 func (t Table) Mutable() *MutableTable {
-	return newMutableOwned(copyHeaders(t.Headers), cloneRowValuesPacked(t.Rows))
+	m := newMutableOwned(copyHeaders(t.Headers), cloneRowValuesPacked(t.Rows))
+	m.errs = t.errs
+	return m
 }
 
 // MutableView returns a mutable view onto t without copying row storage.
@@ -36,18 +54,24 @@ func (t Table) Mutable() *MutableTable {
 // operations that change the column structure (AddCol, Drop, Rename, etc.)
 // on the view may invalidate the source Table.
 // Use Mutable() for a fully independent copy.
+// Accumulated errors from t are propagated.
 func (t Table) MutableView() *MutableTable {
 	rows := make([][]string, len(t.Rows))
 	for i, row := range t.Rows {
 		rows[i] = row.values
 	}
-	return newMutableOwned(t.Headers, rows)
+	m := newMutableOwned(t.Headers, rows)
+	m.errs = t.errs
+	return m
 }
 
 // Freeze returns an immutable snapshot of m.
 // The returned Table is isolated from subsequent changes to m.
+// Accumulated errors are propagated.
 func (m *MutableTable) Freeze() Table {
-	return New(copyHeaders(m.headers), cloneRecordsPacked(m.rows))
+	t := New(copyHeaders(m.headers), cloneRecordsPacked(m.rows))
+	t.errs = m.errs
+	return t
 }
 
 // FreezeView returns an immutable view onto m without copying row storage.
@@ -55,8 +79,11 @@ func (m *MutableTable) Freeze() Table {
 // the returned Table. Structural changes to m (Rename, AddCol, Drop)
 // are NOT reflected and may make the view inconsistent.
 // Use Freeze() for a fully independent snapshot.
+// Accumulated errors are propagated.
 func (m *MutableTable) FreezeView() Table {
-	return newTable(m.headers, rowsToRowViews(m.headers, m.rows))
+	t := newTable(m.headers, rowsToRowViews(m.headers, m.rows))
+	t.errs = m.errs
+	return t
 }
 
 // Headers returns a copy of the column names.
@@ -88,52 +115,57 @@ func (m *MutableTable) Row(i int) (Row, bool) {
 
 // Set updates a single cell in place.
 // Short rows are extended with empty strings as needed.
-func (m *MutableTable) Set(row int, col, val string) error {
+func (m *MutableTable) Set(row int, col, val string) *MutableTable {
 	if row < 0 || row >= len(m.rows) {
-		return fmt.Errorf("row %d out of range", row)
+		m.addErrf("Set: row %d out of range", row)
+		return m
 	}
 	idx, ok := m.headerIdx[col]
 	if !ok {
-		return fmt.Errorf("unknown column %q", col)
+		m.addErrf("Set: unknown column %q", col)
+		return m
 	}
 	m.ensureRowWidth(row, len(m.headers))
 	m.rows[row][idx] = val
-	return nil
+	return m
 }
 
 // AppendRow appends values as a new row. The input slice is copied.
-func (m *MutableTable) AppendRow(values []string) {
+func (m *MutableTable) AppendRow(values []string) *MutableTable {
 	row := append([]string(nil), values...)
 	m.rows = append(m.rows, clampRecordValues(row, len(m.headers)))
+	return m
 }
 
 // Rename renames a column in place.
-func (m *MutableTable) Rename(old, new string) error {
+func (m *MutableTable) Rename(old, new string) *MutableTable {
 	idx, ok := m.headerIdx[old]
 	if !ok {
-		return fmt.Errorf("unknown column %q", old)
+		m.addErrf("Rename: unknown column %q", old)
+		return m
 	}
 	m.headers[idx] = new
 	m.headers = normalizeHeaders(m.headers)
 	m.headerIdx = buildHeaderIndex(m.headers)
-	return nil
+	return m
 }
 
 // Map transforms every value in col in place.
-func (m *MutableTable) Map(col string, fn func(string) string) error {
+func (m *MutableTable) Map(col string, fn func(string) string) *MutableTable {
 	idx, ok := m.headerIdx[col]
 	if !ok {
-		return fmt.Errorf("unknown column %q", col)
+		m.addErrf("Map: unknown column %q", col)
+		return m
 	}
 	for i := range m.rows {
 		m.ensureRowWidth(i, len(m.headers))
 		m.rows[i][idx] = fn(m.rows[i][idx])
 	}
-	return nil
+	return m
 }
 
 // FillEmpty replaces empty values in col with val in place.
-func (m *MutableTable) FillEmpty(col, val string) error {
+func (m *MutableTable) FillEmpty(col, val string) *MutableTable {
 	return m.Map(col, func(v string) string {
 		if v == "" {
 			return val
@@ -143,7 +175,7 @@ func (m *MutableTable) FillEmpty(col, val string) error {
 }
 
 // AddCol appends a derived column in place.
-func (m *MutableTable) AddCol(name string, fn func(Row) string) {
+func (m *MutableTable) AddCol(name string, fn func(Row) string) *MutableTable {
 	oldHeaders := m.headers
 	for i := range m.rows {
 		m.ensureRowWidth(i, len(oldHeaders))
@@ -153,12 +185,13 @@ func (m *MutableTable) AddCol(name string, fn func(Row) string) {
 	m.headers = append(m.headers, name)
 	m.headers = normalizeHeaders(m.headers)
 	m.headerIdx = buildHeaderIndex(m.headers)
+	return m
 }
 
 // Drop removes the named columns in place. Unknown column names are ignored.
-func (m *MutableTable) Drop(cols ...string) {
+func (m *MutableTable) Drop(cols ...string) *MutableTable {
 	if len(cols) == 0 {
-		return
+		return m
 	}
 	drop := make(map[string]bool, len(cols))
 	for _, col := range cols {
@@ -188,6 +221,7 @@ func (m *MutableTable) Drop(cols ...string) {
 	m.headers = keepHeaders
 	m.rows = rows
 	m.headerIdx = buildHeaderIndex(m.headers)
+	return m
 }
 
 func (m *MutableTable) ensureRowWidth(row, width int) {

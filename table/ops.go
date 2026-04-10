@@ -28,7 +28,7 @@ func (t Table) RenameMany(renames map[string]string) Table {
 	for i, row := range t.Rows {
 		rows[i] = NewRow(newHeaders, row.values)
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 // --- Concat ---
@@ -66,7 +66,7 @@ func (t Table) AddRowIndex(name string) Table {
 		vals = append(vals, row.values...)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 // --- Explode ---
@@ -80,7 +80,7 @@ func (t Table) AddRowIndex(name string) Table {
 func (t Table) Explode(col, sep string) Table {
 	idx, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("Explode: unknown column %q", col)
 	}
 
 	var records [][]string
@@ -100,7 +100,9 @@ func (t Table) Explode(col, sep string) Table {
 			records = append(records, rec)
 		}
 	}
-	return New(t.Headers, records)
+	result := New(t.Headers, records)
+	result.errs = t.errs
+	return result
 }
 
 // splitNonEmpty splits s on sep and returns non-empty, trimmed parts.
@@ -151,7 +153,9 @@ func (t Table) Transpose() Table {
 		}
 		records[ci] = rec
 	}
-	return New(newHeaders, records)
+	result := New(newHeaders, records)
+	result.errs = t.errs
+	return result
 }
 
 // --- Fill forward / backward ---
@@ -164,7 +168,7 @@ func (t Table) Transpose() Table {
 func (t Table) FillForward(col string) Table {
 	idx := t.ColIndex(col)
 	if idx < 0 {
-		return t
+		return t.withErrf("FillForward: unknown column %q", col)
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	last := ""
@@ -180,7 +184,7 @@ func (t Table) FillForward(col string) Table {
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // FillBackward replaces empty string values in col with the next non-empty
@@ -191,7 +195,7 @@ func (t Table) FillForward(col string) Table {
 func (t Table) FillBackward(col string) Table {
 	idx := t.ColIndex(col)
 	if idx < 0 {
-		return t
+		return t.withErrf("FillBackward: unknown column %q", col)
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
@@ -210,7 +214,7 @@ func (t Table) FillBackward(col string) Table {
 			}
 		}
 	}
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // --- Sampling ---
@@ -224,7 +228,7 @@ func (t Table) Sample(n int) Table {
 		return t
 	}
 	sampled := t.Rows.Samples(n)
-	return newTable(t.Headers, sampled)
+	return newTableFrom(t, t.Headers, sampled)
 }
 
 // SampleFrac returns a random fraction of rows. f=0.2 returns ~20% of rows.
@@ -284,7 +288,7 @@ func (t Table) Partition(fn func(Row) bool) (matched, rest Table) {
 	if rRows == nil {
 		rRows = slice.Slice[Row]{}
 	}
-	return newTable(t.Headers, mRows), newTable(t.Headers, rRows)
+	return newTableFrom(t, t.Headers, mRows), newTableFrom(t, t.Headers, rRows)
 }
 
 // Chunk splits the table into consecutive sub-tables of at most n rows each.
@@ -301,7 +305,7 @@ func (t Table) Chunk(n int) []Table {
 		if end > len(t.Rows) {
 			end = len(t.Rows)
 		}
-		chunks = append(chunks, newTable(t.Headers, t.Rows[i:end]))
+		chunks = append(chunks, newTableFrom(t, t.Headers, t.Rows[i:end]))
 	}
 	return chunks
 }
@@ -343,7 +347,14 @@ func (t Table) Lookup(col, outCol string, lookupTable Table, keyCol, valCol stri
 	keyIdx, ok1 := lookupTable.headerIdx[keyCol]
 	valIdx, ok2 := lookupTable.headerIdx[valCol]
 	if !ok1 || !ok2 {
-		return t
+		out := t
+		if !ok1 {
+			out = out.withErrf("Lookup: unknown column %q in lookup table", keyCol)
+		}
+		if !ok2 {
+			out = out.withErrf("Lookup: unknown column %q in lookup table", valCol)
+		}
+		return out
 	}
 	lkp := make(map[string]string, len(lookupTable.Rows))
 	for _, row := range lookupTable.Rows {
@@ -358,7 +369,7 @@ func (t Table) Lookup(col, outCol string, lookupTable Table, keyCol, valCol stri
 	}
 	colI, ok3 := t.headerIdx[col]
 	if !ok3 {
-		return t
+		return t.withErrf("Lookup: unknown column %q", col)
 	}
 	return t.AddCol(outCol, func(r Row) string {
 		k := ""
@@ -412,7 +423,14 @@ func (t Table) Intersect(other Table, cols ...string) Table {
 		ti, ok1 := t.headerIdx[c]
 		oi, ok2 := other.headerIdx[c]
 		if !ok1 || !ok2 {
-			return t
+			out := t
+			if !ok1 {
+				out = out.withErrf("Intersect: unknown column %q", c)
+			}
+			if !ok2 {
+				out = out.withErrf("Intersect: unknown column %q in other table", c)
+			}
+			return out
 		}
 		tIdx[i] = ti
 		oIdx[i] = oi
@@ -475,7 +493,7 @@ type BinDef struct {
 func (t Table) Bin(col, name string, bins []BinDef) Table {
 	colI, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("Bin: unknown column %q", col)
 	}
 	return t.AddCol(name, func(r Row) string {
 		v := ""

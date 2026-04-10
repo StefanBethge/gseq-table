@@ -29,6 +29,7 @@
 package table
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 
@@ -108,6 +109,7 @@ type Table struct {
 	Headers   slice.Slice[string]
 	Rows      slice.Slice[Row]
 	headerIdx map[string]int
+	errs      []error
 }
 
 // newTable is the internal constructor. It builds the header index once so all
@@ -127,6 +129,30 @@ func newTable(headers slice.Slice[string], rows slice.Slice[Row]) Table {
 	}
 	return Table{Headers: headers, Rows: normalizedRows, headerIdx: idx}
 }
+
+// newTableFrom creates a new Table from headers and rows while propagating
+// accumulated errors from a source table.
+func newTableFrom(source Table, headers slice.Slice[string], rows slice.Slice[Row]) Table {
+	t := newTable(headers, rows)
+	t.errs = source.errs
+	return t
+}
+
+// withErrf returns a shallow copy of t with an additional error appended.
+// The original t is not modified (Table is a value type).
+func (t Table) withErrf(format string, args ...any) Table {
+	errs := make([]error, len(t.errs)+1)
+	copy(errs, t.errs)
+	errs[len(t.errs)] = fmt.Errorf(format, args...)
+	t.errs = errs
+	return t
+}
+
+// Errs returns all errors accumulated during the chain of operations.
+func (t Table) Errs() []error { return t.errs }
+
+// HasErrs reports whether any errors have been accumulated.
+func (t Table) HasErrs() bool { return len(t.errs) > 0 }
 
 // New builds a Table from a header slice and a slice of raw string records.
 // Each record in records becomes one Row; short records are padded with empty
@@ -162,10 +188,13 @@ func (t Table) ColIndex(col string) int {
 func (t Table) Select(cols ...string) Table {
 	newHeaders := make(slice.Slice[string], 0, len(cols))
 	indices := make([]int, 0, len(cols))
+	out := t
 	for _, col := range cols {
 		if i, ok := t.headerIdx[col]; ok {
 			newHeaders = append(newHeaders, col)
 			indices = append(indices, i)
+		} else {
+			out = out.withErrf("Select: unknown column %q", col)
 		}
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
@@ -178,7 +207,8 @@ func (t Table) Select(cols ...string) Table {
 		}
 		rows[ri] = NewRow(newHeaders, vals)
 	}
-	return newTable(newHeaders, rows)
+	result := newTableFrom(out, newHeaders, rows)
+	return result
 }
 
 // Where returns a new table containing only the rows for which fn returns
@@ -197,7 +227,7 @@ func (t Table) Where(fn func(Row) bool) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // Col extracts all values of the named column as a flat slice.
@@ -226,7 +256,7 @@ func (t Table) Col(name string) slice.Slice[string] {
 func (t Table) Rename(old, new string) Table {
 	idx, ok := t.headerIdx[old]
 	if !ok {
-		return t
+		return t.withErrf("Rename: unknown column %q", old)
 	}
 	newHeaders := make(slice.Slice[string], len(t.Headers))
 	copy(newHeaders, t.Headers)
@@ -235,7 +265,7 @@ func (t Table) Rename(old, new string) Table {
 	for i, row := range t.Rows {
 		rows[i] = NewRow(newHeaders, row.values)
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 // Append concatenates other onto t, aligning columns by name. Columns present
@@ -266,7 +296,7 @@ func (t Table) Append(other Table) Table {
 		}
 		rows = append(rows, NewRow(t.Headers, vals))
 	}
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // Map transforms every value in col using fn, leaving all other columns
@@ -276,7 +306,7 @@ func (t Table) Append(other Table) Table {
 func (t Table) Map(col string, fn func(string) string) Table {
 	idx, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("Map: unknown column %q", col)
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
@@ -287,7 +317,7 @@ func (t Table) Map(col string, fn func(string) string) Table {
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // AddCol appends a new column whose value for each row is computed by fn.
@@ -307,7 +337,7 @@ func (t Table) AddCol(name string, fn func(Row) string) Table {
 		vals[len(row.values)] = fn(row)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 // GroupBy splits the table into sub-tables keyed by the distinct values of
@@ -345,7 +375,7 @@ func (t Table) GroupBy(col string) map[string]Table {
 func (t Table) Sort(col string, asc bool) Table {
 	idx, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("Sort: unknown column %q", col)
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
 	copy(rows, t.Rows)
@@ -362,7 +392,7 @@ func (t Table) Sort(col string, asc bool) Table {
 		}
 		return av > bv
 	})
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // Join performs an inner join on leftCol = rightCol.
@@ -375,7 +405,7 @@ func (t Table) Sort(col string, asc bool) Table {
 func (t Table) Join(other Table, leftCol, rightCol string) Table {
 	rightKeyIdx, rok := other.headerIdx[rightCol]
 	if !rok {
-		return t
+		return t.withErrf("Join: unknown column %q", rightCol)
 	}
 	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
@@ -398,7 +428,7 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 
 	leftKeyIdx, lok := t.headerIdx[leftCol]
 	if !lok {
-		return t
+		return t.withErrf("Join: unknown column %q", leftCol)
 	}
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
@@ -426,7 +456,7 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 // --- Shape & inspection ---
@@ -442,23 +472,23 @@ func (t Table) Shape() (int, int) { return len(t.Rows), len(t.Headers) }
 // Head returns the first n rows. If n >= Len the full table is returned.
 func (t Table) Head(n int) Table {
 	if n <= 0 {
-		return newTable(t.Headers, slice.Slice[Row]{})
+		return newTableFrom(t, t.Headers, slice.Slice[Row]{})
 	}
 	if n >= len(t.Rows) {
 		return t
 	}
-	return newTable(t.Headers, t.Rows[:n])
+	return newTableFrom(t, t.Headers, t.Rows[:n])
 }
 
 // Tail returns the last n rows. If n >= Len the full table is returned.
 func (t Table) Tail(n int) Table {
 	if n <= 0 {
-		return newTable(t.Headers, slice.Slice[Row]{})
+		return newTableFrom(t, t.Headers, slice.Slice[Row]{})
 	}
 	if n >= len(t.Rows) {
 		return t
 	}
-	return newTable(t.Headers, t.Rows[len(t.Rows)-n:])
+	return newTableFrom(t, t.Headers, t.Rows[len(t.Rows)-n:])
 }
 
 // --- Column operations ---
@@ -542,13 +572,18 @@ func (t Table) Distinct(cols ...string) Table {
 	if len(check) == 0 {
 		check = t.Headers
 	}
-	checkIdx := make([]int, len(check))
-	for i, c := range check {
+	checkIdx := make([]int, 0, len(check))
+	out := t
+	for _, c := range check {
 		idx, ok := t.headerIdx[c]
 		if !ok {
-			return t
+			out = out.withErrf("Distinct: unknown column %q", c)
+			continue
 		}
-		checkIdx[i] = idx
+		checkIdx = append(checkIdx, idx)
+	}
+	if len(checkIdx) == 0 {
+		return newTableFrom(out, t.Headers, t.Rows)
 	}
 	var rows slice.Slice[Row]
 	switch len(checkIdx) {
@@ -587,7 +622,7 @@ func (t Table) Distinct(cols ...string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return newTable(t.Headers, rows)
+	return newTableFrom(out, t.Headers, rows)
 }
 
 // --- Transformation ---
@@ -679,7 +714,7 @@ func (t Table) Transform(fn func(Row) map[string]string) Table {
 		}
 		rows[i] = NewRow(t.Headers, vals)
 	}
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // --- Multi-column sort ---
@@ -702,11 +737,13 @@ func Desc(col string) SortKey { return SortKey{Col: col, Asc: false} }
 //	t.SortMulti(table.Asc("country"), table.Desc("revenue"))
 func (t Table) SortMulti(keys ...SortKey) Table {
 	indices := make([]int, len(keys))
+	out := t
 	for k, sk := range keys {
 		if i, ok := t.headerIdx[sk.Col]; ok {
 			indices[k] = i
 		} else {
 			indices[k] = -1
+			out = out.withErrf("SortMulti: unknown column %q", sk.Col)
 		}
 	}
 	rows := make(slice.Slice[Row], len(t.Rows))
@@ -733,7 +770,7 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 		}
 		return false
 	})
-	return newTable(t.Headers, rows)
+	return newTableFrom(out, t.Headers, rows)
 }
 
 // --- Joins ---
@@ -749,7 +786,7 @@ func (t Table) SortMulti(keys ...SortKey) Table {
 func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 	rightKeyIdx, rok := other.headerIdx[rightCol]
 	if !rok {
-		return t
+		return t.withErrf("LeftJoin: unknown column %q", rightCol)
 	}
 	rightIdx := make(map[string][]Row, len(other.Rows))
 	for _, row := range other.Rows {
@@ -770,7 +807,7 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 	}
 	leftKeyIdx, lok := t.headerIdx[leftCol]
 	if !lok {
-		return t
+		return t.withErrf("LeftJoin: unknown column %q", leftCol)
 	}
 	var rows slice.Slice[Row]
 	for _, lRow := range t.Rows {
@@ -804,7 +841,7 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 	if rows == nil {
 		rows = slice.Slice[Row]{}
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
 
 // --- Aggregation ---
@@ -821,7 +858,9 @@ func (t Table) LeftJoin(other Table, leftCol, rightCol string) Table {
 func (t Table) ValueCounts(col string) Table {
 	idx, ok := t.headerIdx[col]
 	if !ok {
-		return newTable(slice.Slice[string]{"value", "count"}, slice.Slice[Row]{})
+		headers := slice.Slice[string]{"value", "count"}
+		result := newTableFrom(t, headers, slice.Slice[Row]{})
+		return result.withErrf("ValueCounts: unknown column %q", col)
 	}
 	counts := make(map[string]int)
 	order := make([]string, 0, len(t.Rows))
@@ -840,7 +879,9 @@ func (t Table) ValueCounts(col string) Table {
 	for i, v := range order {
 		records[i] = []string{v, strconv.Itoa(counts[v])}
 	}
-	return New(headers, records)
+	result := New(headers, records)
+	result.errs = t.errs
+	return result
 }
 
 // --- Reshape ---
@@ -907,7 +948,9 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 			records = append(records, rec)
 		}
 	}
-	return New(newHeaders, records)
+	result := New(newHeaders, records)
+	result.errs = t.errs
+	return result
 }
 
 // Pivot converts a long-format table to wide format.
@@ -929,7 +972,17 @@ func (t Table) Pivot(index, col, val string) Table {
 	colIdx, ok2 := t.headerIdx[col]
 	valIdx, ok3 := t.headerIdx[val]
 	if !ok1 || !ok2 || !ok3 {
-		return t
+		out := t
+		if !ok1 {
+			out = out.withErrf("Pivot: unknown column %q", index)
+		}
+		if !ok2 {
+			out = out.withErrf("Pivot: unknown column %q", col)
+		}
+		if !ok3 {
+			out = out.withErrf("Pivot: unknown column %q", val)
+		}
+		return out
 	}
 
 	colVals := make([]string, 0, len(t.Rows))
@@ -983,5 +1036,7 @@ func (t Table) Pivot(index, col, val string) Table {
 		}
 		records[i] = rec
 	}
-	return New(newHeaders, records)
+	result := New(newHeaders, records)
+	result.errs = t.errs
+	return result
 }

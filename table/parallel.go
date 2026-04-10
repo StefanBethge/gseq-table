@@ -23,7 +23,7 @@ func (t Table) TransformParallel(fn func(Row) map[string]string) Table {
 		}
 		return NewRow(t.Headers, vals)
 	})
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // MapParallel applies fn to every value in col concurrently. Row order is
@@ -33,7 +33,7 @@ func (t Table) TransformParallel(fn func(Row) map[string]string) Table {
 func (t Table) MapParallel(col string, fn func(string) string) Table {
 	idx := t.ColIndex(col)
 	if idx < 0 {
-		return t
+		return t.withErrf("MapParallel: unknown column %q", col)
 	}
 	rows := slice.MapParallel(t.Rows, func(row Row) Row {
 		vals := make(slice.Slice[string], len(row.values))
@@ -43,5 +43,5 @@ func (t Table) MapParallel(col string, fn func(string) string) Table {
 		}
 		return NewRow(t.Headers, vals)
 	})
-	return newTable(t.Headers, rows)
+	return newTableFrom(t, t.Headers, rows)
 }

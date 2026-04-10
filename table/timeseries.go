@@ -17,7 +17,7 @@ func (t Table) Lag(col, outCol string, n int) Table {
 	}
 	colI, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("Lag: unknown column %q", col)
 	}
 	return t.appendDerivedCol(outCol, func(i int) string {
 		if i-n < 0 {
@@ -42,7 +42,7 @@ func (t Table) Lead(col, outCol string, n int) Table {
 	}
 	colI, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("Lead: unknown column %q", col)
 	}
 	return t.appendDerivedCol(outCol, func(i int) string {
 		if i+n >= len(t.Rows) {
@@ -63,7 +63,7 @@ func (t Table) Lead(col, outCol string, n int) Table {
 func (t Table) CumSum(col, outCol string) Table {
 	colI, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("CumSum: unknown column %q", col)
 	}
 	var runningFloat float64
 	var runningInt int64
@@ -99,7 +99,7 @@ func (t Table) CumSum(col, outCol string) Table {
 func (t Table) Rank(col, outCol string, asc bool) Table {
 	colI, ok := t.headerIdx[col]
 	if !ok {
-		return t
+		return t.withErrf("Rank: unknown column %q", col)
 	}
 	entries := make([]numericEntry, len(t.Rows))
 	for i, row := range t.Rows {
@@ -116,7 +116,7 @@ func (t Table) appendDerivedCol(outCol string, valueAt func(i int) string) Table
 
 	rows := make(slice.Slice[Row], len(t.Rows))
 	if len(t.Rows) == 0 {
-		return newTable(newHeaders, rows)
+		return newTableFrom(t, newHeaders, rows)
 	}
 
 	width := len(newHeaders)
@@ -131,5 +131,5 @@ func (t Table) appendDerivedCol(outCol string, valueAt func(i int) string) Table
 		vals[len(t.Headers)] = valueAt(i)
 		rows[i] = NewRow(newHeaders, vals)
 	}
-	return newTable(newHeaders, rows)
+	return newTableFrom(t, newHeaders, rows)
 }
