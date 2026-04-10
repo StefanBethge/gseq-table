@@ -3,9 +3,11 @@ package table
 import (
 	"fmt"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/stefanbethge/gseq/slice"
 )
@@ -307,20 +309,42 @@ func (m *MutableTable) Transform(fn func(Row) map[string]string) {
 }
 
 // TransformParallel applies partial row updates concurrently in place.
+// Each worker processes a contiguous chunk of rows directly on m.rows,
+// avoiding any per-row allocation.
 func (m *MutableTable) TransformParallel(fn func(Row) map[string]string) {
-	rowViews := m.rowViews()
-	temp := slice.MapParallel(rowViews, func(row Row) []string {
-		vals := append([]string(nil), row.values...)
-		updates := fn(row)
-		for col, v := range updates {
-			if idx, ok := m.headerIdx[col]; ok && idx < len(vals) {
-				vals[idx] = v
-			}
+	n := len(m.rows)
+	if n == 0 {
+		return
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers > n {
+		workers = n
+	}
+	chunkSize := (n + workers - 1) / workers
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		lo := w * chunkSize
+		if lo >= n {
+			break
 		}
-		return vals
-	})
-	m.rows = make([][]string, len(temp))
-	copy(m.rows, temp)
+		hi := lo + chunkSize
+		if hi > n {
+			hi = n
+		}
+		wg.Add(1)
+		go func(lo, hi int) {
+			defer wg.Done()
+			for i := lo; i < hi; i++ {
+				updates := fn(NewRow(m.headers, m.rows[i]))
+				for col, v := range updates {
+					if idx, ok := m.headerIdx[col]; ok && idx < len(m.rows[i]) {
+						m.rows[i][idx] = v
+					}
+				}
+			}
+		}(lo, hi)
+	}
+	wg.Wait()
 }
 
 // TryTransform applies partial row updates and leaves m unchanged on error.

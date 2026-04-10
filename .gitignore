@@ -2,3 +2,6 @@
 *.log
 go.work
 go.work.sum
+benchsummary
+bench.txt
+bench_latest.txt

@@ -35,7 +35,7 @@ package schema
 import (
 	"fmt"
 	"math"
-	"sort"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -509,21 +509,13 @@ func StdDevCol(t table.Table, col string) float64 {
 //
 //	schema.MedianCol(t, "age")
 func MedianCol(t table.Table, col string) float64 {
-	var vals []float64
+	vals := make([]float64, 0, t.Len())
 	colVals(t, col, func(v string) {
 		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			vals = append(vals, f)
 		}
 	})
-	if len(vals) == 0 {
-		return 0
-	}
-	sort.Float64s(vals)
-	n := len(vals)
-	if n%2 == 1 {
-		return vals[n/2]
-	}
-	return (vals[n/2-1] + vals[n/2]) / 2
+	return floatMedian(vals)
 }
 
 // colStats computes count, sum, sumSq, min, max and all numeric values in a
@@ -592,14 +584,7 @@ func Describe(t table.Table) table.Table {
 		if s.count >= 2 {
 			std = math.Sqrt(s.sumSq / float64(s.count))
 		}
-		sort.Float64s(s.numericVals)
-		n := len(s.numericVals)
-		var median float64
-		if n%2 == 1 {
-			median = s.numericVals[n/2]
-		} else {
-			median = (s.numericVals[n/2-1] + s.numericVals[n/2]) / 2
-		}
+		median := floatMedian(s.numericVals)
 		records[i] = []string{
 			col,
 			strconv.Itoa(s.count),
@@ -1134,4 +1119,64 @@ func DateQuarter(col string) func(table.Row) string {
 		}
 		return strconv.Itoa((int(t.Month())-1)/3 + 1)
 	}
+}
+
+// floatMedian returns the median of vals (reordered in place) in expected O(n)
+// time using randomized quickselect. Returns 0 for empty input.
+func floatMedian(vals []float64) float64 {
+	n := len(vals)
+	if n == 0 {
+		return 0
+	}
+	if n == 1 {
+		return vals[0]
+	}
+	if n%2 == 1 {
+		return floatQuickselect(vals, n/2)
+	}
+	// For even n: upper median lands at vals[n/2]; vals[0..n/2-1] are all <=
+	// that value, so the lower median is max(vals[0..n/2-1]).
+	hi := floatQuickselect(vals, n/2)
+	lo := vals[0]
+	for _, v := range vals[1 : n/2] {
+		if v > lo {
+			lo = v
+		}
+	}
+	return (lo + hi) / 2
+}
+
+// floatQuickselect rearranges vals in place and returns the k-th smallest
+// element (0-indexed) in expected O(n) time using a randomized Lomuto partition.
+func floatQuickselect(vals []float64, k int) float64 {
+	lo, hi := 0, len(vals)-1
+	for lo < hi {
+		p := floatPartition(vals, lo, hi)
+		if p == k {
+			return vals[k]
+		} else if p < k {
+			lo = p + 1
+		} else {
+			hi = p - 1
+		}
+	}
+	return vals[k]
+}
+
+// floatPartition partitions vals[lo..hi] around a randomly chosen pivot
+// (avoids O(n²) worst case on sorted, reverse-sorted, or cyclic data)
+// and returns the pivot's final index.
+func floatPartition(vals []float64, lo, hi int) int {
+	pivotIdx := lo + rand.Intn(hi-lo+1)
+	vals[pivotIdx], vals[hi] = vals[hi], vals[pivotIdx]
+	pivot := vals[hi]
+	i := lo
+	for j := lo; j < hi; j++ {
+		if vals[j] <= pivot {
+			vals[i], vals[j] = vals[j], vals[i]
+			i++
+		}
+	}
+	vals[i], vals[hi] = vals[hi], vals[i]
+	return i
 }
