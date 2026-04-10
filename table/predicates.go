@@ -12,6 +12,10 @@ import (
 // Column-based predicates are Table methods so the column index can be
 // pre-computed once at predicate creation time (O(1) per row instead of O(H)).
 //
+// If the column does not exist, predicates treat the value as an empty string.
+// For example, Eq("missing", "x") always returns false, Eq("missing", "")
+// always returns true.
+//
 //	t.Where(t.Eq("status", "active"))
 //	t.Where(table.And(t.Eq("status", "active"), t.NotEmpty("email")))
 

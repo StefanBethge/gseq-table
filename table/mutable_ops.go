@@ -1393,21 +1393,42 @@ func (m *MutableTable) AssertNoEmpty(cols ...string) error {
 }
 
 // MapParallel maps a single column concurrently in place.
+// Each worker processes a disjoint chunk of rows, writing directly to m.rows.
 func (m *MutableTable) MapParallel(col string, fn func(string) string) error {
 	idx, ok := m.headerIdx[col]
 	if !ok {
 		return fmt.Errorf("unknown column %q", col)
 	}
-	rowViews := m.rowViews()
-	temp := slice.MapParallel(rowViews, func(row Row) []string {
-		vals := append([]string(nil), row.values...)
-		if idx < len(vals) {
-			vals[idx] = fn(vals[idx])
+	n := len(m.rows)
+	if n == 0 {
+		return nil
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers > n {
+		workers = n
+	}
+	chunkSize := (n + workers - 1) / workers
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		lo := w * chunkSize
+		if lo >= n {
+			break
 		}
-		return vals
-	})
-	m.rows = make([][]string, len(temp))
-	copy(m.rows, temp)
+		hi := lo + chunkSize
+		if hi > n {
+			hi = n
+		}
+		wg.Add(1)
+		go func(lo, hi int) {
+			defer wg.Done()
+			for i := lo; i < hi; i++ {
+				if idx < len(m.rows[i]) {
+					m.rows[i][idx] = fn(m.rows[i][idx])
+				}
+			}
+		}(lo, hi)
+	}
+	wg.Wait()
 	return nil
 }
 

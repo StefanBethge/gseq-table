@@ -495,10 +495,7 @@ func (t Table) DropEmpty(cols ...string) Table {
 	}
 	return t.Where(func(r Row) bool {
 		for _, cc := range checks {
-			if cc.idx < len(r.values) && r.values[cc.idx] == "" {
-				return false
-			}
-			if cc.idx >= len(r.values) {
+			if cc.idx >= len(r.values) || r.values[cc.idx] == "" {
 				return false
 			}
 		}

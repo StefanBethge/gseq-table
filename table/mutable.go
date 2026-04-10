@@ -32,7 +32,10 @@ func (t Table) Mutable() *MutableTable {
 }
 
 // MutableView returns a mutable view onto t without copying row storage.
-// Mutating the returned table also mutates t.
+// Mutating the returned table also mutates t. The header slice is shared;
+// operations that change the column structure (AddCol, Drop, Rename, etc.)
+// on the view may invalidate the source Table.
+// Use Mutable() for a fully independent copy.
 func (t Table) MutableView() *MutableTable {
 	rows := make([][]string, len(t.Rows))
 	for i, row := range t.Rows {
@@ -48,7 +51,10 @@ func (m *MutableTable) Freeze() Table {
 }
 
 // FreezeView returns an immutable view onto m without copying row storage.
-// Later in-place updates to m are reflected in the returned Table.
+// Later in-place updates to m that modify row values are reflected in
+// the returned Table. Structural changes to m (Rename, AddCol, Drop)
+// are NOT reflected and may make the view inconsistent.
+// Use Freeze() for a fully independent snapshot.
 func (m *MutableTable) FreezeView() Table {
 	return newTable(m.headers, rowsToRowViews(m.headers, m.rows))
 }
