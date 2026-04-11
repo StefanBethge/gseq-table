@@ -461,6 +461,11 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 
 // --- Shape & inspection ---
 
+// Freeze returns t unchanged. It exists so that Table satisfies the same
+// Freezable interface as *MutableTable, allowing both to be used where a
+// Freezable value is expected.
+func (t Table) Freeze() Table { return t }
+
 // Len returns the number of rows.
 func (t Table) Len() int { return len(t.Rows) }
 

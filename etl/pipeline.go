@@ -33,6 +33,21 @@ import (
 	"github.com/stefanbethge/gseq/result"
 )
 
+// TableFunc is a function that transforms an immutable Table.
+// Use it to name and reuse transformation functions:
+//
+//	var dropTest TableFunc = func(t table.Table) table.Table {
+//	    return t.Where(func(r table.Row) bool { return r.Get("env").UnwrapOr("") != "test" })
+//	}
+//	p.Then(dropTest)
+type TableFunc = func(table.Table) table.Table
+
+// Freezable is implemented by both table.Table and *table.MutableTable.
+// It allows constructors like From to accept either type.
+type Freezable interface {
+	Freeze() table.Table
+}
+
 // Pipeline wraps a Result[Table, error] and lets you chain transformations.
 // If any step produces an error, all subsequent steps are skipped and the
 // error is propagated to the final Result.
@@ -43,9 +58,14 @@ type Pipeline struct {
 	trace *[]StepRecord // nil unless WithTracing was called
 }
 
-// From wraps an existing Table in a Pipeline.
-func From(t table.Table) Pipeline {
-	return Pipeline{r: result.Ok[table.Table, error](t)}
+// From wraps a Table (or any Freezable value, e.g. *table.MutableTable) in a
+// Pipeline. If t is already a table.Table, it is used directly; otherwise
+// Freeze() is called to obtain an immutable snapshot.
+//
+//	etl.From(myTable)    // from an immutable Table
+//	etl.From(myMutable)  // from a *MutableTable — calls Freeze() implicitly
+func From[T Freezable](t T) Pipeline {
+	return Pipeline{r: result.Ok[table.Table, error](t.Freeze())}
 }
 
 // FromResult wraps a Result (e.g. from a CSV or Excel reader) in a Pipeline.
