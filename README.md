@@ -572,9 +572,9 @@ schema.MinMaxNorm(t, "score")
 
 ## ETL Pipeline
 
-`etl.Pipeline` wraps a `result.Result[table.Table, error]`. Every method
-returns a new Pipeline; if an error occurs at any step all subsequent steps are
-skipped and the error is forwarded to `Result()`.
+The `etl` package provides two pipeline types and a set of composable
+transformation functions. Pipelines use short-circuit error propagation: once
+an error occurs, all subsequent steps are skipped.
 
 The Pipeline is most useful when starting from an I/O source (`FromResult`) or
 using fallible operations (`TryMap`, `TryTransform`, `ApplySchema`). For pure
@@ -587,33 +587,159 @@ import (
     "github.com/stefanbethge/gseq-table/etl"
     "github.com/stefanbethge/gseq-table/table"
 )
-
-res := etl.FromResult(csv.New().ReadFile("sales.csv")).
-    AssertColumns("revenue", "region").
-    DropEmpty("revenue", "region").
-    FillEmpty("category", "other").
-    Where(func(r table.Row) bool {
-        return r.Get("status").UnwrapOr("") == "closed"
-    }).
-    Map("revenue", func(v string) string { return v + " EUR" }).
-    SortMulti(table.Desc("revenue"), table.Asc("region")).
-    Result()
-
-if res.IsErr() {
-    log.Fatal(res.UnwrapErr())
-}
-t := res.Unwrap()
 ```
 
-### Starting a pipeline
+### Pipeline (immutable)
 
 ```go
-etl.From(t)                                      // from an existing Table
-etl.FromResult(csv.New().ReadFile("data.csv"))   // from a Result
-etl.FromResult(excel.New().ReadFile("data.xlsx")) // from Excel
+// Start from an existing Table or *MutableTable
+etl.From(t)          // from a Table
+etl.From(m)          // from a *MutableTable (calls Freeze() implicitly)
+
+// Start from an I/O source
+etl.FromResult(csv.New().ReadFile("data.csv"))
+etl.FromResult(excel.New().ReadFile("data.xlsx"))
 ```
 
-### Terminal operations
+**Core combinators:**
+
+```go
+// Infallible step — fn always returns a Table
+p.Then(func(t table.Table) table.Table { return t.DropEmpty("id") })
+
+// Fallible step — fn may return an error; if so, all later steps are skipped
+p.ThenErr(func(t table.Table) result.Result[table.Table, error] {
+    return t.TryMap("price", strconv.ParseFloat)
+})
+```
+
+**Convenience short-hands** (factory functions for common operations):
+
+```go
+// Instead of verbose closures, use etl.* factory functions:
+p.Then(etl.Select("name", "city"))
+p.Then(etl.Map("revenue", func(v string) string { return v + " EUR" }))
+p.Then(etl.DropEmpty("id"))
+p.Then(etl.FillEmpty("region", "unknown"))
+p.Then(etl.Sort("name", true))
+p.Then(etl.SortMulti(table.Desc("revenue"), table.Asc("region")))
+p.Then(etl.Join(customers, "customer_id", "id"))
+p.Then(etl.GroupByAgg(groupCols, aggs))
+// ...and all other table operations: Drop, Rename, RenameMany, AddCol,
+// AddColFloat, AddColInt, AddColSwitch, Where, Distinct, Head, Tail,
+// Sample, SampleFrac, Append, LeftJoin, Intersect, AddRowIndex,
+// Explode, Transpose, ValueCounts, Melt, Pivot, TransformRows,
+// RollingAgg, Coalesce, Lookup, FormatCol, Bin, FillForward, FillBackward
+```
+
+**Compose** — chain multiple `TableFunc` values into one reusable step:
+
+```go
+// TableFunc = func(table.Table) table.Table
+normalise := etl.Compose(
+    etl.DropEmpty("id"),
+    etl.FillEmpty("region", "unknown"),
+    etl.Map("name", strings.TrimSpace),
+)
+
+p.Then(normalise)           // apply the composed step
+p.Then(normalise).Then(...) // chain further
+```
+
+**Conditional steps:**
+
+```go
+p.IfThen(dedupEnabled, etl.Distinct())
+p.IfThenErr(validate, func(t table.Table) result.Result[table.Table, error] { ... })
+```
+
+**Error recovery:**
+
+```go
+// Replace error state with a fallback table
+p.ThenErr(enrichFromAPI).RecoverWith(baseTable)
+
+// Custom recovery logic
+p.OnError(func(err error) (table.Table, error) {
+    log.Printf("enrichment failed: %v — using base table", err)
+    return baseTable, nil
+})
+
+// Wrap or transform the error itself
+p.MapErr(func(err error) error {
+    return fmt.Errorf("processing sales.csv: %w", err)
+})
+```
+
+**Multi-source merge:**
+
+```go
+// Stack multiple pipelines vertically — first error wins
+p := etl.ConcatPipelines(
+    etl.FromResult(csv.New().ReadFile("jan.csv")),
+    etl.FromResult(csv.New().ReadFile("feb.csv")),
+    etl.FromResult(csv.New().ReadFile("mar.csv")),
+)
+
+// Or on an existing pipeline
+p.ConcatWith(etl.FromResult(csv.New().ReadFile("apr.csv")))
+```
+
+**Parallel branches (FanOut):**
+
+```go
+branches := p.FanOut(
+    func(t table.Table) table.Table { return t.Where(t.Eq("region", "EU")) },
+    func(t table.Table) table.Table { return t.Where(t.Eq("region", "US")) },
+)
+eu, us := branches[0], branches[1]
+```
+
+**Named reusable transforms:**
+
+```go
+// Package a pipeline-to-pipeline function with a name (useful for tracing)
+normalise := etl.NewTransform("normalise", func(p etl.Pipeline) etl.Pipeline {
+    return p.
+        Then(etl.DropEmpty("id")).
+        Then(etl.FillEmpty("region", "unknown")).
+        Then(etl.Map("name", strings.TrimSpace))
+})
+
+validate := etl.NewTransform("validate", func(p etl.Pipeline) etl.Pipeline {
+    return p.AssertColumns("id", "region").AssertNoEmpty("id")
+})
+
+p.Apply(normalise).Apply(validate).Unwrap()
+```
+
+**Execution tracing:**
+
+```go
+p := etl.FromResult(csv.New().ReadFile("data.csv")).WithTracing()
+
+result := p.
+    Step("filter", func(t table.Table) table.Table { return t.Where(...) }).
+    Step("enrich", func(t table.Table) table.Table { return t.AddCol(...) }).
+    Unwrap()
+
+for _, rec := range p.Trace() {
+    fmt.Printf("%s: %d → %d rows (%v)\n", rec.Name, rec.InputRows, rec.OutputRows, rec.Duration)
+}
+// filter: 10000 → 4200 rows (1.2ms)
+// enrich: 4200 → 4200 rows (0.8ms)
+```
+
+**Schema validation:**
+
+```go
+p.ApplySchema(s)        // normalise cell values, lenient (empty ok)
+p.ApplySchemaStrict(s)  // normalise + error on empty typed cells
+p.AssertColumns("id", "email", "created_at")
+p.AssertNoEmpty("id", "email")
+```
+
+**Terminal operations:**
 
 ```go
 p.Result()  // result.Result[table.Table, error]
@@ -629,29 +755,124 @@ active, rest := p.Partition(t.Eq("status", "active"))
 batches := p.Chunk(100)
 ```
 
+### MutablePipeline (in-place)
+
+`MutablePipeline` avoids intermediate immutable Table allocations — each step
+mutates the same underlying `*MutableTable`. Use `Frozen()` to bridge to an
+immutable `Pipeline` when you need schema validation or joins.
+
+```go
+mp := etl.FromMutable(m).
+    Then(etl.Mut.Map("city", strings.ToUpper)).
+    Then(etl.Mut.DropEmpty("id")).
+    Then(etl.Mut.FillEmpty("region", "unknown")).
+    Then(etl.Mut.Sort("name", true))
+
+if mp.IsErr() {
+    log.Fatal(mp.Result().UnwrapErr())
+}
+
+// Bridge to immutable pipeline for schema validation
+t := mp.Frozen().
+    ApplySchema(s).
+    AssertNoEmpty("id").
+    Unwrap()
+```
+
+**`etl.Mut` namespace** — factory functions for `MutableFunc`:
+
+```go
+etl.Mut.Map("col", fn)
+etl.Mut.Select("a", "b")
+etl.Mut.Drop("tmp")
+etl.Mut.DropEmpty("id")
+etl.Mut.FillEmpty("region", "unknown")
+etl.Mut.FillForward("region")
+etl.Mut.FillBackward("region")
+etl.Mut.Sort("name", true)
+etl.Mut.SortMulti(table.Asc("city"), table.Desc("rev"))
+etl.Mut.Rename("old", "new")
+etl.Mut.RenameMany(map[string]string{"a": "b"})
+etl.Mut.AddCol("label", fn)
+etl.Mut.AddColFloat("ratio", fn)
+etl.Mut.AddColInt("year", fn)
+etl.Mut.AddColSwitch("grade", cases, else_)
+etl.Mut.Where(predFn)
+etl.Mut.Distinct("id")
+etl.Mut.Head(100)
+etl.Mut.Tail(100)
+etl.Mut.Sample(50)
+etl.Mut.SampleFrac(0.1)
+etl.Mut.Append(other)
+etl.Mut.AppendMutable(otherMutable)
+etl.Mut.Join(other, "left_id", "right_id")
+etl.Mut.LeftJoin(other, "left_id", "right_id")
+etl.Mut.RightJoin(other, "left_id", "right_id")
+etl.Mut.OuterJoin(other, "left_id", "right_id")
+etl.Mut.AntiJoin(other, "left_id", "right_id")
+etl.Mut.Intersect(other, "id")
+etl.Mut.Transform(fn)
+etl.Mut.TransformParallel(fn)
+etl.Mut.Explode("tags", ",")
+etl.Mut.Transpose()
+etl.Mut.AddRowIndex("row")
+etl.Mut.ValueCounts("status")
+etl.Mut.Melt(idCols, "var", "val")
+etl.Mut.Pivot("index", "col", "val")
+etl.Mut.GroupByAgg(groupCols, aggs)
+etl.Mut.RollingAgg("avg_3", 3, table.Mean("rev"))  // not yet in Mut, use Then directly
+etl.Mut.Coalesce("display", "nickname", "name")
+etl.Mut.Lookup("id", "name", ref, "id", "name")
+etl.Mut.FormatCol("price", 2)
+etl.Mut.Bin("age", "group", bins)
+```
+
+**MutCompose** — reusable in-place transform:
+
+```go
+// MutableFunc = func(*table.MutableTable) *table.MutableTable
+normalise := etl.MutCompose(
+    etl.Mut.DropEmpty("id"),
+    etl.Mut.FillEmpty("region", "unknown"),
+    etl.Mut.Map("name", strings.TrimSpace),
+)
+
+mp.Then(normalise)
+```
+
+**MutablePipeline — conditional steps and error recovery:**
+
+```go
+mp.IfThen(cond, etl.Mut.Distinct())
+mp.IfThenErr(cond, fn)
+mp.RecoverWith(fallbackMutable)
+mp.OnError(func(err error) (*table.MutableTable, error) { ... })
+mp.MapErr(func(err error) error { return fmt.Errorf("context: %w", err) })
+```
+
+**MutablePipeline tracing:**
+
+```go
+mp := etl.FromMutable(m).WithTracing()
+mp.Step("clean", etl.Mut.DropEmpty("id")).
+   Step("sort", etl.Mut.Sort("name", true))
+for _, rec := range mp.Trace() { fmt.Println(rec) }
+```
+
 ### Pipeline vs direct Table chaining
 
-| | Direct Table chain | Pipeline |
+| | Direct Table chain | Pipeline / MutablePipeline |
 |---|---|---|
 | Error model | Accumulated (`HasErrs()`) | Short-circuit (`Result.IsErr()`) |
 | I/O errors | Handle before chain | Built-in via `FromResult` |
-| Fallible callbacks | `TryMap` returns `Result` | `TryMap` short-circuits pipeline |
-| Best for | Pure transforms | I/O → transform → validate flows |
+| Fallible callbacks | `TryMap` returns `Result` | `ThenErr` short-circuits |
+| Reusable steps | Not composable | `Compose` / `MutCompose` / `Transform` |
+| Tracing | No | `WithTracing` / `Step` / `Trace` |
+| Best for | Pure transforms, simple scripts | I/O → transform → validate, production ETL |
 
 **Note:** Table-level errors (accumulated via `HasErrs()`) are **not** surfaced
 through the Pipeline's `Result` error. When using Pipeline, check both
 `p.IsErr()` for hard errors and `p.Unwrap().HasErrs()` for soft errors.
-
-The pipeline exposes all table operations: `Select`, `Drop`, `Where`, `Map`,
-`AddCol`, `Rename`, `RenameMany`, `Sort`, `SortMulti`, `Join`, `LeftJoin`,
-`RightJoin`, `OuterJoin`, `AntiJoin`, `Append`, `Concat`, `Distinct`,
-`DropEmpty`, `FillEmpty`, `FillForward`, `FillBackward`, `Transform`,
-`TransformParallel`, `MapParallel`, `TryTransform`, `TryMap`, `Head`, `Tail`,
-`Sample`, `SampleFrac`, `AddColSwitch`, `AddColFloat`, `AddColInt`, `Melt`,
-`Pivot`, `Transpose`, `Explode`, `AddRowIndex`, `Coalesce`, `Lookup`,
-`FormatCol`, `Lag`, `Lead`, `CumSum`, `Rank`, `RollingAgg`, `Bin`,
-`Intersect`, `ValueCounts`, `GroupByAgg`, `AssertColumns`, `AssertNoEmpty`,
-`ApplySchema`, `ApplySchemaStrict`, `Peek`, `ForEach`.
 
 ---
 
