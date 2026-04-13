@@ -2,7 +2,7 @@
 
 In-memory data tables for Go — a functional ETL toolkit built on [gseq](https://github.com/stefanbethge/gseq).
 
-All values are strings. `table.Table` is the immutable API; `table.MutableTable` is the opt-in in-place variant for incremental updates.
+All values are strings. `table.Table` is the immutable API; `table.MutableTable` is the opt-in in-place variant with full method chaining.
 
 ---
 
@@ -10,7 +10,7 @@ All values are strings. `table.Table` is the immutable API; `table.MutableTable`
 
 | Package | Module | Purpose |
 |---|---|---|
-| `table` | `gseq-table` | Core `Table` and `Row` types with all transformation operations |
+| `table` | `gseq-table` | Core `Table`, `MutableTable` and `Row` types with all transformation operations |
 | `csv` | `gseq-table` | Read and write CSV files |
 | `etl` | `gseq-table` | Chainable `Pipeline` wrapper with automatic error propagation |
 | `schema` | `gseq-table` | Type inference, validation, typed accessors, and column statistics |
@@ -85,7 +85,52 @@ csv.ToString(t)  // quick string serialisation
 
 ---
 
-## Working with Tables
+## Error handling
+
+Operations on missing columns or invalid inputs never panic — they **accumulate
+errors** on the table and continue executing. Check accumulated errors at the
+end of a chain with `HasErrs()` / `Errs()`:
+
+```go
+result := t.Sort("missing_col", true).Map("also_missing", fn).FillForward("valid_col")
+
+if result.HasErrs() {
+    for _, err := range result.Errs() {
+        log.Println(err)
+        // Sort: unknown column "missing_col"
+        // Map: unknown column "also_missing"
+    }
+}
+```
+
+Both `Table` (immutable) and `MutableTable` (mutable) support error accumulation.
+Errors propagate through `Mutable()` / `MutableView()` / `Freeze()` / `FreezeView()`.
+
+### Dataset source tagging
+
+Attach a dataset name so error messages identify which file caused the problem:
+
+```go
+t = t.WithSource("sales.csv")
+// errors now read: "[sales.csv] Sort: unknown column ..."
+```
+
+`csv.ReadFile` and `excel.ReadFile` set `WithSource` automatically.
+
+### Strict mode
+
+Build with `-tags strict` to make every error-accumulating call **panic
+immediately** with a full stack trace. Useful in development and CI to catch
+typos in column names at the point of the mistake:
+
+```bash
+go test -tags strict ./...
+go build -tags strict ./cmd/myapp
+```
+
+---
+
+## Working with Tables (immutable)
 
 ### Construction
 
@@ -100,18 +145,6 @@ t := table.New(
         {"Carol", "Berlin", "5100"},
     },
 )
-
-// Opt into in-place updates
-m := table.NewMutable(
-    []string{"name", "city"},
-    [][]string{{"Alice", "Berlin"}},
-)
-_ = m.Set(0, "city", "Hamburg")
-t = m.Freeze()
-
-// Zero-copy ownership transfer when you explicitly want shared storage
-fast := t.MutableView()
-t = fast.FreezeView()
 ```
 
 ### Row access
@@ -223,6 +256,8 @@ t.Bin("age", "group", []table.BinDef{
 
 ### Sorting
 
+Sorting is **stable** — equal elements retain their original order.
+
 ```go
 t.Sort("name", true)   // ascending
 t.Sort("date", false)  // descending
@@ -308,11 +343,25 @@ t.TransformParallel(func(r table.Row) map[string]string { ... })
 
 ### Fallible operations
 
+`TryMap` and `TryTransform` stop at the first error returned by the callback
+and return a `result.Result[table.Table, error]`:
+
 ```go
-res := t.TryMap("price", func(v string) (string, error) { ... })
+res := t.TryMap("price", func(v string) (string, error) {
+    f, err := strconv.ParseFloat(v, 64)
+    if err != nil { return "", err }
+    return fmt.Sprintf("%.2f EUR", f), nil
+})
+
 res := t.TryTransform(func(r table.Row) (map[string]string, error) { ... })
-// result.Result[table.Table, error]
+
+if res.IsOk() {
+    t = res.Unwrap()
+}
 ```
+
+If the column itself is missing, the error is accumulated on the Table (not
+returned in the Result), so the chain can continue.
 
 ### Validation
 
@@ -328,6 +377,89 @@ table.AddColOf(t, "sq", squareFn, fmtFn)       // typed column with custom forma
 table.ColAs(t, "age", strconv.ParseInt)          // extract column as []T
 table.MapColTo(t, "name", strings.ToUpper)       // transform column to []T
 ```
+
+---
+
+## MutableTable (in-place updates)
+
+`MutableTable` is the opt-in, pointer-based variant. All mutation methods
+return `*MutableTable` so you can chain calls fluently.
+
+### Construction & conversion
+
+```go
+// From scratch
+m := table.NewMutable(
+    []string{"name", "city"},
+    [][]string{{"Alice", "Berlin"}},
+)
+
+// From an existing Table (deep copy)
+m = t.Mutable()
+
+// Zero-copy view (shared storage — mutations affect the source)
+m = t.MutableView()
+
+// Back to immutable
+t = m.Freeze()      // deep copy
+t = m.FreezeView()  // zero-copy (careful: later mutations to m affect t)
+```
+
+Errors propagate in both directions through `Mutable()`/`MutableView()` and
+`Freeze()`/`FreezeView()`.
+
+### Chaining
+
+Every method returns `*MutableTable`, enabling fluent chains:
+
+```go
+m.Sort("name", true).
+    FillForward("region").
+    Map("revenue", func(v string) string { return v + " EUR" }).
+    DropEmpty("revenue").
+    Rename("revenue", "sales")
+
+if m.HasErrs() {
+    fmt.Println(m.Errs())   // all accumulated errors
+}
+m.ResetErrs()               // clear errors for next chain
+```
+
+### Available methods
+
+MutableTable mirrors the full Table API — every operation listed above is also
+available on `*MutableTable`, modifying in place instead of creating a copy:
+
+**Column ops:** `Select`, `Drop`, `Rename`, `RenameMany`, `AddCol`,
+`AddColFloat`, `AddColInt`, `AddColSwitch`, `AddRowIndex`, `Transpose`
+
+**Row ops:** `Where`, `DropEmpty`, `Distinct`, `Head`, `Tail`, `Sample`,
+`SampleFrac`, `Append`, `AppendMutable`, `AppendRow`
+
+**Cell ops:** `Set`, `Map`, `MapParallel`, `FillEmpty`, `FillForward`,
+`FillBackward`, `FormatCol`, `Transform`, `TransformParallel`, `TryMap`,
+`TryTransform`
+
+**Sorting:** `Sort`, `SortMulti`
+
+**Joining:** `Join`, `LeftJoin`, `RightJoin`, `OuterJoin`, `AntiJoin`
+
+**Aggregation:** `GroupByAgg`, `RollingAgg`, `ValueCounts`
+
+**Reshape:** `Melt`, `Pivot`, `Explode`
+
+**Time series:** `Lag`, `Lead`, `CumSum`, `Rank`
+
+**Set ops:** `Intersect`, `Bin`, `Lookup`, `Coalesce`
+
+**Validation:** `AssertColumns`, `AssertNoEmpty`
+
+**Terminal ops** (return values, not `*MutableTable`):
+`Table`/`Freeze`, `FreezeView`, `GroupBy`, `Partition`, `Chunk`, `ForEach`,
+`Col`, `Headers`, `Len`, `Shape`, `ColIndex`, `Row`
+
+**Predicates:** `Eq`, `Ne`, `Contains`, `Prefix`, `Suffix`, `Matches`,
+`Empty`, `NotEmpty` (use with `Where`, `Partition`, etc.)
 
 ---
 
@@ -355,8 +487,13 @@ schema.Int(row, "age")             // option.Option[int64]
 schema.Float(row, "price")        // option.Option[float64]
 schema.Bool(row, "active")        // option.Option[bool]
 schema.Time(row, "date", "")      // option.Option[time.Time]
+```
 
-// Column arithmetic — variadic, returns func(Row) float64
+### Column arithmetic
+
+All arithmetic functions return `func(Row) float64` for use with `AddColFloat`:
+
+```go
 t.AddColFloat("total",  schema.Add("price", "tax", "shipping"))
 t.AddColFloat("net",    schema.Sub("revenue", "cost", "tax", "fees"))
 t.AddColFloat("volume", schema.Mul("length", "width", "height"))
@@ -371,15 +508,21 @@ t.AddColFloat("lowest", schema.Min2("price_a", "price_b", "price_c"))
 t.AddColFloat("highest",schema.Max2("price_a", "price_b", "price_c"))
 t.AddColFloat("round",  schema.Round("ratio", 2))
 t.AddColFloat("capped", schema.Clamp("score", 0, 100))
+```
 
-// Date arithmetic
+### Date arithmetic
+
+```go
 t.AddColFloat("days",   schema.DateDiffDays("end", "start"))
 t.AddColFloat("months", schema.DateDiffMonths("end", "start"))
 t.AddColFloat("years",  schema.DateDiffYears("end", "start"))
 t.AddCol("due",         schema.DateAddDays("created_at", 30))
 t.AddCol("review",      schema.DateAddMonths("created_at", 6))
+```
 
-// Date extraction
+### Date extraction
+
+```go
 t.AddCol("year",      schema.DateYear("date"))
 t.AddCol("month",     schema.DateMonth("date"))
 t.AddCol("day",       schema.DateDay("date"))
@@ -389,7 +532,7 @@ t.AddCol("weekday",   schema.DateWeekday("date"))        // "Monday", …
 t.AddCol("formatted", schema.DateFormat("date", "02.01.2006"))
 t.AddCol("age",       schema.DateAge("birthday", time.Time{}))  // years until today
 
-// Date truncation & boundaries
+// Truncation & boundaries
 t.AddCol("period",      schema.DateTrunc("date", "month"))      // 2024-03-15 → 2024-03-01
 t.AddCol("month_start", schema.DateStartOfMonth("date"))
 t.AddCol("month_end",   schema.DateEndOfMonth("date"))          // handles Feb 29
@@ -400,18 +543,21 @@ t.Where(schema.DateBetween("event", "period_start", "period_end"))
 // Supported date formats (auto-detected):
 // RFC3339, 2006-01-02, 2006-01-02T15:04:05, 02.01.2006,
 // 01/02/2006, 02 Jan 2006, Jan 02, 2006
+```
 
-// Column statistics
+### Column statistics
+
+```go
 schema.SumCol(t, "revenue")       // float64
 schema.MeanCol(t, "revenue")
 schema.MinCol(t, "price")
 schema.MaxCol(t, "price")
-schema.MedianCol(t, "age")
+schema.MedianCol(t, "age")        // O(n) quickselect
 schema.StdDevCol(t, "revenue")
 schema.CountCol(t, "email")       // non-empty count
 schema.CountWhere(t, "status", "active")
 
-// Summary table
+// Summary table — all stats at once
 schema.Describe(t)
 // column   count  min  max  mean  std  median
 
@@ -429,6 +575,11 @@ schema.MinMaxNorm(t, "score")
 `etl.Pipeline` wraps a `result.Result[table.Table, error]`. Every method
 returns a new Pipeline; if an error occurs at any step all subsequent steps are
 skipped and the error is forwarded to `Result()`.
+
+The Pipeline is most useful when starting from an I/O source (`FromResult`) or
+using fallible operations (`TryMap`, `TryTransform`, `ApplySchema`). For pure
+table-to-table transforms, chaining directly on `Table` is often simpler since
+Table has built-in error accumulation.
 
 ```go
 import (
@@ -478,6 +629,19 @@ active, rest := p.Partition(t.Eq("status", "active"))
 batches := p.Chunk(100)
 ```
 
+### Pipeline vs direct Table chaining
+
+| | Direct Table chain | Pipeline |
+|---|---|---|
+| Error model | Accumulated (`HasErrs()`) | Short-circuit (`Result.IsErr()`) |
+| I/O errors | Handle before chain | Built-in via `FromResult` |
+| Fallible callbacks | `TryMap` returns `Result` | `TryMap` short-circuits pipeline |
+| Best for | Pure transforms | I/O → transform → validate flows |
+
+**Note:** Table-level errors (accumulated via `HasErrs()`) are **not** surfaced
+through the Pipeline's `Result` error. When using Pipeline, check both
+`p.IsErr()` for hard errors and `p.Unwrap().HasErrs()` for soft errors.
+
 The pipeline exposes all table operations: `Select`, `Drop`, `Where`, `Map`,
 `AddCol`, `Rename`, `RenameMany`, `Sort`, `SortMulti`, `Join`, `LeftJoin`,
 `RightJoin`, `OuterJoin`, `AntiJoin`, `Append`, `Concat`, `Distinct`,
@@ -491,6 +655,62 @@ The pipeline exposes all table operations: `Select`, `Drop`, `Where`, `Map`,
 
 ---
 
+## Best practices
+
+### Choose the right table type
+
+- **`Table`** (immutable, value type): Default choice. Safe to branch, share,
+  and pass across goroutines. Every method returns a new Table.
+- **`MutableTable`** (mutable, pointer type): Use when building tables
+  incrementally or when minimising allocations matters. Chain with
+  `.Sort(...).Map(...).FillForward(...)`. Call `Freeze()` when done.
+- **`MutableView` / `FreezeView`**: Zero-copy shortcuts for hot paths where you
+  know ownership is exclusive. Avoid if the source is still used elsewhere.
+
+### Error handling patterns
+
+```go
+// Immutable: check at end of chain
+result := t.Sort("x", true).Map("y", fn).Select("x", "y")
+if result.HasErrs() {
+    log.Println(result.Errs())
+}
+
+// Mutable: check at end of chain
+m.Sort("x", true).Map("y", fn).Select("x", "y")
+if m.HasErrs() {
+    log.Println(m.Errs())
+    m.ResetErrs()
+}
+
+// Strict mode in CI: build with -tags strict to panic on any error
+// go test -tags strict ./...
+```
+
+### Source tagging for multi-file workflows
+
+```go
+sales := csv.New().ReadFile("sales.csv").Unwrap()     // source set automatically
+costs := csv.New().ReadFile("costs.csv").Unwrap()     // source set automatically
+
+merged := sales.Join(costs, "id", "id")
+if merged.HasErrs() {
+    // errors show "[sales.csv] Join: ..." or "[costs.csv] Join: ..."
+}
+```
+
+### Performance tips
+
+- For bulk transforms, prefer `Transform` / `TransformParallel` over multiple
+  `Map` calls — it makes a single pass over all rows.
+- Use `MapParallel` / `TransformParallel` only for expensive per-row work (HTTP
+  calls, heavy computation). For simple string ops, the sequential version is faster.
+- Use `MutableTable` with `MutableView()` / `FreezeView()` to avoid copies in
+  tight loops — but only when you own the data exclusively.
+- `schema.MedianCol` uses O(n) quickselect, not O(n log n) sort.
+
+---
+
 ## Full example
 
 ```go
@@ -501,7 +721,6 @@ import (
     "strings"
 
     "github.com/stefanbethge/gseq-table/csv"
-    "github.com/stefanbethge/gseq-table/etl"
     "github.com/stefanbethge/gseq-table/table"
 )
 
@@ -514,22 +733,52 @@ EU,Widget,2900,closed
 `
 
 func main() {
-    t := etl.FromResult(csv.New().Read(strings.NewReader(data))).
-        Where(func(r table.Row) bool {
-            return r.Get("status").UnwrapOr("") == "closed"
-        }).
+    t := csv.New().Read(strings.NewReader(data)).Unwrap()
+
+    result := t.
+        Where(t.Eq("status", "closed")).
         DropEmpty("revenue").
         Map("revenue", func(v string) string { return v + " USD" }).
-        SortMulti(table.Asc("region"), table.Desc("revenue")).
-        Unwrap()
+        SortMulti(table.Asc("region"), table.Desc("revenue"))
 
-    fmt.Println(t.Headers)
-    for _, row := range t.Rows {
+    if result.HasErrs() {
+        fmt.Println("Errors:", result.Errs())
+        return
+    }
+
+    fmt.Println(result.Headers)
+    for _, row := range result.Rows {
         fmt.Println(row.Values())
     }
 
-    for region, sub := range etl.From(t).GroupBy("region") {
-        fmt.Printf("%s: %d rows\n", region, sub.Unwrap().Len())
+    for region, sub := range result.GroupBy("region") {
+        fmt.Printf("%s: %d rows\n", region, sub.Len())
     }
 }
+```
+
+### Mutable example
+
+```go
+m := table.NewMutable(
+    []string{"name", "city", "score"},
+    [][]string{
+        {"Alice", "Berlin", "85"},
+        {"Bob", "Munich", ""},
+        {"Carol", "Berlin", "92"},
+    },
+)
+
+m.FillEmpty("score", "0").
+    Sort("name", true).
+    AddCol("label", func(r table.Row) string {
+        return r.Get("name").UnwrapOr("") + " (" + r.Get("city").UnwrapOr("") + ")"
+    })
+
+if m.HasErrs() {
+    fmt.Println(m.Errs())
+}
+
+t := m.Freeze()
+fmt.Println(csv.ToString(t))
 ```
