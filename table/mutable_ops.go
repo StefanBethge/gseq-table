@@ -1,6 +1,7 @@
 package table
 
 import (
+	"fmt"
 	"regexp"
 	"runtime"
 	"sort"
@@ -375,7 +376,9 @@ func (m *MutableTable) TryTransform(fn func(Row) (map[string]string, error)) *Mu
 	for i, row := range m.rows {
 		updates, err := fn(NewRow(m.headers, row))
 		if err != nil {
-			m.addErrf("TryTransform: %v", err)
+			// Data error from user-provided function — accumulate without panicking
+			// even in strict builds (strict mode targets programming errors only).
+			m.errs = append(m.errs, fmt.Errorf("TryTransform: %v", err))
 			return m
 		}
 		for col, v := range updates {
@@ -400,7 +403,9 @@ func (m *MutableTable) TryMap(col string, fn func(string) (string, error)) *Muta
 		if idx < len(rows[i]) {
 			newVal, err := fn(rows[i][idx])
 			if err != nil {
-				m.addErrf("TryMap: %v", err)
+				// Data error from user-provided function — accumulate without panicking
+				// even in strict builds (strict mode targets programming errors only).
+				m.errs = append(m.errs, fmt.Errorf("TryMap: %v", err))
 				return m
 			}
 			rows[i][idx] = newVal

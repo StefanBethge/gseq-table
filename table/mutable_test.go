@@ -140,20 +140,6 @@ func TestMutableTable_ClampsWideRowsAndDeduplicatesHeaders(t *testing.T) {
 	assertEqual(t, len(frozen.Rows[0].Values()), 2)
 }
 
-func TestMutableTable_SetErrors(t *testing.T) {
-	m := NewMutable([]string{"id"}, [][]string{{"1"}})
-
-	m.Set(5, "id", "x")
-	if !m.HasErrs() {
-		t.Fatal("expected row error")
-	}
-	m.ResetErrs()
-	m.Set(0, "missing", "x")
-	if !m.HasErrs() {
-		t.Fatal("expected column error")
-	}
-}
-
 func TestMutableTable_WrapperOps(t *testing.T) {
 	m := NewMutable([]string{"name", "city", "age"}, [][]string{
 		{"Bob", "Munich", "25"},

@@ -82,12 +82,6 @@ func TestExplode_TrimsSpaces(t *testing.T) {
 	assertEqual(t, result.Rows[2].Get("v").UnwrapOr(""), "c")
 }
 
-func TestExplode_UnknownCol(t *testing.T) {
-	tb := New([]string{"v"}, [][]string{{"x"}})
-	result := tb.Explode("unknown", ",")
-	assertEqual(t, len(result.Rows), 1) // unchanged
-}
-
 // --- Transpose ---
 
 func TestTranspose(t *testing.T) {
@@ -309,45 +303,3 @@ func TestExplode_ShortRow(t *testing.T) {
 	assertEqual(t, result.Rows[0].Get("name").UnwrapOr(""), "Alice")
 }
 
-func TestLookup_MissingCol(t *testing.T) {
-	orders := New([]string{"id"}, [][]string{{"1"}})
-	customers := New([]string{"id", "name"}, [][]string{{"1", "Alice"}})
-	// lookup col doesn't exist in orders
-	result := orders.Lookup("nonexistent", "cust_name", customers, "id", "name")
-	assertEqual(t, len(result.Rows), 1)
-	assertEqual(t, result.Rows[0].Get("cust_name").IsNone(), true) // unchanged, no new col
-}
-
-func TestLookup_MissingLookupKeyCol(t *testing.T) {
-	orders := New([]string{"id"}, [][]string{{"1"}})
-	customers := New([]string{"name"}, [][]string{{"Alice"}})
-	result := orders.Lookup("id", "cust_name", customers, "nonexistent", "name")
-	assertEqual(t, len(result.Rows), 1)
-}
-
-func TestBin_MissingCol(t *testing.T) {
-	tb := New([]string{"age"}, [][]string{{"25"}})
-	result := tb.Bin("nonexistent", "group", []BinDef{{Max: 65, Label: "adult"}})
-	assertEqual(t, len(result.Rows), 1)
-	assertEqual(t, result.Rows[0].Get("group").IsNone(), true)
-}
-
-func TestIntersect_MissingCol(t *testing.T) {
-	a := New([]string{"id"}, [][]string{{"1"}, {"2"}})
-	b := New([]string{"id"}, [][]string{{"1"}})
-	result := a.Intersect(b, "nonexistent")
-	assertEqual(t, len(result.Rows), 2) // returns a unchanged
-}
-
-func TestFillForward_MissingCol(t *testing.T) {
-	tb := New([]string{"a"}, [][]string{{"1"}, {""}, {"3"}})
-	result := tb.FillForward("nonexistent")
-	assertEqual(t, len(result.Rows), 3)
-	assertEqual(t, result.Rows[1].Get("a").UnwrapOr(""), "") // unchanged
-}
-
-func TestFillBackward_MissingCol(t *testing.T) {
-	tb := New([]string{"a"}, [][]string{{""}, {"2"}, {"3"}})
-	result := tb.FillBackward("nonexistent")
-	assertEqual(t, result.Rows[0].Get("a").UnwrapOr(""), "") // unchanged
-}

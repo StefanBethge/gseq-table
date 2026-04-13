@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"path/filepath"
 
 	"github.com/stefanbethge/gseq-table/table"
 	"github.com/stefanbethge/gseq/result"
@@ -109,13 +110,17 @@ func New(opts ...Option) *Reader {
 
 // ReadFile opens the Excel file at path and parses the configured sheet.
 // Returns Err if the file cannot be opened or the sheet is missing.
+// The basename of path is attached as the table's source name so error
+// messages include "[filename.xlsx] ..." context.
 func (r *Reader) ReadFile(path string) result.Result[table.Table, error] {
 	f, err := excelize.OpenFile(path, r.excelizeOpts()...)
 	if err != nil {
 		return result.Err[table.Table, error](err)
 	}
 	defer f.Close()
-	return r.readFromFile(f)
+	return result.Map(r.readFromFile(f), func(t table.Table) table.Table {
+		return t.WithSource(filepath.Base(path))
+	})
 }
 
 // Read parses Excel data from rd. The entire content is consumed because

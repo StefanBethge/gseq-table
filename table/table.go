@@ -26,10 +26,37 @@
 //	        {"Bob",   "Munich"},
 //	    },
 //	)
+//
+// # Error handling
+//
+// Operations on invalid columns or out-of-range indices accumulate errors
+// silently rather than panicking. Call Errs() or HasErrs() to inspect them:
+//
+//	t := t.Select("nonexistent") // bad column — adds error
+//	if t.HasErrs() {
+//	    log.Println(t.Errs())
+//	}
+//
+// Attach a dataset name with WithSource so error messages identify which
+// file or dataset caused the problem:
+//
+//	t = t.WithSource("sales.csv")
+//	// errors now read: "[sales.csv] Select: unknown column ..."
+//
+// csv.ReadFile and excel.ReadFile call WithSource automatically.
+//
+// # Strict mode
+//
+// Build with -tags strict to make every error-accumulating call panic
+// immediately with a full stack trace. This is useful in development and CI
+// to surface programming errors (typos in column names, etc.) at the point
+// of the mistake rather than silently carrying them forward:
+//
+//	go test -tags strict ./...
+//	go build -tags strict ./cmd/myapp
 package table
 
 import (
-	"fmt"
 	"sort"
 	"strconv"
 
@@ -110,6 +137,7 @@ type Table struct {
 	Rows      slice.Slice[Row]
 	headerIdx map[string]int
 	errs      []error
+	source    string
 }
 
 // newTable is the internal constructor. It builds the header index once so all
@@ -135,16 +163,7 @@ func newTable(headers slice.Slice[string], rows slice.Slice[Row]) Table {
 func newTableFrom(source Table, headers slice.Slice[string], rows slice.Slice[Row]) Table {
 	t := newTable(headers, rows)
 	t.errs = source.errs
-	return t
-}
-
-// withErrf returns a shallow copy of t with an additional error appended.
-// The original t is not modified (Table is a value type).
-func (t Table) withErrf(format string, args ...any) Table {
-	errs := make([]error, len(t.errs)+1)
-	copy(errs, t.errs)
-	errs[len(t.errs)] = fmt.Errorf(format, args...)
-	t.errs = errs
+	t.source = source.source
 	return t
 }
 
@@ -153,6 +172,15 @@ func (t Table) Errs() []error { return t.errs }
 
 // HasErrs reports whether any errors have been accumulated.
 func (t Table) HasErrs() bool { return len(t.errs) > 0 }
+
+// WithSource attaches a dataset name to the table. The name is prepended
+// to every subsequent error message as "[name] operation: detail", making it
+// easy to trace which dataset caused an error in multi-source pipelines.
+// csv.ReadFile and excel.ReadFile set this automatically to filepath.Base(path).
+func (t Table) WithSource(name string) Table { t.source = name; return t }
+
+// Source returns the dataset name set by WithSource, or "" if none was set.
+func (t Table) Source() string { return t.source }
 
 // New builds a Table from a header slice and a slice of raw string records.
 // Each record in records becomes one Row; short records are padded with empty
@@ -460,6 +488,11 @@ func (t Table) Join(other Table, leftCol, rightCol string) Table {
 }
 
 // --- Shape & inspection ---
+
+// Freeze returns t unchanged. It exists so that Table satisfies the same
+// Freezable interface as *MutableTable, allowing both to be used where a
+// Freezable value is expected.
+func (t Table) Freeze() Table { return t }
 
 // Len returns the number of rows.
 func (t Table) Len() int { return len(t.Rows) }
@@ -881,6 +914,7 @@ func (t Table) ValueCounts(col string) Table {
 	}
 	result := New(headers, records)
 	result.errs = t.errs
+	result.source = t.source
 	return result
 }
 
@@ -950,6 +984,7 @@ func (t Table) Melt(idCols []string, varName, valName string) Table {
 	}
 	result := New(newHeaders, records)
 	result.errs = t.errs
+	result.source = t.source
 	return result
 }
 
@@ -1038,5 +1073,6 @@ func (t Table) Pivot(index, col, val string) Table {
 	}
 	result := New(newHeaders, records)
 	result.errs = t.errs
+	result.source = t.source
 	return result
 }

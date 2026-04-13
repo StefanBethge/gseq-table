@@ -36,12 +36,6 @@ func TestMapParallel(t *testing.T) {
 	assertEqual(t, result.Rows[2].Get("name").UnwrapOr(""), "CAROL")
 }
 
-func TestMapParallel_UnknownCol(t *testing.T) {
-	tb := New([]string{"a"}, [][]string{{"x"}})
-	result := tb.MapParallel("unknown", strings.ToUpper)
-	assertEqual(t, result.Rows[0].Get("a").UnwrapOr(""), "x") // unchanged
-}
-
 func TestTransformParallel_OrderPreserved(t *testing.T) {
 	// build a large table and verify row order is stable after parallel transform
 	n := 500

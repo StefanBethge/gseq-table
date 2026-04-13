@@ -43,53 +43,67 @@ func TestFromResult_Err(t *testing.T) {
 	assertEqual(t, p.IsErr(), true)
 }
 
-func TestPipeline_Where(t *testing.T) {
-	p := From(makeTable()).Where(func(r table.Row) bool {
-		return r.Get("city").UnwrapOr("") == "Berlin"
+func TestPipeline_Then_Where(t *testing.T) {
+	p := From(makeTable()).Then(func(tb table.Table) table.Table {
+		return tb.Where(func(r table.Row) bool {
+			return r.Get("city").UnwrapOr("") == "Berlin"
+		})
 	})
 	assertEqual(t, p.IsOk(), true)
 	assertEqual(t, len(p.Unwrap().Rows), 2)
 }
 
-func TestPipeline_Select(t *testing.T) {
-	p := From(makeTable()).Select("name", "city")
+func TestPipeline_Then_Select(t *testing.T) {
+	p := From(makeTable()).Then(func(tb table.Table) table.Table {
+		return tb.Select("name", "city")
+	})
 	tb := p.Unwrap()
 	assertEqual(t, len(tb.Headers), 2)
 	assertEqual(t, tb.Rows[0].Get("age").IsNone(), true)
 }
 
-func TestPipeline_Map(t *testing.T) {
-	p := From(makeTable()).Map("city", func(v string) string { return "DE-" + v })
+func TestPipeline_Then_Map(t *testing.T) {
+	p := From(makeTable()).Then(func(tb table.Table) table.Table {
+		return tb.Map("city", func(v string) string { return "DE-" + v })
+	})
 	assertEqual(t, p.Unwrap().Rows[0].Get("city").UnwrapOr(""), "DE-Berlin")
 }
 
-func TestPipeline_AddCol(t *testing.T) {
-	p := From(makeTable()).AddCol("tag", func(r table.Row) string {
-		return r.Get("name").UnwrapOr("") + "_" + r.Get("city").UnwrapOr("")
+func TestPipeline_Then_AddCol(t *testing.T) {
+	p := From(makeTable()).Then(func(tb table.Table) table.Table {
+		return tb.AddCol("tag", func(r table.Row) string {
+			return r.Get("name").UnwrapOr("") + "_" + r.Get("city").UnwrapOr("")
+		})
 	})
 	tb := p.Unwrap()
 	assertEqual(t, len(tb.Headers), 4)
 	assertEqual(t, tb.Rows[0].Get("tag").UnwrapOr(""), "Alice_Berlin")
 }
 
-func TestPipeline_Sort(t *testing.T) {
-	p := From(makeTable()).Sort("name", true)
+func TestPipeline_Then_Sort(t *testing.T) {
+	p := From(makeTable()).Then(func(tb table.Table) table.Table {
+		return tb.Sort("name", true)
+	})
 	rows := p.Unwrap().Rows
 	assertEqual(t, rows[0].Get("name").UnwrapOr(""), "Alice")
 	assertEqual(t, rows[2].Get("name").UnwrapOr(""), "Carol")
 }
 
-func TestPipeline_Rename(t *testing.T) {
-	p := From(makeTable()).Rename("city", "location")
+func TestPipeline_Then_Rename(t *testing.T) {
+	p := From(makeTable()).Then(func(tb table.Table) table.Table {
+		return tb.Rename("city", "location")
+	})
 	assertEqual(t, p.Unwrap().Headers[1], "location")
 }
 
-func TestPipeline_Join(t *testing.T) {
+func TestPipeline_Then_Join(t *testing.T) {
 	cities := table.New(
 		[]string{"city", "country"},
 		[][]string{{"Berlin", "DE"}, {"Munich", "DE"}},
 	)
-	p := From(makeTable()).Join(cities, "city", "city")
+	p := From(makeTable()).Then(func(tb table.Table) table.Table {
+		return tb.Join(cities, "city", "city")
+	})
 	tb := p.Unwrap()
 	assertEqual(t, len(tb.Rows), 3) // Carol@Berlin also matches
 	assertEqual(t, tb.Rows[0].Get("country").UnwrapOr(""), "DE")
@@ -112,14 +126,13 @@ func TestPipeline_GroupBy_ErrorForwarded(t *testing.T) {
 func TestPipeline_ErrorPropagation(t *testing.T) {
 	// error from CSV reader should short-circuit all chained ops
 	p := FromResult(gcsv.New().Read(strings.NewReader("a,\"b\nc"))).
-		Where(func(r table.Row) bool { return true }).
-		Select("a").
-		Map("a", func(v string) string { return v + "!" })
+		Then(func(tb table.Table) table.Table { return tb.Where(func(r table.Row) bool { return true }) }).
+		Then(func(tb table.Table) table.Table { return tb.Select("a") }).
+		Then(func(tb table.Table) table.Table { return tb.Map("a", func(v string) string { return v + "!" }) })
 	assertEqual(t, p.IsErr(), true)
 }
 
 func TestPipeline_FullChain(t *testing.T) {
-	// simulate: load CSV → filter → select → map → add col → sort
 	const data = `name,city,score
 Alice,Berlin,80
 Bob,Munich,90
@@ -127,14 +140,22 @@ Carol,Berlin,70
 Dave,Hamburg,85
 `
 	p := FromResult(gcsv.New().Read(strings.NewReader(data))).
-		Where(func(r table.Row) bool {
-			return r.Get("city").UnwrapOr("") != "Hamburg"
+		Then(func(tb table.Table) table.Table {
+			return tb.Where(func(r table.Row) bool {
+				return r.Get("city").UnwrapOr("") != "Hamburg"
+			})
 		}).
-		Map("score", func(v string) string { return v + "pts" }).
-		AddCol("summary", func(r table.Row) string {
-			return r.Get("name").UnwrapOr("") + ":" + r.Get("score").UnwrapOr("")
+		Then(func(tb table.Table) table.Table {
+			return tb.Map("score", func(v string) string { return v + "pts" })
 		}).
-		Sort("name", true)
+		Then(func(tb table.Table) table.Table {
+			return tb.AddCol("summary", func(r table.Row) string {
+				return r.Get("name").UnwrapOr("") + ":" + r.Get("score").UnwrapOr("")
+			})
+		}).
+		Then(func(tb table.Table) table.Table {
+			return tb.Sort("name", true)
+		})
 
 	assertEqual(t, p.IsOk(), true)
 	tb := p.Unwrap()
@@ -142,4 +163,32 @@ Dave,Hamburg,85
 	assertEqual(t, tb.Rows[0].Get("name").UnwrapOr(""), "Alice")
 	assertEqual(t, tb.Rows[0].Get("score").UnwrapOr(""), "80pts")
 	assertEqual(t, tb.Rows[0].Get("summary").UnwrapOr(""), "Alice:80pts")
+}
+
+func TestPipeline_AssertColumns(t *testing.T) {
+	p := From(makeTable()).AssertColumns("name", "city")
+	assertEqual(t, p.IsOk(), true)
+
+	pErr := From(makeTable()).AssertColumns("name", "missing")
+	assertEqual(t, pErr.IsErr(), true)
+}
+
+func TestPipeline_AssertNoEmpty(t *testing.T) {
+	p := From(makeTable()).AssertNoEmpty("name")
+	assertEqual(t, p.IsOk(), true)
+
+	sparse := table.New(
+		[]string{"name", "city"},
+		[][]string{{"Alice", ""}, {"", "Berlin"}},
+	)
+	pErr := From(sparse).AssertNoEmpty("city")
+	assertEqual(t, pErr.IsErr(), true)
+}
+
+func TestPipeline_Peek(t *testing.T) {
+	var seen int
+	_ = From(makeTable()).Peek(func(tb table.Table) {
+		seen = tb.Len()
+	}).Unwrap()
+	assertEqual(t, seen, 3)
 }
