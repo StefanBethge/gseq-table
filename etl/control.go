@@ -36,7 +36,7 @@ func (p Pipeline) RecoverWith(fallback table.Table) Pipeline {
 	if p.r.IsOk() {
 		return p
 	}
-	return Pipeline{r: result.Ok[table.Table, error](fallback), trace: p.trace}
+	return Pipeline{r: result.Ok[table.Table, error](fallback), trace: p.trace, errLog: p.errLog}
 }
 
 // OnError calls fn with the current error. fn may return a recovered Table
@@ -53,9 +53,9 @@ func (p Pipeline) OnError(fn func(error) (table.Table, error)) Pipeline {
 	}
 	t, err := fn(p.r.UnwrapErr())
 	if err != nil {
-		return Pipeline{r: result.Err[table.Table, error](err), trace: p.trace}
+		return Pipeline{r: result.Err[table.Table, error](err), trace: p.trace, errLog: p.errLog}
 	}
-	return Pipeline{r: result.Ok[table.Table, error](t), trace: p.trace}
+	return Pipeline{r: result.Ok[table.Table, error](t), trace: p.trace, errLog: p.errLog}
 }
 
 // MapErr transforms the error value, leaving ok pipelines unchanged. Use this
@@ -63,5 +63,5 @@ func (p Pipeline) OnError(fn func(error) (table.Table, error)) Pipeline {
 //
 //	p.MapErr(func(err error) error { return fmt.Errorf("processing sales.csv: %w", err) })
 func (p Pipeline) MapErr(fn func(error) error) Pipeline {
-	return Pipeline{r: result.MapErr(p.r, fn), trace: p.trace}
+	return Pipeline{r: result.MapErr(p.r, fn), trace: p.trace, errLog: p.errLog}
 }

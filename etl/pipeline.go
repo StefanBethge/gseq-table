@@ -78,8 +78,9 @@ type Freezable interface {
 //
 // The zero value is not useful; use From or FromResult to construct a Pipeline.
 type Pipeline struct {
-	r     result.Result[table.Table, error]
-	trace *[]StepRecord // nil unless WithTracing was called
+	r      result.Result[table.Table, error]
+	trace  *[]StepRecord // nil unless WithTracing was called
+	errLog *ErrorLog     // nil = strict mode; set via WithErrorLog
 }
 
 // From wraps a Table (or any Freezable value, e.g. *table.MutableTable) in a
@@ -97,6 +98,16 @@ func FromResult(r result.Result[table.Table, error]) Pipeline {
 	return Pipeline{r: r}
 }
 
+// WithErrorLog attaches an ErrorLog to the pipeline. When attached:
+//   - TryMap and TryTransform filter bad rows instead of short-circuiting
+//   - Each rejected row is logged with source, step name, row index, error, and original values
+//   - Hard errors (missing columns, I/O failures) still short-circuit as before
+//
+// Check the log after Unwrap() with log.HasErrors() / log.Entries() / log.ToTable().
+func (p Pipeline) WithErrorLog(log *ErrorLog) Pipeline {
+	return Pipeline{r: p.r, trace: p.trace, errLog: log}
+}
+
 // ─── Core combinators ─────────────────────────────────────────────────────────
 
 // Then applies an infallible transformation to the Table.
@@ -104,7 +115,7 @@ func FromResult(r result.Result[table.Table, error]) Pipeline {
 //
 //	p.Then(func(t table.Table) table.Table { return t.Where(t.Eq("active", "true")) })
 func (p Pipeline) Then(fn func(table.Table) table.Table) Pipeline {
-	return Pipeline{r: result.Map(p.r, fn), trace: p.trace}
+	return Pipeline{r: result.Map(p.r, fn), trace: p.trace, errLog: p.errLog}
 }
 
 // ThenErr applies a fallible transformation to the Table.
@@ -115,7 +126,51 @@ func (p Pipeline) Then(fn func(table.Table) table.Table) Pipeline {
 //	    return t.TryMap("price", strconv.ParseFloat)
 //	})
 func (p Pipeline) ThenErr(fn func(table.Table) result.Result[table.Table, error]) Pipeline {
-	return Pipeline{r: result.FlatMap(p.r, fn), trace: p.trace}
+	return Pipeline{r: result.FlatMap(p.r, fn), trace: p.trace, errLog: p.errLog}
+}
+
+// TryMap applies a fallible single-column transformation.
+//
+// Without an ErrorLog: the first row error short-circuits the pipeline.
+// With an ErrorLog (via WithErrorLog): rows that fail are filtered out and
+// logged with their original values; the pipeline continues with remaining rows.
+//
+//	// strict (short-circuit on first error):
+//	p.TryMap("price", func(v string) (string, error) { ... })
+//
+//	// lax (filter bad rows, continue):
+//	log := etl.NewErrorLog()
+//	p.WithErrorLog(log).TryMap("price", func(v string) (string, error) { ... })
+func (p Pipeline) TryMap(col string, fn func(string) (string, error)) Pipeline {
+	if p.errLog != nil {
+		log := p.errLog
+		return p.ThenErr(func(t table.Table) result.Result[table.Table, error] {
+			out, err := laxTryMap(t, col, "TryMap("+col+")", fn, log)
+			if err != nil {
+				return result.Err[table.Table, error](err)
+			}
+			return result.Ok[table.Table, error](out)
+		})
+	}
+	return p.ThenErr(func(t table.Table) result.Result[table.Table, error] {
+		return t.TryMap(col, fn)
+	})
+}
+
+// TryTransform applies a fallible row transformation.
+//
+// Without an ErrorLog: the first row error short-circuits the pipeline.
+// With an ErrorLog: rows that fail are filtered out and logged; the pipeline continues.
+func (p Pipeline) TryTransform(fn func(table.Row) (map[string]string, error)) Pipeline {
+	if p.errLog != nil {
+		log := p.errLog
+		return p.Then(func(t table.Table) table.Table {
+			return laxTryTransform(t, "TryTransform", fn, log)
+		})
+	}
+	return p.ThenErr(func(t table.Table) result.Result[table.Table, error] {
+		return t.TryTransform(fn)
+	})
 }
 
 // ─── Schema integration ───────────────────────────────────────────────────────
@@ -205,7 +260,7 @@ func (p Pipeline) GroupBy(col string) map[string]Pipeline {
 	groups := p.r.Unwrap().GroupBy(col)
 	out := make(map[string]Pipeline, len(groups))
 	for k, t := range groups {
-		out[k] = From(t)
+		out[k] = Pipeline{r: result.Ok[table.Table, error](t.Freeze()), trace: p.trace, errLog: p.errLog}
 	}
 	return out
 }
@@ -217,7 +272,9 @@ func (p Pipeline) Partition(fn func(table.Row) bool) (matched, rest Pipeline) {
 		return p, p
 	}
 	m, r := p.r.Unwrap().Partition(fn)
-	return From(m), From(r)
+	mp := Pipeline{r: result.Ok[table.Table, error](m), trace: p.trace, errLog: p.errLog}
+	rp := Pipeline{r: result.Ok[table.Table, error](r), trace: p.trace, errLog: p.errLog}
+	return mp, rp
 }
 
 // Chunk is a terminal that splits the pipeline result into n-row batches.
@@ -229,7 +286,7 @@ func (p Pipeline) Chunk(n int) []Pipeline {
 	chunks := p.r.Unwrap().Chunk(n)
 	out := make([]Pipeline, len(chunks))
 	for i, c := range chunks {
-		out[i] = From(c)
+		out[i] = Pipeline{r: result.Ok[table.Table, error](c), trace: p.trace, errLog: p.errLog}
 	}
 	return out
 }

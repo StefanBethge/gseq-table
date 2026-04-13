@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/stefanbethge/gseq-table/table"
+	"github.com/stefanbethge/gseq/result"
 )
 
 // ─── Multi-source merge ───────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ func ConcatPipelines(pipelines ...Pipeline) Pipeline {
 	tables := make([]table.Table, 0, len(pipelines))
 	for _, p := range pipelines {
 		if p.r.IsErr() {
-			return Pipeline{r: p.r}
+			return Pipeline{r: p.r, errLog: p.errLog}
 		}
 		tables = append(tables, p.r.Unwrap())
 	}
@@ -62,7 +63,7 @@ func (p Pipeline) FanOut(fns ...func(table.Table) table.Table) []Pipeline {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			out[i] = From(fn(t))
+			out[i] = Pipeline{r: result.Ok[table.Table, error](fn(t)), trace: p.trace, errLog: p.errLog}
 		}()
 	}
 	wg.Wait()

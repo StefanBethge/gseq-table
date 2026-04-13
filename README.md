@@ -15,10 +15,13 @@ All values are strings. `table.Table` is the immutable API; `table.MutableTable`
 | `etl` | `gseq-table` | Chainable `Pipeline` wrapper with automatic error propagation |
 | `schema` | `gseq-table` | Type inference, validation, typed accessors, and column statistics |
 | `excel` | `gseq-table/excel` | Read Excel (.xlsx) files — **separate module** to avoid pulling in excelize |
+| `examples` | `gseq-table/examples` | Runnable example programs — **separate module** |
 
 ```bash
 go get github.com/stefanbethge/gseq-table@latest        # table, csv, etl, schema
 go get github.com/stefanbethge/gseq-table/excel@latest   # excel reader (adds excelize dependency)
+# examples: clone the repo and run directly
+# git clone https://github.com/stefanbethge/gseq-table && cd gseq-table/examples && go run ./01_basic_table
 ```
 
 ---
@@ -753,6 +756,110 @@ for region, sub := range p.GroupBy("region") {
 }
 active, rest := p.Partition(t.Eq("status", "active"))
 batches := p.Chunk(100)
+```
+
+### Pipeline error log — lax mode for row-level failures
+
+By default, `TryMap` and `TryTransform` short-circuit on the first row error
+(strict mode). Attach an `ErrorLog` with `WithErrorLog` to switch to **lax
+mode**: bad rows are filtered out and logged with full context; the pipeline
+continues with the remaining rows.
+
+Hard errors (I/O failures, missing columns via `AssertColumns`) always
+short-circuit — even in lax mode.
+
+```go
+log := etl.NewErrorLog()
+
+processed := etl.FromResult(csv.New().ReadFile("orders.csv")).
+    WithErrorLog(log).                         // switch to lax mode
+    AssertColumns("order_id", "price", "qty"). // hard check — still short-circuits
+    TryMap("price", func(v string) (string, error) {
+        if _, err := strconv.ParseFloat(v, 64); err != nil {
+            return "", fmt.Errorf("invalid price %q", v)
+        }
+        return v, nil
+    }).
+    TryMap("qty", func(v string) (string, error) {
+        n, err := strconv.Atoi(v)
+        if err != nil {
+            return "", fmt.Errorf("invalid qty %q", v)
+        }
+        if n < 0 {
+            return "", fmt.Errorf("qty must be >= 0, got %d", n)
+        }
+        return v, nil
+    }).
+    Unwrap() // ok even if rows were rejected — errors are in the log
+
+fmt.Printf("Good rows: %d  Rejected: %d\n", processed.Len(), log.Len())
+
+if log.HasErrors() {
+    for _, e := range log.Entries() {
+        fmt.Printf("  [%s] row %d — %s — %v\n", e.Source, e.Row, e.Step, e.Err)
+    }
+}
+```
+
+**`log.ToTable()` — rejected rows as a Table for CSV export:**
+
+```go
+rejected := log.ToTable()
+csv.NewWriter().WriteFile("rejected.csv", rejected)
+```
+
+The rejected table has the following columns:
+
+| Column | Description |
+|---|---|
+| `_source` | Dataset name (from `t.WithSource(...)`) |
+| `_step` | Pipeline step that rejected the row (e.g. `TryMap(price)`) |
+| `_row` | Zero-based row index in the source table |
+| `_error` | Error message string |
+| *(original cols)* | All columns from the original row before any transformation |
+
+**`TryTransform` for multi-field validation:**
+
+```go
+log := etl.NewErrorLog()
+
+result := etl.FromResult(csv.New().ReadFile("orders.csv")).
+    WithErrorLog(log).
+    TryTransform(func(r table.Row) (map[string]string, error) {
+        price, err := strconv.ParseFloat(r.Get("price").UnwrapOr(""), 64)
+        if err != nil {
+            return nil, fmt.Errorf("bad price %q", r.Get("price").UnwrapOr(""))
+        }
+        qty, err := strconv.Atoi(r.Get("qty").UnwrapOr(""))
+        if err != nil {
+            return nil, fmt.Errorf("bad qty %q", r.Get("qty").UnwrapOr(""))
+        }
+        return map[string]string{
+            "price": fmt.Sprintf("%.2f", price),
+            "qty":   fmt.Sprintf("%d", qty),
+            "total": fmt.Sprintf("%.2f", price*float64(qty)),
+        }, nil
+    }).
+    Unwrap()
+```
+
+**Strict vs lax:**
+
+| | Strict (default) | Lax (`WithErrorLog`) |
+|---|---|---|
+| First bad row | Short-circuits pipeline | Filtered out, logged |
+| `Result().IsErr()` | `true` | `false` (unless hard error) |
+| Hard errors | Short-circuits | Still short-circuits |
+| Inspect failures | `result.UnwrapErr()` | `log.Entries()` / `log.ToTable()` |
+
+**Source tagging** — use `t.WithSource("orders.csv")` so every `ErrorEntry`
+carries the dataset name in `entry.Source`. `csv.ReadFile` and
+`excel.ReadFile` call this automatically.
+
+```go
+t = csv.New().Read(r).Unwrap().WithSource("orders.csv")
+etl.From(t).WithErrorLog(log). ...
+// log.Entries()[0].Source == "orders.csv"
 ```
 
 ### MutablePipeline (in-place)

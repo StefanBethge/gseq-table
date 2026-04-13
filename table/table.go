@@ -173,6 +173,26 @@ func (t Table) Errs() []error { return t.errs }
 // HasErrs reports whether any errors have been accumulated.
 func (t Table) HasErrs() bool { return len(t.errs) > 0 }
 
+// CopyErrsFrom returns t with accumulated errors from src prepended to its own.
+// Use this to preserve the error state of a source table when building a new
+// Table from a subset of its rows (e.g. in custom pipeline steps).
+func (t Table) CopyErrsFrom(src Table) Table {
+	if len(src.errs) == 0 {
+		if t.source == "" {
+			t.source = src.source
+		}
+		return t
+	}
+	merged := make([]error, len(src.errs)+len(t.errs))
+	copy(merged, src.errs)
+	copy(merged[len(src.errs):], t.errs)
+	t.errs = merged
+	if t.source == "" {
+		t.source = src.source
+	}
+	return t
+}
+
 // WithSource attaches a dataset name to the table. The name is prepended
 // to every subsequent error message as "[name] operation: detail", making it
 // easy to trace which dataset caused an error in multi-source pipelines.

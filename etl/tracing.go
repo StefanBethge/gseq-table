@@ -29,7 +29,7 @@ type StepRecord struct {
 //	fmt.Println(p.Trace()) // [{filter 1000 420 ...} {enrich 420 420 ...}]
 func (p Pipeline) WithTracing() Pipeline {
 	buf := make([]StepRecord, 0, 8)
-	return Pipeline{r: p.r, trace: &buf}
+	return Pipeline{r: p.r, trace: &buf, errLog: p.errLog}
 }
 
 // Step applies fn to the Table and records a StepRecord in the trace buffer
@@ -52,7 +52,7 @@ func (p Pipeline) Step(name string, fn func(table.Table) table.Table) Pipeline {
 		OutputRows: out.Len(),
 		Duration:   duration,
 	})
-	return Pipeline{r: result.Ok[table.Table, error](out), trace: p.trace}
+	return Pipeline{r: result.Ok[table.Table, error](out), trace: p.trace, errLog: p.errLog}
 }
 
 // Trace returns all StepRecords collected since WithTracing was called.
