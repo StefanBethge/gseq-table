@@ -3,8 +3,8 @@ module github.com/stefanbethge/gseq-table/excel
 go 1.23
 
 require (
-	github.com/stefanbethge/gseq v0.2.0
-	github.com/stefanbethge/gseq-table v0.2.0
+	github.com/stefanbethge/gseq v1.0.0
+	github.com/stefanbethge/gseq-table v1.0.0
 	github.com/xuri/excelize/v2 v2.9.0
 )
 
