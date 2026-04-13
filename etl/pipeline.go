@@ -11,13 +11,37 @@
 //	p := etl.From(t)
 //	p := etl.FromResult(csv.New().ReadFile("sales.csv"))
 //
-// # Chaining operations
+// # Chaining operations with closures
 //
 //	result := etl.FromResult(csv.New().ReadFile("sales.csv")).
 //	    Then(func(t table.Table) table.Table { return t.DropEmpty("revenue") }).
 //	    Then(func(t table.Table) table.Table { return t.FillEmpty("region", "unknown") }).
 //	    ThenErr(schema.Infer(refTable).Apply).
 //	    Result()
+//
+// # Chaining with ops factories (shorter form)
+//
+// The etl/ops.go file provides package-level TableFunc factory functions for
+// every table.Table method. Use them to eliminate anonymous closure boilerplate:
+//
+//	result := etl.FromResult(csv.New().ReadFile("sales.csv")).
+//	    Then(etl.DropEmpty("revenue")).
+//	    Then(etl.FillEmpty("region", "unknown")).
+//	    Then(etl.Select("name", "region", "revenue")).
+//	    ThenErr(schema.Infer(refTable).Apply).
+//	    Result()
+//
+// # MutablePipeline for in-place transforms
+//
+// MutablePipeline mirrors Pipeline but operates on *table.MutableTable.
+// Use etl.Mut.Method(...) factory methods to avoid closures:
+//
+//	m := etl.FromMutable(raw).
+//	    Then(etl.Mut.Map("city", strings.ToUpper)).
+//	    Then(etl.Mut.DropEmpty("id")).
+//	    Frozen(). // → immutable Pipeline
+//	    Then(etl.Select("id", "city")).
+//	    Unwrap()
 //
 // # Terminal operations
 //

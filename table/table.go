@@ -26,6 +26,34 @@
 //	        {"Bob",   "Munich"},
 //	    },
 //	)
+//
+// # Error handling
+//
+// Operations on invalid columns or out-of-range indices accumulate errors
+// silently rather than panicking. Call Errs() or HasErrs() to inspect them:
+//
+//	t := t.Select("nonexistent") // bad column — adds error
+//	if t.HasErrs() {
+//	    log.Println(t.Errs())
+//	}
+//
+// Attach a dataset name with WithSource so error messages identify which
+// file or dataset caused the problem:
+//
+//	t = t.WithSource("sales.csv")
+//	// errors now read: "[sales.csv] Select: unknown column ..."
+//
+// csv.ReadFile and excel.ReadFile call WithSource automatically.
+//
+// # Strict mode
+//
+// Build with -tags strict to make every error-accumulating call panic
+// immediately with a full stack trace. This is useful in development and CI
+// to surface programming errors (typos in column names, etc.) at the point
+// of the mistake rather than silently carrying them forward:
+//
+//	go test -tags strict ./...
+//	go build -tags strict ./cmd/myapp
 package table
 
 import (
