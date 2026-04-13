@@ -24,6 +24,7 @@ import (
 	"io"
 	"iter"
 	"os"
+	"path/filepath"
 
 	"github.com/stefanbethge/gseq-table/table"
 	"github.com/stefanbethge/gseq/result"
@@ -85,13 +86,17 @@ func New(opts ...Option) *Reader {
 
 // ReadFile opens the file at path and parses it as CSV.
 // Returns Err if the file cannot be opened or the CSV is malformed.
+// The basename of path is attached as the table's source name so error
+// messages include "[filename.csv] ..." context.
 func (r *Reader) ReadFile(path string) result.Result[table.Table, error] {
 	f, err := os.Open(path)
 	if err != nil {
 		return result.Err[table.Table, error](err)
 	}
 	defer f.Close()
-	return r.Read(f)
+	return result.Map(r.Read(f), func(t table.Table) table.Table {
+		return t.WithSource(filepath.Base(path))
+	})
 }
 
 

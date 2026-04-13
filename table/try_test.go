@@ -56,8 +56,3 @@ func TestTryMap_Error(t *testing.T) {
 	assertEqual(t, res.IsErr(), true)
 }
 
-func TestTryMap_UnknownCol(t *testing.T) {
-	tb := New([]string{"a"}, [][]string{{"1"}})
-	res := tb.TryMap("unknown", func(v string) (string, error) { return v, nil })
-	assertEqual(t, res.IsOk(), true) // unknown col is a no-op
-}

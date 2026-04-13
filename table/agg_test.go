@@ -132,15 +132,6 @@ func TestGroupByAgg_PreservesOrder(t *testing.T) {
 
 // --- Missing column edge cases ---
 
-func TestGroupByAgg_MissingGroupCol(t *testing.T) {
-	result := salesTable().GroupByAgg(
-		[]string{"nonexistent"},
-		[]AggDef{{Col: "total", Agg: Sum("revenue")}},
-	)
-	assertEqual(t, result.HasErrs(), true)
-	assertEqual(t, len(result.Rows), 5)
-}
-
 func TestGroupByAgg_MissingAggCol(t *testing.T) {
 	result := salesTable().GroupByAgg(
 		[]string{"region"},

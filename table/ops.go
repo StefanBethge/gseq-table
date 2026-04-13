@@ -102,6 +102,7 @@ func (t Table) Explode(col, sep string) Table {
 	}
 	result := New(t.Headers, records)
 	result.errs = t.errs
+	result.source = t.source
 	return result
 }
 
@@ -155,6 +156,7 @@ func (t Table) Transpose() Table {
 	}
 	result := New(newHeaders, records)
 	result.errs = t.errs
+	result.source = t.source
 	return result
 }
 

@@ -1,10 +1,6 @@
 package table
 
-import (
-	"fmt"
-
-	"github.com/stefanbethge/gseq/slice"
-)
+import "github.com/stefanbethge/gseq/slice"
 
 // MutableTable is an opt-in, in-place variant of Table.
 //
@@ -18,17 +14,13 @@ type MutableTable struct {
 	rows      [][]string
 	headerIdx map[string]int
 	errs      []error
+	source    string
 }
 
 // NewMutable constructs a MutableTable from headers and records.
 // Input slices are copied so later caller mutations do not affect the table.
 func NewMutable(headers slice.Slice[string], records [][]string) *MutableTable {
 	return newMutableOwned(copyHeaders(headers), cloneRecordsPacked(records))
-}
-
-// addErrf appends an error to the MutableTable's error list.
-func (m *MutableTable) addErrf(format string, args ...any) {
-	m.errs = append(m.errs, fmt.Errorf(format, args...))
 }
 
 // Errs returns all errors accumulated during the chain of operations.
@@ -40,12 +32,20 @@ func (m *MutableTable) HasErrs() bool { return len(m.errs) > 0 }
 // ResetErrs clears all accumulated errors.
 func (m *MutableTable) ResetErrs() { m.errs = nil }
 
+// WithSource attaches a dataset name to the table. The name is prepended
+// to every subsequent error message as "[name] operation: detail".
+func (m *MutableTable) WithSource(name string) *MutableTable { m.source = name; return m }
+
+// Source returns the dataset name set by WithSource, or "" if none was set.
+func (m *MutableTable) Source() string { return m.source }
+
 // Mutable returns a mutable copy of t.
 // Later in-place updates on the returned table do not affect t.
 // Accumulated errors from t are propagated.
 func (t Table) Mutable() *MutableTable {
 	m := newMutableOwned(copyHeaders(t.Headers), cloneRowValuesPacked(t.Rows))
 	m.errs = t.errs
+	m.source = t.source
 	return m
 }
 
@@ -62,6 +62,7 @@ func (t Table) MutableView() *MutableTable {
 	}
 	m := newMutableOwned(t.Headers, rows)
 	m.errs = t.errs
+	m.source = t.source
 	return m
 }
 
@@ -71,6 +72,7 @@ func (t Table) MutableView() *MutableTable {
 func (m *MutableTable) Freeze() Table {
 	t := New(copyHeaders(m.headers), cloneRecordsPacked(m.rows))
 	t.errs = m.errs
+	t.source = m.source
 	return t
 }
 
@@ -83,6 +85,7 @@ func (m *MutableTable) Freeze() Table {
 func (m *MutableTable) FreezeView() Table {
 	t := newTable(m.headers, rowsToRowViews(m.headers, m.rows))
 	t.errs = m.errs
+	t.source = m.source
 	return t
 }
 

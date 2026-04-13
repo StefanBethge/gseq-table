@@ -243,6 +243,7 @@ func (t Table) GroupByAgg(groupCols []string, aggs []AggDef) Table {
 
 	result := New(newHeaders, records)
 	result.errs = t.errs
+	result.source = t.source
 	return result
 }
 

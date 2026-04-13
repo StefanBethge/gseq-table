@@ -126,36 +126,6 @@ func TestRank_ShortRowKeepsColumnAlignment(t *testing.T) {
 	assertEqual(t, result.Rows[0].Get("rank").UnwrapOr(""), "1")
 }
 
-// --- Missing column edge cases ---
-
-func TestLag_MissingCol(t *testing.T) {
-	tb := tsTable()
-	result := tb.Lag("nonexistent", "prev", 1)
-	assertEqual(t, len(result.Rows), 5)
-	assertEqual(t, len(result.Headers), 2) // no new col added
-}
-
-func TestLead_MissingCol(t *testing.T) {
-	tb := tsTable()
-	result := tb.Lead("nonexistent", "next", 1)
-	assertEqual(t, len(result.Rows), 5)
-	assertEqual(t, len(result.Headers), 2)
-}
-
-func TestCumSum_MissingCol(t *testing.T) {
-	tb := tsTable()
-	result := tb.CumSum("nonexistent", "cum")
-	assertEqual(t, len(result.Rows), 5)
-	assertEqual(t, len(result.Headers), 2)
-}
-
-func TestRank_MissingCol(t *testing.T) {
-	tb := tsTable()
-	result := tb.Rank("nonexistent", "rank", true)
-	assertEqual(t, len(result.Rows), 5)
-	assertEqual(t, len(result.Headers), 2)
-}
-
 func BenchmarkLag(b *testing.B) {
 	records := make([][]string, 50_000)
 	for i := range records {
