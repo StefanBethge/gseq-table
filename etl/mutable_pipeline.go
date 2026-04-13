@@ -1,6 +1,7 @@
 package etl
 
 import (
+	"sync"
 	"time"
 
 	"github.com/stefanbethge/gseq-table/table"
@@ -153,6 +154,83 @@ func (p MutablePipeline) Trace() []StepRecord {
 		return nil
 	}
 	return *p.trace
+}
+
+// ─── Splitting terminals ──────────────────────────────────────────────────────
+
+// TryMap applies a fallible single-column transformation. Row errors are
+// accumulated in the table's error log (MutableTable.HasErrs); the pipeline
+// never short-circuits for row-level failures.
+func (p MutablePipeline) TryMap(col string, fn func(string) (string, error)) MutablePipeline {
+	return p.Then(func(m *table.MutableTable) *table.MutableTable {
+		return m.TryMap(col, fn)
+	})
+}
+
+// GroupBy is a terminal that splits the pipeline into one immutable sub-pipeline
+// per distinct value of col. If the pipeline is in an error state, the error
+// is forwarded under the empty key "".
+func (p MutablePipeline) GroupBy(col string) map[string]Pipeline {
+	if p.r.IsErr() {
+		return map[string]Pipeline{"": Pipeline{r: result.Err[table.Table, error](p.r.UnwrapErr())}}
+	}
+	groups := p.r.Unwrap().GroupBy(col)
+	out := make(map[string]Pipeline, len(groups))
+	for k, t := range groups {
+		out[k] = From(t)
+	}
+	return out
+}
+
+// Partition is a terminal that splits the pipeline into two immutable sub-pipelines.
+// If the pipeline is in an error state, both sub-pipelines carry the error.
+func (p MutablePipeline) Partition(fn func(table.Row) bool) (matched, rest Pipeline) {
+	if p.r.IsErr() {
+		ep := Pipeline{r: result.Err[table.Table, error](p.r.UnwrapErr())}
+		return ep, ep
+	}
+	m, r := p.r.Unwrap().Partition(fn)
+	return From(m), From(r)
+}
+
+// Chunk is a terminal that splits the pipeline result into n-row immutable batches.
+// If the pipeline is in an error state, a single error pipeline is returned.
+func (p MutablePipeline) Chunk(n int) []Pipeline {
+	if p.r.IsErr() {
+		return []Pipeline{Pipeline{r: result.Err[table.Table, error](p.r.UnwrapErr())}}
+	}
+	chunks := p.r.Unwrap().Chunk(n)
+	out := make([]Pipeline, len(chunks))
+	for i, c := range chunks {
+		out[i] = From(c)
+	}
+	return out
+}
+
+// FanOut applies each fn to the current *MutableTable concurrently and returns
+// the results as MutablePipelines in the same order. If the pipeline is in an
+// error state, every returned pipeline carries that error.
+func (p MutablePipeline) FanOut(fns ...func(*table.MutableTable) *table.MutableTable) []MutablePipeline {
+	out := make([]MutablePipeline, len(fns))
+	if p.r.IsErr() {
+		for i := range out {
+			out[i] = p
+		}
+		return out
+	}
+	src := p.r.Unwrap()
+	var wg sync.WaitGroup
+	for i, fn := range fns {
+		i, fn := i, fn
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			snapshot := src.Freeze().Mutable()
+			out[i] = MutablePipeline{r: result.Ok[*table.MutableTable, error](fn(snapshot)), trace: p.trace}
+		}()
+	}
+	wg.Wait()
+	return out
 }
 
 // ─── Bridge to immutable Pipeline ────────────────────────────────────────────
