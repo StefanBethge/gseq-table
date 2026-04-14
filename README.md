@@ -1,5 +1,7 @@
 # gseq-table
 
+[![CI](https://github.com/StefanBethge/gseq-table/actions/workflows/ci.yml/badge.svg)](https://github.com/StefanBethge/gseq-table/actions/workflows/ci.yml)
+
 ETL and spreadsheet-style data wrangling for Go.
 
 `gseq-table` is an in-memory toolkit for working with messy CSV and Excel data:
