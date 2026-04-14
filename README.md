@@ -20,6 +20,20 @@ Dependency policy:
 - the core depends only on `gseq`
 - heavier integrations are split into optional modules
 
+## Start here
+
+If you are skimming the repo and want the right entry point fast:
+
+- Need CSV read/write and chunked file ingestion? Use `csv`.
+- Need immutable or mutable table transforms? Use `table`.
+- Need bad-row rejection, dead-letter style logging, or fallible pipelines? Use `etl`.
+- Need type inference, normalization, or validation after cleanup? Use `schema`.
+- Need Excel input without bloating the core install? Use `excel`.
+
+Typical progression:
+
+`csv` or `excel` -> `table` -> `etl` for fallible cleanup -> `schema` when you want typed checks
+
 ## Why gseq-table
 
 Most business data workflows in Go start the same way:
