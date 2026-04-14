@@ -8,7 +8,7 @@ ETL and spreadsheet-style data wrangling for Go.
 - immutable and mutable workflows
 - composable transformations
 - optional schema inference and validation
-- pragmatic error handling for real import pipelines
+- row-level reject handling for real import pipelines
 
 It is built for the gap between raw `[][]string` hacks and heavier typed dataframe systems.
 
@@ -44,6 +44,7 @@ If you only need tables, CSV, ETL, and schema handling, you do not pull in Excel
 - optimized for import-clean-transform-export workflows
 - practical about missing columns and dirty rows
 - explicit about immutable vs in-place APIs
+- designed for dirty external data, not only clean happy-path inputs
 
 `gseq-table` is not:
 
@@ -190,6 +191,10 @@ out := m.Freeze()
 
 ## Error model
 
+`gseq-table` has two distinct error-handling layers.
+
+### 1. Table-level lenient errors
+
 Many table operations do not panic and do not immediately fail.
 Instead, they accumulate errors on the table and continue.
 
@@ -217,6 +222,54 @@ go build -tags strict ./...
 ```
 
 In strict mode, error-accumulating operations panic immediately with a stack trace.
+
+This layer is useful for structural issues inside table transformations:
+
+- missing columns in fluent chains
+- invalid column references during cleanup work
+- collecting multiple mistakes before reporting them
+
+### 2. Row-level reject handling in ETL pipelines
+
+The stronger ETL feature lives in `etl.WithErrorLog`.
+
+When you attach an `ErrorLog` to a pipeline:
+
+- `TryMap` and `TryTransform` stop failing fast on bad rows
+- rejected rows are filtered out of the main flow
+- each rejected row is logged with source, step, row index, error, and original values
+- the remaining good rows continue through the pipeline
+
+That makes the error path an explicit output of the workflow, not just an exception path.
+
+```go
+log := etl.NewErrorLog()
+
+good := etl.FromResult(csv.New().ReadFile("orders.csv")).
+    WithErrorLog(log).
+    TryMap("price", parsePrice).
+    TryMap("quantity", parseQty).
+    Unwrap()
+
+rejected := log.ToTable()
+reviewQueue := rejected.Select("_source", "_step", "_row", "_error", "order_id", "customer")
+byStep := rejected.ValueCounts("_step")
+```
+
+This is especially useful for:
+
+- reject CSV exports
+- manual review queues
+- quality dashboards by error type or pipeline step
+- separating recoverable bad rows from hard pipeline failures
+
+Hard errors still stay hard errors:
+
+- I/O failures
+- missing required columns via `AssertColumns`
+- any explicit pipeline step that returns an `Err`
+
+If you want the full flow, see [`examples/03_error_log`](./examples/03_error_log).
 
 ## Dependency philosophy
 
@@ -324,6 +377,13 @@ The `etl` package is useful when you want explicit short-circuiting over fallibl
 
 Use direct `Table` chaining for simple in-memory transformations.
 Use `etl` when you need pipeline composition around I/O and fallible operations.
+
+For dirty external data, `etl.WithErrorLog` is often the most important mode:
+
+- strict mode: first bad row stops the pipeline
+- lax mode with `ErrorLog`: bad rows are rejected and logged, good rows continue
+
+That gives you a dead-letter style workflow for tabular ETL without hiding failures.
 
 ## When to use gseq-table
 

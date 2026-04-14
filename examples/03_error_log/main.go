@@ -12,6 +12,10 @@
 //   - log.HasErrors, log.Len, log.Entries for inspection
 //   - log.ToTable structure (_source, _step, _row, _error + original cols)
 //   - Writing rejected rows: csv.NewWriter().WriteFile("rejected.csv", log.ToTable())
+//   - Building a human review queue from rejected rows
+//   - Counting rejects by step / source via ValueCounts
+//   - Filtering and splitting rejected rows by error type
+//   - Aggregating rejects from multiple source files into one ErrorLog
 //   - Strict vs lax mode comparison
 //   - Hard errors (missing columns) always short-circuit
 //   - t.WithSource for dataset tagging
@@ -40,6 +44,13 @@ const ordersCSV = `order_id,customer,price,quantity,date
 1008,Heidi,75.00,-1,2024-01-17
 1009,Ivan,55.50,2,2024-01-18
 1010,Judy,20.00,10,2024-01-19
+`
+
+const ordersCSVPart2 = `order_id,customer,price,quantity,date
+2001,Karl,19.99,2,2024-02-01
+2002,Laura,bad-price,1,2024-02-02
+2003,Mallory,44.00,-3,2024-02-03
+2004,Niaj,50.00,4,2024-02-04
 `
 
 func main() {
@@ -74,7 +85,7 @@ func main() {
 		WithSource("orders.csv")
 
 	processed := etl.From(sourceTagged).
-		WithErrorLog(log). // switch to lax mode
+		WithErrorLog(log).                                                  // switch to lax mode
 		AssertColumns("order_id", "customer", "price", "quantity", "date"). // hard check
 		TryMap("price", func(v string) (string, error) {
 			_, err := strconv.ParseFloat(v, 64)
@@ -133,9 +144,49 @@ func main() {
 	}
 	fmt.Println()
 
-	// ── Step 5: Export rejected rows to CSV ───────────────────────────────────
+	// ── Step 5: Turn rejected rows into operational outputs ───────────────────
 
-	fmt.Println("=== Step 5: Export rejected rows to rejected.csv ===")
+	fmt.Println("=== Step 5: Build review queues and summaries from rejected rows ===")
+
+	reviewQueue := rejected.
+		Select("_source", "_step", "_row", "_error", "order_id", "customer", "price", "quantity").
+		Sort("_row", true)
+
+	fmt.Println("Review queue (what a human usually wants to see first):")
+	for _, r := range reviewQueue.Rows {
+		fmt.Printf("  order=%-4s customer=%-8s step=%-18s error=%s\n",
+			r.Get("order_id").UnwrapOr(""),
+			r.Get("customer").UnwrapOr(""),
+			r.Get("_step").UnwrapOr(""),
+			r.Get("_error").UnwrapOr(""))
+	}
+	fmt.Println()
+
+	fmt.Println("Rejected row counts by pipeline step:")
+	for _, r := range rejected.ValueCounts("_step").Rows {
+		fmt.Printf("  %-18s %s\n",
+			r.Get("value").UnwrapOr(""),
+			r.Get("count").UnwrapOr("0"))
+	}
+	fmt.Println()
+
+	parseRejects, ruleRejects := rejected.Partition(func(r table.Row) bool {
+		msg := r.Get("_error").UnwrapOr("")
+		return strings.Contains(msg, "invalid price") || strings.Contains(msg, "invalid quantity")
+	})
+
+	fmt.Printf("Parse rejects: %d  |  Business-rule rejects: %d\n", parseRejects.Len(), ruleRejects.Len())
+	fmt.Println("Business-rule rejects:")
+	for _, r := range ruleRejects.Rows {
+		fmt.Printf("  order=%s  error=%s\n",
+			r.Get("order_id").UnwrapOr(""),
+			r.Get("_error").UnwrapOr(""))
+	}
+	fmt.Println()
+
+	// ── Step 6: Export rejected rows to CSV ───────────────────────────────────
+
+	fmt.Println("=== Step 6: Export rejected rows to CSV ===")
 
 	f, err := os.CreateTemp(".", "rejected-*.csv")
 	if err != nil {
@@ -151,11 +202,27 @@ func main() {
 		fmt.Println("WriteFile error:", writeErr)
 		return
 	}
-	fmt.Printf("Wrote %d rejected rows to %s\n\n", rejected.Len(), rejectedPath)
+	fmt.Printf("Wrote %d rejected rows to %s\n", rejected.Len(), rejectedPath)
 
-	// ── Step 6: TryTransform — multi-field row validation ─────────────────────
+	f2, err := os.CreateTemp(".", "review-queue-*.csv")
+	if err != nil {
+		fmt.Println("Cannot create review queue file:", err)
+		return
+	}
+	reviewPath := f2.Name()
+	f2.Close()
+	defer os.Remove(reviewPath)
 
-	fmt.Println("=== Step 6: TryTransform for multi-field validation ===")
+	writeErr = gcsv.NewWriter().WriteFile(reviewPath, reviewQueue)
+	if writeErr != nil {
+		fmt.Println("WriteFile review queue error:", writeErr)
+		return
+	}
+	fmt.Printf("Wrote %d review rows to %s\n\n", reviewQueue.Len(), reviewPath)
+
+	// ── Step 7: TryTransform — multi-field row validation ─────────────────────
+
+	fmt.Println("=== Step 7: TryTransform for multi-field validation ===")
 
 	log2 := etl.NewErrorLog()
 
@@ -202,9 +269,74 @@ func main() {
 	}
 	fmt.Println()
 
-	// ── Step 7: Hard errors still short-circuit even in lax mode ─────────────
+	// ── Step 8: Same ErrorLog across multiple sources ─────────────────────────
 
-	fmt.Println("=== Step 7: Hard error (missing column) always short-circuits ===")
+	fmt.Println("=== Step 8: Aggregate rejects from multiple source files ===")
+
+	multiSourceLog := etl.NewErrorLog()
+
+	_ = etl.From(
+		gcsv.New().Read(strings.NewReader(ordersCSV)).
+			Unwrap().
+			WithSource("orders-part-1.csv"),
+	).
+		WithErrorLog(multiSourceLog).
+		TryMap("price", func(v string) (string, error) {
+			_, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid price %q", v)
+			}
+			return v, nil
+		}).
+		TryMap("quantity", func(v string) (string, error) {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return "", fmt.Errorf("invalid quantity %q", v)
+			}
+			if n < 0 {
+				return "", fmt.Errorf("quantity must be >= 0, got %d", n)
+			}
+			return v, nil
+		}).
+		Unwrap()
+
+	_ = etl.From(
+		gcsv.New().Read(strings.NewReader(ordersCSVPart2)).
+			Unwrap().
+			WithSource("orders-part-2.csv"),
+	).
+		WithErrorLog(multiSourceLog).
+		TryMap("price", func(v string) (string, error) {
+			_, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return "", fmt.Errorf("invalid price %q", v)
+			}
+			return v, nil
+		}).
+		TryMap("quantity", func(v string) (string, error) {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return "", fmt.Errorf("invalid quantity %q", v)
+			}
+			if n < 0 {
+				return "", fmt.Errorf("quantity must be >= 0, got %d", n)
+			}
+			return v, nil
+		}).
+		Unwrap()
+
+	fmt.Printf("Combined rejected rows: %d\n", multiSourceLog.Len())
+	fmt.Println("Reject counts by source:")
+	for _, r := range multiSourceLog.ToTable().ValueCounts("_source").Rows {
+		fmt.Printf("  %-18s %s\n",
+			r.Get("value").UnwrapOr(""),
+			r.Get("count").UnwrapOr("0"))
+	}
+	fmt.Println()
+
+	// ── Step 9: Hard errors still short-circuit even in lax mode ─────────────
+
+	fmt.Println("=== Step 9: Hard error (missing column) always short-circuits ===")
 
 	log3 := etl.NewErrorLog()
 	hardErrResult := etl.FromResult(gcsv.New().Read(strings.NewReader(ordersCSV))).
@@ -220,9 +352,9 @@ func main() {
 	}
 	fmt.Printf("Log entries (should be 0 — hard error before TryMap): %d\n\n", log3.Len())
 
-	// ── Step 8: Strict vs lax comparison summary ──────────────────────────────
+	// ── Step 10: Strict vs lax comparison summary ─────────────────────────────
 
-	fmt.Println("=== Step 8: Strict vs lax comparison ===")
+	fmt.Println("=== Step 10: Strict vs lax comparison ===")
 	fmt.Println()
 	fmt.Println("Strict mode (default):")
 	fmt.Println("  - First row error → pipeline short-circuits immediately")
@@ -235,6 +367,9 @@ func main() {
 	fmt.Println("  - Result().IsOk() == true (unless a hard error occurred)")
 	fmt.Println("  - Inspect: log.HasErrors() / log.Len() / log.Entries()")
 	fmt.Println("  - Export: csv.NewWriter().WriteFile(\"rejected.csv\", log.ToTable())")
+	fmt.Println("  - Build review queues: log.ToTable().Select(...)")
+	fmt.Println("  - Build summaries: log.ToTable().ValueCounts(\"_step\") / ValueCounts(\"_source\")")
+	fmt.Println("  - Split reject types: log.ToTable().Partition(...)")
 	fmt.Println()
 	fmt.Println("Hard errors (always short-circuit regardless of mode):")
 	fmt.Println("  - I/O failures (ReadFile, WriteFile)")
