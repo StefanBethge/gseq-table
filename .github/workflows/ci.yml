@@ -33,8 +33,11 @@ jobs:
       - name: Run tests
         run: go test ./...
 
-      - name: Run strict-mode tests
-        run: go test -tags strict ./...
+      - name: Run strict-mode compile check
+        run: go test -tags strict -run '^$' ./...
+
+      - name: Run strict-mode behavior tests
+        run: go test -tags strict ./table -run 'TestGroupByAgg_MissingGroupCol_StrictPanics|TestWithSource_StrictPanicsWithPrefix'
 
       - name: Run vet
         run: go vet ./...

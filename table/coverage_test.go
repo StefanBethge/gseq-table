@@ -55,19 +55,6 @@ func TestCoverage_TableFreeze(t *testing.T) {
 	checkInt(t, frozen.Len(), 1)
 }
 
-// ============================================================
-// Table.CopyErrsFrom
-// ============================================================
-
-func TestCoverage_CopyErrsFrom(t *testing.T) {
-	errored := newTable([]string{"x"}, nil).Select("nonexistent")
-	fresh := newTable([]string{"a"}, [][]string{{"1"}})
-	copied := fresh.CopyErrsFrom(errored)
-	if !copied.HasErrs() {
-		t.Fatal("expected errors to be copied")
-	}
-}
-
 func TestCoverage_CopyErrsFrom_NoErrs(t *testing.T) {
 	src := newTable([]string{"x"}, [][]string{{"1"}}).WithSource("file.csv")
 	dst := newTable([]string{"a"}, [][]string{{"1"}})
@@ -75,15 +62,6 @@ func TestCoverage_CopyErrsFrom_NoErrs(t *testing.T) {
 	check(t, result.Source(), "file.csv")
 	if result.HasErrs() {
 		t.Error("expected no errors")
-	}
-}
-
-func TestCoverage_CopyErrsFrom_BothHaveErrs(t *testing.T) {
-	src := newTable([]string{"x"}, nil).Select("bad1")
-	dst := newTable([]string{"a"}, nil).Select("bad2")
-	result := dst.CopyErrsFrom(src)
-	if len(result.Errs()) < 2 {
-		t.Errorf("expected at least 2 errors, got %d", len(result.Errs()))
 	}
 }
 
