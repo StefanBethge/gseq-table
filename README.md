@@ -4,7 +4,7 @@
 
 ETL and spreadsheet-style data wrangling for Go.
 
-`gseq-table` is an in-memory toolkit for working with messy CSV and Excel data:
+`gseq-table` is an in-memory toolkit for working with messy CSV, JSON, and Excel data:
 
 - string-first tables
 - immutable and mutable workflows
@@ -25,6 +25,7 @@ Dependency policy:
 If you are skimming the repo and want the right entry point fast:
 
 - Need CSV read/write and chunked file ingestion? Use `csv`.
+- Need JSON read/write with nested object support? Use `json`.
 - Need immutable or mutable table transforms? Use `table`.
 - Need bad-row rejection, dead-letter style logging, or fallible pipelines? Use `etl`.
 - Need type inference, normalization, or validation after cleanup? Use `schema`.
@@ -32,7 +33,7 @@ If you are skimming the repo and want the right entry point fast:
 
 Typical progression:
 
-`csv` or `excel` -> `table` -> `etl` for fallible cleanup -> `schema` when you want typed checks
+`csv`, `json`, or `excel` -> `table` -> `etl` for fallible cleanup -> `schema` when you want typed checks
 
 ## Why gseq-table
 
@@ -97,6 +98,7 @@ Core dependency footprint:
 |---|---|
 | `table` | core `Table`, `MutableTable`, `Row`, joins, aggregations, reshape, validation |
 | `csv` | CSV reader/writer, including chunked streaming reads |
+| `json` | JSON reader/writer with flat, flatten, and field mapping modes |
 | `etl` | composable pipelines with short-circuiting error propagation |
 | `schema` | type inference, normalization, validation, typed accessors, stats |
 | `excel` | optional Excel reader in a separate module |
@@ -292,7 +294,7 @@ If you want the full flow, see [`examples/03_error_log`](./examples/03_error_log
 The library is intentionally split so the common path stays light:
 
 - core table operations live in the main module
-- CSV support lives in the main module
+- CSV and JSON support live in the main module
 - schema and ETL live in the main module
 - Excel support lives in its own module
 
@@ -374,6 +376,8 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 
 - CSV read/write
 - chunked CSV streaming for large files
+- JSON read/write with three modes: flat (default), recursive flatten, and field mapping
+- NDJSON (newline-delimited JSON) support
 - optional Excel reading in a separate module
 
 ### Schema
@@ -405,7 +409,7 @@ That gives you a dead-letter style workflow for tabular ETL without hiding failu
 
 Use it when:
 
-- you regularly ingest CSV or Excel files
+- you regularly ingest CSV, JSON, or Excel files
 - your inputs are inconsistent or dirty
 - you want a fluent in-memory wrangling API in Go
 - you want to delay strong typing until after cleanup
