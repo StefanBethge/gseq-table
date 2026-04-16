@@ -90,6 +90,7 @@ jobs:
             examples/go.sum
 
       - name: Build examples
-        run: go build ./examples/...
-        env:
-          GOWORK: ${{ github.workspace }}/go.work
+        run: |
+          cd examples
+          go mod edit -replace github.com/stefanbethge/gseq-table=../
+          go build ./...
