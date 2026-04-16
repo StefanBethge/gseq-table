@@ -336,4 +336,72 @@ func main() {
 	})
 
 	fmt.Println(csv.ToString(t))
+
+	// ── 20. ExpandCol — expand JSON string in a cell (default) ───────────────
+
+	fmt.Println("=== 20. ExpandCol — default mode ===")
+
+	// Read with default mode: nested values become JSON strings.
+	t = gjson.New(gjson.WithSortedHeaders()).ReadString(`[
+		{"id": "1", "meta": "{\"role\":\"admin\",\"level\":3}"},
+		{"id": "2", "meta": "{\"role\":\"user\",\"level\":1}"}
+	]`).Unwrap()
+
+	fmt.Println("Before expand:")
+	fmt.Println(csv.ToString(t))
+
+	t = gjson.ExpandCol(t, "meta", gjson.WithSortedHeaders())
+	fmt.Println("After ExpandCol(t, \"meta\"):")
+	fmt.Println(csv.ToString(t))
+
+	// ── 21. ExpandCol with FieldMapping ──────────────────────────────────────
+
+	fmt.Println("=== 21. ExpandCol with FieldMapping ===")
+
+	t = gjson.New(gjson.WithSortedHeaders()).ReadString(`[
+		{"id": "1", "payload": "{\"user\":{\"name\":\"Alice\"},\"score\":95}"},
+		{"id": "2", "payload": "{\"user\":{\"name\":\"Bob\"},\"score\":87}"}
+	]`).Unwrap()
+
+	t = gjson.ExpandCol(t, "payload", gjson.WithFieldMapping(map[string]string{
+		"name":  ".user.name",
+		"score": ".score",
+	}))
+
+	fmt.Println("After ExpandCol with FieldMapping:")
+	fmt.Println(csv.ToString(t))
+
+	// ── 22. ExpandCol with Flatten ───────────────────────────────────────────
+
+	fmt.Println("=== 22. ExpandCol with Flatten ===")
+
+	t = gjson.New(gjson.WithSortedHeaders()).ReadString(`[
+		{"id": "1", "details": "{\"addr\":{\"city\":\"Berlin\"},\"tags\":[\"go\",\"data\"]}"}
+	]`).Unwrap()
+
+	t = gjson.ExpandCol(t, "details", gjson.WithFlatten(), gjson.WithSortedHeaders())
+
+	fmt.Println("After ExpandCol with Flatten:")
+	fmt.Printf("Headers: %v\n", []string(t.Headers))
+	fmt.Println(csv.ToString(t))
+
+	// ── 23. Chained ExpandCol — two-step expansion ───────────────────────────
+
+	fmt.Println("=== 23. Chained ExpandCol — two-step expansion ===")
+
+	// Read flat, then expand nested JSON strings step by step.
+	t = gjson.New(gjson.WithSortedHeaders()).ReadString(`[
+		{"id":"1","user":"{\"name\":\"Alice\",\"address\":\"{\\\"city\\\":\\\"Berlin\\\"}\"}"}
+	]`).Unwrap()
+
+	fmt.Println("Step 0 (raw):")
+	fmt.Println(csv.ToString(t))
+
+	t = gjson.ExpandCol(t, "user", gjson.WithSortedHeaders())
+	fmt.Println("Step 1 (expand user):")
+	fmt.Println(csv.ToString(t))
+
+	t = gjson.ExpandCol(t, "user.address", gjson.WithSortedHeaders())
+	fmt.Println("Step 2 (expand user.address):")
+	fmt.Println(csv.ToString(t))
 }
