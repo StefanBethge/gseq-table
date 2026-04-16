@@ -6,6 +6,26 @@ import (
 	"github.com/stefanbethge/gseq/slice"
 )
 
+// MapJSON transforms JSON values in the named column in-place.
+// See Table.MapJSON for full documentation.
+func (m *MutableTable) MapJSON(col string, args ...any) *MutableTable {
+	idx, ok := m.headerIdx[col]
+	if !ok {
+		m.addErrf("MapJSON: unknown column %q", col)
+		return m
+	}
+
+	path, cfg := parseMapJSONArgs(args)
+	mapFn := buildMapJSONFunc(path, cfg)
+
+	for i, row := range m.rows {
+		if idx < len(row) && row[idx] != "" {
+			m.rows[i][idx] = mapFn(row[idx])
+		}
+	}
+	return m
+}
+
 // ExpandJSON parses the JSON string in the named column and expands it
 // into additional columns in-place. The original column is removed.
 //

@@ -206,6 +206,181 @@ func TestExpandJSON_SparseRows(t *testing.T) {
 	}
 }
 
+// --- MapJSON tests (immutable) ---
+
+func TestMapJSON_PathExtract(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"id", "data"},
+		[][]string{
+			{"1", `{"user":{"name":"Alice"},"score":95}`},
+			{"2", `{"user":{"name":"Bob"},"score":87}`},
+		},
+	)
+	out := tbl.MapJSON("data", ".user.name")
+
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != "Alice" {
+		t.Errorf("row[0] data = %q, want %q", got, "Alice")
+	}
+	if got := out.Rows[1].Get("data").UnwrapOr(""); got != "Bob" {
+		t.Errorf("row[1] data = %q, want %q", got, "Bob")
+	}
+}
+
+func TestMapJSON_PathExtractNonLeaf(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"user":{"name":"Alice","age":"30"}}`}},
+	)
+	out := tbl.MapJSON("data", ".user")
+
+	got := out.Rows[0].Get("data").UnwrapOr("")
+	// Non-leaf → JSON string.
+	if got != `{"age":"30","name":"Alice"}` && got != `{"name":"Alice","age":"30"}` {
+		t.Errorf("data = %q, want JSON object", got)
+	}
+}
+
+func TestMapJSON_PathExtractArrayIndex(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"items":[{"id":"a"},{"id":"b"}]}`}},
+	)
+	out := tbl.MapJSON("data", ".items[1].id")
+
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != "b" {
+		t.Errorf("data = %q, want %q", got, "b")
+	}
+}
+
+func TestMapJSON_PathMissing(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1"}`}},
+	)
+	out := tbl.MapJSON("data", ".nonexistent")
+
+	if got := out.Rows[0].Get("data").UnwrapOr("FAIL"); got != "" {
+		t.Errorf("missing path should give empty, got %q", got)
+	}
+}
+
+func TestMapJSON_FieldMapping(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"user":{"name":"Alice","age":"30"},"city":"Berlin"}`}},
+	)
+	out := tbl.MapJSON("data", WithJSONFieldMapping(map[string]string{
+		"name": ".user.name",
+		"city": ".city",
+	}))
+
+	got := out.Rows[0].Get("data").UnwrapOr("")
+	if got != `{"city":"Berlin","name":"Alice"}` {
+		t.Errorf("data = %q, want restructured JSON", got)
+	}
+}
+
+func TestMapJSON_InvalidJSON(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{broken`}},
+	)
+	out := tbl.MapJSON("data", ".a")
+
+	// Invalid JSON should be left unchanged.
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != `{broken` {
+		t.Errorf("invalid JSON should be unchanged, got %q", got)
+	}
+}
+
+func TestMapJSON_EmptyCell(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{""}},
+	)
+	out := tbl.MapJSON("data", ".a")
+
+	if got := out.Rows[0].Get("data").UnwrapOr("FAIL"); got != "" {
+		t.Errorf("empty cell should stay empty, got %q", got)
+	}
+}
+
+func TestMapJSON_UnknownColumn(t *testing.T) {
+	tbl := makeTestTable([]string{"id"}, [][]string{{"1"}})
+	out := tbl.MapJSON("nonexistent", ".a")
+	if !out.HasErrs() {
+		t.Error("expected error for unknown column")
+	}
+}
+
+func TestMapJSON_PreservesOtherColumns(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"id", "data", "extra"},
+		[][]string{{"1", `{"a":"val"}`, "keep"}},
+	)
+	out := tbl.MapJSON("data", ".a")
+
+	if got := out.Rows[0].Get("id").UnwrapOr(""); got != "1" {
+		t.Errorf("id = %q, want %q", got, "1")
+	}
+	if got := out.Rows[0].Get("extra").UnwrapOr(""); got != "keep" {
+		t.Errorf("extra = %q, want %q", got, "keep")
+	}
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != "val" {
+		t.Errorf("data = %q, want %q", got, "val")
+	}
+}
+
+// --- MapJSON Mutable ---
+
+func TestMapJSON_Mutable_Path(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"user":{"name":"Alice"}}`}},
+	)
+	m := tbl.Mutable()
+	m.MapJSON("data", ".user.name")
+
+	if got := m.Freeze().Rows[0].Get("data").UnwrapOr(""); got != "Alice" {
+		t.Errorf("data = %q, want %q", got, "Alice")
+	}
+}
+
+func TestMapJSON_Mutable_FieldMapping(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1","b":"2","c":"3"}`}},
+	)
+	m := tbl.Mutable()
+	m.MapJSON("data", WithJSONFieldMapping(map[string]string{
+		"x": ".a",
+		"y": ".b",
+	}))
+
+	got := m.Freeze().Rows[0].Get("data").UnwrapOr("")
+	if got != `{"x":"1","y":"2"}` {
+		t.Errorf("data = %q, want restructured JSON", got)
+	}
+}
+
+func TestMapJSON_Mutable_Chaining(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"a", "b"},
+		[][]string{{`{"x":"1"}`, `{"y":"2"}`}},
+	)
+	out := tbl.Mutable().
+		MapJSON("a", ".x").
+		MapJSON("b", ".y").
+		Freeze()
+
+	if got := out.Rows[0].Get("a").UnwrapOr(""); got != "1" {
+		t.Errorf("a = %q, want %q", got, "1")
+	}
+	if got := out.Rows[0].Get("b").UnwrapOr(""); got != "2" {
+		t.Errorf("b = %q, want %q", got, "2")
+	}
+}
+
 // --- MutableTable tests ---
 
 func TestExpandJSON_Mutable_Default(t *testing.T) {

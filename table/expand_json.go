@@ -143,6 +143,145 @@ func (t Table) ExpandJSON(col string, opts ...ExpandJSONOption) Table {
 	return out
 }
 
+// MapJSON transforms JSON values in the named column by extracting a path
+// or restructuring the JSON. The result stays in the same column.
+//
+// With a path argument, each cell is replaced with the value at that path.
+// Non-leaf values become compact JSON strings. If the path does not resolve,
+// the cell becomes an empty string.
+//
+// With WithJSONFieldMapping, a new JSON object is constructed from the
+// mapped paths and written back as a compact JSON string.
+//
+// Invalid JSON cells are left unchanged.
+//
+// Example:
+//
+//	// Extract a nested value:
+//	t = t.MapJSON("data", ".user.name")
+//
+//	// Restructure JSON:
+//	t = t.MapJSON("data", table.WithJSONFieldMapping(map[string]string{
+//	    "name": ".user.name",
+//	    "city": ".addr.city",
+//	}))
+func (t Table) MapJSON(col string, args ...any) Table {
+	idx := t.ColIndex(col)
+	if idx < 0 {
+		return t.withErrf("MapJSON: unknown column %q", col)
+	}
+
+	path, cfg := parseMapJSONArgs(args)
+
+	mapFn := buildMapJSONFunc(path, cfg)
+
+	var records [][]string
+	for _, row := range t.Rows {
+		rec := make([]string, len(t.Headers))
+		copy(rec, row.values)
+		if idx < len(rec) && rec[idx] != "" {
+			rec[idx] = mapFn(rec[idx])
+		}
+		records = append(records, rec)
+	}
+
+	out := New(t.Headers, records)
+	out.errs = t.errs
+	out.source = t.source
+	return out
+}
+
+// parseMapJSONArgs separates the path string and options from the variadic args.
+func parseMapJSONArgs(args []any) (string, *ExpandJSONConfig) {
+	var path string
+	var opts []ExpandJSONOption
+	for _, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			path = v
+		case ExpandJSONOption:
+			opts = append(opts, v)
+		}
+	}
+	cfg := resolveExpandJSONConfig(opts)
+	return path, cfg
+}
+
+// buildMapJSONFunc creates a function that transforms a JSON cell value.
+func buildMapJSONFunc(path string, cfg *ExpandJSONConfig) func(string) string {
+	// Path extraction mode.
+	if path != "" {
+		segs, err := ejParsePath(path)
+		if err != nil {
+			return func(v string) string { return v }
+		}
+		return func(v string) string {
+			var raw any
+			dec := stdjson.NewDecoder(strings.NewReader(v))
+			dec.UseNumber()
+			if err := dec.Decode(&raw); err != nil {
+				return v
+			}
+			obj, ok := raw.(map[string]any)
+			if !ok {
+				return v
+			}
+			result := ejTraversePath(obj, segs)
+			return ejStringify(result)
+		}
+	}
+
+	// Field mapping mode → restructure into new JSON object.
+	if len(cfg.FieldMapping) > 0 {
+		type parsed struct {
+			col  string
+			segs []ejPathSegment
+		}
+		cols := make([]string, 0, len(cfg.FieldMapping))
+		for col := range cfg.FieldMapping {
+			cols = append(cols, col)
+		}
+		sort.Strings(cols)
+
+		mappings := make([]parsed, 0, len(cols))
+		for _, col := range cols {
+			segs, err := ejParsePath(cfg.FieldMapping[col])
+			if err != nil {
+				continue
+			}
+			mappings = append(mappings, parsed{col: col, segs: segs})
+		}
+
+		return func(v string) string {
+			var raw any
+			dec := stdjson.NewDecoder(strings.NewReader(v))
+			dec.UseNumber()
+			if err := dec.Decode(&raw); err != nil {
+				return v
+			}
+			obj, ok := raw.(map[string]any)
+			if !ok {
+				return v
+			}
+			result := make(map[string]any, len(mappings))
+			for _, m := range mappings {
+				val := ejTraversePath(obj, m.segs)
+				if val != nil {
+					result[m.col] = val
+				}
+			}
+			b, err := stdjson.Marshal(result)
+			if err != nil {
+				return v
+			}
+			return string(b)
+		}
+	}
+
+	// No path, no mapping → identity.
+	return func(v string) string { return v }
+}
+
 func resolveExpandJSONConfig(opts []ExpandJSONOption) *ExpandJSONConfig {
 	cfg := &ExpandJSONConfig{}
 	for _, opt := range opts {
