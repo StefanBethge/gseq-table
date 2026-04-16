@@ -1,4 +1,4 @@
 github.com/stefanbethge/gseq v1.0.0 h1:LkPZkysmbWJRwWFHSoE8DbE5dCn8JK0su731nYPqK68=
 github.com/stefanbethge/gseq v1.0.0/go.mod h1:710nkPaMphDHdvEhUQGdLDkzrbRJvY9AYzM6JY0kTG0=
-github.com/stefanbethge/gseq-table v1.0.0 h1:vTKpqEoRo7s0ZiqEf0+0A+DO8QdCP19+asT5Fn1VszE=
-github.com/stefanbethge/gseq-table v1.0.0/go.mod h1:meYORo2PlCRDjnPGnisuahcuFqUznXmCUtIYkPGfq7Q=
+github.com/stefanbethge/gseq-table v1.1.0 h1:PTp6t+7XITUuzttOnhJO/rxXDu5hFz4R05VjaZs+qwY=
+github.com/stefanbethge/gseq-table v1.1.0/go.mod h1:7rQsRTyBGxWZMNYig/i+CdvheYbjhbuvcGE9b4Yknb0=
