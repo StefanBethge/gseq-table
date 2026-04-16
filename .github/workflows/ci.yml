@@ -91,3 +91,5 @@ jobs:
 
       - name: Build examples
         run: go build ./examples/...
+        env:
+          GOWORK: ${{ github.workspace }}/go.work
