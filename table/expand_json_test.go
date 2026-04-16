@@ -1,6 +1,8 @@
 package table
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stefanbethge/gseq/slice"
@@ -331,7 +333,308 @@ func TestMapJSON_PreservesOtherColumns(t *testing.T) {
 	}
 }
 
-// --- MapJSON Mutable ---
+// --- Edge-case coverage tests ---
+
+func TestMapJSON_NonObjectJSON(t *testing.T) {
+	// JSON array (not object) → MapJSON with path should leave unchanged
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`[1,2,3]`}},
+	)
+	out := tbl.MapJSON("data", ".key")
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != `[1,2,3]` {
+		t.Errorf("non-object JSON should be unchanged, got %q", got)
+	}
+}
+
+func TestMapJSON_FieldMapping_NonObjectJSON(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`[1,2,3]`}},
+	)
+	out := tbl.MapJSON("data", WithJSONFieldMapping(map[string]string{
+		"x": ".key",
+	}))
+	// Non-object → identity
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != `[1,2,3]` {
+		t.Errorf("non-object JSON should be unchanged, got %q", got)
+	}
+}
+
+func TestMapJSON_NoPathNoMapping(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1"}`}},
+	)
+	out := tbl.MapJSON("data")
+	// No args → identity
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != `{"a":"1"}` {
+		t.Errorf("identity should preserve data, got %q", got)
+	}
+}
+
+func TestExpandJSON_DefaultScalar(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"id", "data"},
+		[][]string{{"1", `"hello"`}},
+	)
+	out := tbl.ExpandJSON("data")
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != "hello" {
+		t.Errorf("scalar string = %q, want %q", got, "hello")
+	}
+}
+
+func TestExpandJSON_BoolAndNumberValues(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"flag":true,"count":42,"name":"x"}`}},
+	)
+	out := tbl.ExpandJSON("data", WithJSONSortedHeaders())
+	if got := out.Rows[0].Get("data.flag").UnwrapOr(""); got != "true" {
+		t.Errorf("bool = %q, want %q", got, "true")
+	}
+	if got := out.Rows[0].Get("data.count").UnwrapOr(""); got != "42" {
+		t.Errorf("number = %q, want %q", got, "42")
+	}
+}
+
+func TestExpandJSON_FieldMapping_NonObjectJSON(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"id", "data"},
+		[][]string{{"1", `"scalar"`}},
+	)
+	out := tbl.ExpandJSON("data", WithJSONFieldMapping(map[string]string{
+		"val": ".key",
+	}))
+	// Non-object → mapping yields empty values
+	if got := out.Rows[0].Get("val").UnwrapOr("MISSING"); got != "" {
+		t.Errorf("non-object mapping = %q, want empty", got)
+	}
+}
+
+func TestTryMapJSON_NonObjectJSON(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`[1,2,3]`}},
+	)
+	res := tbl.TryMapJSON("data", ".key")
+	if !res.IsErr() {
+		t.Fatal("expected error for non-object JSON")
+	}
+	if !strings.Contains(res.UnwrapErr().Error(), "expected JSON object") {
+		t.Errorf("error = %q, want 'expected JSON object'", res.UnwrapErr())
+	}
+}
+
+func TestTryMapJSON_FieldMapping_NonObjectJSON(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`[1,2,3]`}},
+	)
+	res := tbl.TryMapJSON("data", WithJSONFieldMapping(map[string]string{
+		"x": ".key",
+	}))
+	if !res.IsErr() {
+		t.Fatal("expected error for non-object JSON with field mapping")
+	}
+}
+
+func TestTryMapJSON_UnknownColumn(t *testing.T) {
+	tbl := makeTestTable([]string{"id"}, [][]string{{"1"}})
+	res := tbl.TryMapJSON("nonexistent", ".key")
+	if res.IsErr() {
+		t.Fatal("unknown column should produce table error, not Err result")
+	}
+	if errs := res.Unwrap().Errs(); len(errs) == 0 {
+		t.Fatal("expected table error for unknown column")
+	}
+}
+
+func TestTryMapJSON_NoPathNoMapping(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1"}`}},
+	)
+	res := tbl.TryMapJSON("data")
+	if res.IsErr() {
+		t.Fatalf("unexpected error: %v", res.UnwrapErr())
+	}
+	if got := res.Unwrap().Rows[0].Get("data").UnwrapOr(""); got != `{"a":"1"}` {
+		t.Errorf("identity should preserve data, got %q", got)
+	}
+}
+
+func TestMapJSON_Mutable_InvalidPath(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1"}`}},
+	)
+	m := tbl.Mutable()
+	m.MapJSON("data", "bad.path")
+	if !m.HasErrs() {
+		t.Fatal("expected error for invalid path")
+	}
+}
+
+func TestMapJSON_Mutable_UnknownColumn(t *testing.T) {
+	tbl := makeTestTable([]string{"id"}, [][]string{{"1"}})
+	m := tbl.Mutable()
+	m.MapJSON("nonexistent", ".key")
+	if !m.HasErrs() {
+		t.Fatal("expected error for unknown column")
+	}
+}
+
+func TestTryMapJSON_Mutable_FieldMapping(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1","b":"2"}`}},
+	)
+	m := tbl.Mutable()
+	m.TryMapJSON("data", WithJSONFieldMapping(map[string]string{
+		"x": ".a",
+	}))
+	if m.HasErrs() {
+		t.Fatalf("unexpected error: %v", m.Errs())
+	}
+	if got := m.Freeze().Rows[0].Get("data").UnwrapOr(""); got != `{"x":"1"}` {
+		t.Errorf("data = %q, want %q", got, `{"x":"1"}`)
+	}
+}
+
+func TestTryMapJSON_Mutable_UnknownColumn(t *testing.T) {
+	tbl := makeTestTable([]string{"id"}, [][]string{{"1"}})
+	m := tbl.Mutable()
+	m.TryMapJSON("nonexistent", ".key")
+	if !m.HasErrs() {
+		t.Fatal("expected error for unknown column")
+	}
+}
+
+func TestExpandJSON_Mutable_InvalidFieldMappingPath(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"id", "data"},
+		[][]string{{"1", `{"a":"1"}`}},
+	)
+	m := tbl.Mutable()
+	m.ExpandJSON("data", WithJSONFieldMapping(map[string]string{
+		"val": "bad",
+	}))
+	if !m.HasErrs() {
+		t.Fatal("expected error for invalid field mapping path")
+	}
+}
+
+// --- Validation error tests ---
+
+func TestMapJSON_InvalidPath(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"user":{"name":"Alice"}}`}},
+	)
+	out := tbl.MapJSON("data", "user.name") // missing leading dot
+	if errs := out.Errs(); len(errs) == 0 {
+		t.Fatal("expected error for invalid path, got none")
+	}
+	// Data should remain unchanged.
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != `{"user":{"name":"Alice"}}` {
+		t.Errorf("data should be unchanged, got %q", got)
+	}
+}
+
+func TestMapJSON_InvalidFieldMappingPath(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1","b":"2"}`}},
+	)
+	out := tbl.MapJSON("data", WithJSONFieldMapping(map[string]string{
+		"name": "user.name", // missing leading dot
+	}))
+	if errs := out.Errs(); len(errs) == 0 {
+		t.Fatal("expected error for invalid field mapping path, got none")
+	}
+	// Data should remain unchanged.
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != `{"a":"1","b":"2"}` {
+		t.Errorf("data should be unchanged, got %q", got)
+	}
+}
+
+func TestExpandJSON_InvalidFieldMappingPath(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"id", "meta"},
+		[][]string{{"1", `{"role":"admin"}`}},
+	)
+	out := tbl.ExpandJSON("meta", WithJSONFieldMapping(map[string]string{
+		"role": "role", // missing leading dot
+	}))
+	if errs := out.Errs(); len(errs) == 0 {
+		t.Fatal("expected error for invalid field mapping path, got none")
+	}
+}
+
+// --- TryMapJSON (immutable) ---
+
+func TestTryMapJSON_Path(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"user":{"name":"Alice"}}`}},
+	)
+	res := tbl.TryMapJSON("data", ".user.name")
+	if res.IsErr() {
+		t.Fatalf("unexpected error: %v", res.UnwrapErr())
+	}
+	out := res.Unwrap()
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != "Alice" {
+		t.Errorf("data = %q, want %q", got, "Alice")
+	}
+}
+
+func TestTryMapJSON_InvalidJSON(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{"not-json"}},
+	)
+	res := tbl.TryMapJSON("data", ".key")
+	if !res.IsErr() {
+		t.Fatal("expected error for invalid JSON, got Ok")
+	}
+	if !strings.Contains(res.UnwrapErr().Error(), "invalid JSON") {
+		t.Errorf("error = %q, want to contain 'invalid JSON'", res.UnwrapErr())
+	}
+}
+
+func TestTryMapJSON_FieldMapping(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1","b":"2"}`}},
+	)
+	res := tbl.TryMapJSON("data", WithJSONFieldMapping(map[string]string{
+		"x": ".a",
+	}))
+	if res.IsErr() {
+		t.Fatalf("unexpected error: %v", res.UnwrapErr())
+	}
+	out := res.Unwrap()
+	if got := out.Rows[0].Get("data").UnwrapOr(""); got != `{"x":"1"}` {
+		t.Errorf("data = %q, want %q", got, `{"x":"1"}`)
+	}
+}
+
+func TestTryMapJSON_InvalidPath(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1"}`}},
+	)
+	res := tbl.TryMapJSON("data", "bad.path")
+	// Invalid path is a programming error → withErrf, not Err result
+	if res.IsErr() {
+		t.Fatal("expected Ok with error, not Err result")
+	}
+	out := res.Unwrap()
+	if errs := out.Errs(); len(errs) == 0 {
+		t.Fatal("expected table error for invalid path")
+	}
+}
 
 func TestMapJSON_Mutable_Path(t *testing.T) {
 	tbl := makeTestTable(
@@ -468,5 +771,198 @@ func TestExpandJSON_Mutable_PreservesSource(t *testing.T) {
 	m.ExpandJSON("data")
 	if got := m.Source(); got != "src.json" {
 		t.Errorf("Source() = %q, want %q", got, "src.json")
+	}
+}
+
+// --- TryMapJSON (mutable) ---
+
+func TestTryMapJSON_Mutable_Path(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"user":{"name":"Bob"}}`}},
+	)
+	m := tbl.Mutable()
+	m.TryMapJSON("data", ".user.name")
+	if m.HasErrs() {
+		t.Fatalf("unexpected error: %v", m.Errs())
+	}
+	if got := m.Freeze().Rows[0].Get("data").UnwrapOr(""); got != "Bob" {
+		t.Errorf("data = %q, want %q", got, "Bob")
+	}
+}
+
+func TestTryMapJSON_Mutable_InvalidJSON(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{"not-json"}},
+	)
+	m := tbl.Mutable()
+	m.TryMapJSON("data", ".key")
+	if !m.HasErrs() {
+		t.Fatal("expected error for invalid JSON")
+	}
+	// Data should remain unchanged (cloneRecords rollback).
+	if got := m.Freeze().Rows[0].Get("data").UnwrapOr(""); got != "not-json" {
+		t.Errorf("data should be unchanged, got %q", got)
+	}
+}
+
+func TestTryMapJSON_Mutable_InvalidPath(t *testing.T) {
+	tbl := makeTestTable(
+		[]string{"data"},
+		[][]string{{`{"a":"1"}`}},
+	)
+	m := tbl.Mutable()
+	m.TryMapJSON("data", "bad.path") // missing dot
+	if !m.HasErrs() {
+		t.Fatal("expected error for invalid path")
+	}
+}
+
+// --- Benchmarks ---
+
+// benchJSONSizes defines the row counts for JSON benchmarks.
+var benchJSONSizes = []struct {
+	name string
+	n    int
+}{
+	{"100", 100},
+	{"1k", 1_000},
+	{"10k", 10_000},
+}
+
+// benchJSONTable builds a table with a JSON column for benchmarking.
+func benchJSONTable(n int) Table {
+	headers := []string{"id", "data"}
+	records := make([][]string, n)
+	for i := range records {
+		records[i] = []string{
+			strconv.Itoa(i),
+			`{"user":{"name":"Alice","age":30},"score":` + strconv.Itoa(i%100) + `,"city":"Berlin"}`,
+		}
+	}
+	return New(headers, records)
+}
+
+func BenchmarkMapJSON_Path(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = tb.MapJSON("data", ".user.name")
+			}
+		})
+	}
+}
+
+func BenchmarkMapJSON_FieldMapping(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = tb.MapJSON("data", WithJSONFieldMapping(map[string]string{
+					"name":  ".user.name",
+					"score": ".score",
+				}))
+			}
+		})
+	}
+}
+
+func BenchmarkTryMapJSON_Path(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = tb.TryMapJSON("data", ".user.name")
+			}
+		})
+	}
+}
+
+func BenchmarkExpandJSON_Default(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = tb.ExpandJSON("data")
+			}
+		})
+	}
+}
+
+func BenchmarkExpandJSON_FieldMapping(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = tb.ExpandJSON("data", WithJSONFieldMapping(map[string]string{
+					"name":  ".user.name",
+					"score": ".score",
+				}))
+			}
+		})
+	}
+}
+
+func BenchmarkExpandJSON_Flatten(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = tb.ExpandJSON("data", WithJSONFlatten())
+			}
+		})
+	}
+}
+
+func BenchmarkMutableMapJSON_Path(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				m := tb.Mutable()
+				b.StartTimer()
+				m.MapJSON("data", ".user.name")
+			}
+		})
+	}
+}
+
+func BenchmarkMutableExpandJSON_Default(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				m := tb.Mutable()
+				b.StartTimer()
+				m.ExpandJSON("data")
+			}
+		})
+	}
+}
+
+func BenchmarkMutableTryMapJSON_Path(b *testing.B) {
+	for _, sz := range benchJSONSizes {
+		tb := benchJSONTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				m := tb.Mutable()
+				b.StartTimer()
+				m.TryMapJSON("data", ".user.name")
+			}
+		})
 	}
 }

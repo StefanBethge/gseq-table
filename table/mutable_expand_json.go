@@ -1,6 +1,7 @@
 package table
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/stefanbethge/gseq/slice"
@@ -16,6 +17,12 @@ func (m *MutableTable) MapJSON(col string, args ...any) *MutableTable {
 	}
 
 	path, cfg := parseMapJSONArgs(args)
+
+	if err := validateJSONPaths(path, cfg); err != nil {
+		m.addErrf("MapJSON: %v", err)
+		return m
+	}
+
 	mapFn := buildMapJSONFunc(path, cfg)
 
 	for i, row := range m.rows {
@@ -38,6 +45,11 @@ func (m *MutableTable) ExpandJSON(col string, opts ...ExpandJSONOption) *Mutable
 	}
 
 	cfg := resolveExpandJSONConfig(opts)
+
+	if err := validateJSONFieldMapping(cfg); err != nil {
+		m.addErrf("ExpandJSON: %v", err)
+		return m
+	}
 
 	// Parse JSON from each row and collect extracted fields.
 	parsed := make([]map[string]string, len(m.rows))
@@ -98,5 +110,43 @@ func (m *MutableTable) ExpandJSON(col string, opts ...ExpandJSONOption) *Mutable
 	m.headers = slice.Slice[string](allHeaders)
 	m.rows = rows
 	m.headerIdx = buildHeaderIndex(m.headers)
+	return m
+}
+
+// TryMapJSON is like MapJSON but returns an error when a cell contains invalid
+// JSON. The table data is left unchanged on error (rows are cloned before
+// processing and only committed on success).
+//
+// Programming errors (unknown column, invalid path) go through addErrf.
+// Data errors (unparseable JSON) are appended to m.errs without panicking,
+// even in strict builds.
+func (m *MutableTable) TryMapJSON(col string, args ...any) *MutableTable {
+	idx, ok := m.headerIdx[col]
+	if !ok {
+		m.addErrf("TryMapJSON: unknown column %q", col)
+		return m
+	}
+
+	path, cfg := parseMapJSONArgs(args)
+
+	if err := validateJSONPaths(path, cfg); err != nil {
+		m.addErrf("TryMapJSON: %v", err)
+		return m
+	}
+
+	tryFn := buildTryMapJSONFunc(path, cfg)
+
+	rows := cloneRecords(m.rows)
+	for i := range rows {
+		if idx < len(rows[i]) && rows[i][idx] != "" {
+			newVal, err := tryFn(rows[i][idx])
+			if err != nil {
+				m.errs = append(m.errs, fmt.Errorf("TryMapJSON: %v", err))
+				return m
+			}
+			rows[i][idx] = newVal
+		}
+	}
+	m.rows = rows
 	return m
 }

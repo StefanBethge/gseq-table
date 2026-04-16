@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stefanbethge/gseq/result"
 	"github.com/stefanbethge/gseq/slice"
 )
 
@@ -45,6 +46,7 @@ func WithJSONFlattenSeparator(sep string) ExpandJSONOption {
 }
 
 // WithJSONFieldMapping provides explicit JSON path expressions to extract.
+// Each path must start with "." (e.g. ".user.name", ".items[0].id").
 func WithJSONFieldMapping(mapping map[string]string) ExpandJSONOption {
 	return func(c *ExpandJSONConfig) { c.FieldMapping = mapping }
 }
@@ -67,6 +69,10 @@ func WithJSONSortedHeaders() ExpandJSONOption {
 // If a cell contains invalid JSON, the expanded columns for that row are
 // empty strings.
 //
+// An unknown column or an invalid field-mapping path (paths must start with ".")
+// is reported via withErrf / addErrf (accumulated in lenient mode, panics in
+// strict mode).
+//
 // Example:
 //
 //	t = t.ExpandJSON("meta", table.WithJSONFieldMapping(map[string]string{
@@ -80,6 +86,10 @@ func (t Table) ExpandJSON(col string, opts ...ExpandJSONOption) Table {
 	}
 
 	cfg := resolveExpandJSONConfig(opts)
+
+	if err := validateJSONFieldMapping(cfg); err != nil {
+		return t.withErrf("ExpandJSON: %v", err)
+	}
 
 	// Parse JSON from each row and collect extracted fields.
 	parsed := make([]map[string]string, len(t.Rows))
@@ -146,14 +156,18 @@ func (t Table) ExpandJSON(col string, opts ...ExpandJSONOption) Table {
 // MapJSON transforms JSON values in the named column by extracting a path
 // or restructuring the JSON. The result stays in the same column.
 //
-// With a path argument, each cell is replaced with the value at that path.
-// Non-leaf values become compact JSON strings. If the path does not resolve,
-// the cell becomes an empty string.
+// With a path argument (must start with "."), each cell is replaced with the
+// value at that path. Non-leaf values become compact JSON strings. If the path
+// does not resolve, the cell becomes an empty string.
 //
 // With WithJSONFieldMapping, a new JSON object is constructed from the
 // mapped paths and written back as a compact JSON string.
 //
 // Invalid JSON cells are left unchanged.
+//
+// An unknown column, an invalid path, or an invalid field-mapping path is
+// reported via withErrf / addErrf (accumulated in lenient mode, panics in
+// strict mode).
 //
 // Example:
 //
@@ -173,22 +187,23 @@ func (t Table) MapJSON(col string, args ...any) Table {
 
 	path, cfg := parseMapJSONArgs(args)
 
-	mapFn := buildMapJSONFunc(path, cfg)
-
-	var records [][]string
-	for _, row := range t.Rows {
-		rec := make([]string, len(t.Headers))
-		copy(rec, row.values)
-		if idx < len(rec) && rec[idx] != "" {
-			rec[idx] = mapFn(rec[idx])
-		}
-		records = append(records, rec)
+	if err := validateJSONPaths(path, cfg); err != nil {
+		return t.withErrf("MapJSON: %v", err)
 	}
 
-	out := New(t.Headers, records)
-	out.errs = t.errs
-	out.source = t.source
-	return out
+	mapFn := buildMapJSONFunc(path, cfg)
+
+	rows := make(slice.Slice[Row], len(t.Rows))
+	for i, row := range t.Rows {
+		vals := make(slice.Slice[string], len(row.values))
+		copy(vals, row.values)
+		if idx < len(vals) && vals[idx] != "" {
+			vals[idx] = mapFn(vals[idx])
+		}
+		rows[i] = NewRow(t.Headers, vals)
+	}
+
+	return newTableFrom(t, t.Headers, rows)
 }
 
 // parseMapJSONArgs separates the path string and options from the variadic args.
@@ -207,6 +222,26 @@ func parseMapJSONArgs(args []any) (string, *ExpandJSONConfig) {
 	return path, cfg
 }
 
+// validateJSONPaths validates the path string and all field mapping paths.
+func validateJSONPaths(path string, cfg *ExpandJSONConfig) error {
+	if path != "" {
+		if _, err := ejParsePath(path); err != nil {
+			return fmt.Errorf("invalid path %q: %v", path, err)
+		}
+	}
+	return validateJSONFieldMapping(cfg)
+}
+
+// validateJSONFieldMapping validates all paths in the field mapping.
+func validateJSONFieldMapping(cfg *ExpandJSONConfig) error {
+	for col, p := range cfg.FieldMapping {
+		if _, err := ejParsePath(p); err != nil {
+			return fmt.Errorf("invalid path %q for field %q: %v", p, col, err)
+		}
+	}
+	return nil
+}
+
 // buildMapJSONFunc creates a function that transforms a JSON cell value.
 func buildMapJSONFunc(path string, cfg *ExpandJSONConfig) func(string) string {
 	// Path extraction mode.
@@ -216,13 +251,7 @@ func buildMapJSONFunc(path string, cfg *ExpandJSONConfig) func(string) string {
 			return func(v string) string { return v }
 		}
 		return func(v string) string {
-			var raw any
-			dec := stdjson.NewDecoder(strings.NewReader(v))
-			dec.UseNumber()
-			if err := dec.Decode(&raw); err != nil {
-				return v
-			}
-			obj, ok := raw.(map[string]any)
+			obj, ok := ejDecodeObject(v)
 			if !ok {
 				return v
 			}
@@ -252,14 +281,12 @@ func buildMapJSONFunc(path string, cfg *ExpandJSONConfig) func(string) string {
 			mappings = append(mappings, parsed{col: col, segs: segs})
 		}
 
+		if len(mappings) == 0 {
+			return func(v string) string { return v }
+		}
+
 		return func(v string) string {
-			var raw any
-			dec := stdjson.NewDecoder(strings.NewReader(v))
-			dec.UseNumber()
-			if err := dec.Decode(&raw); err != nil {
-				return v
-			}
-			obj, ok := raw.(map[string]any)
+			obj, ok := ejDecodeObject(v)
 			if !ok {
 				return v
 			}
@@ -282,6 +309,107 @@ func buildMapJSONFunc(path string, cfg *ExpandJSONConfig) func(string) string {
 	return func(v string) string { return v }
 }
 
+// TryMapJSON is like MapJSON but returns an error when a cell contains invalid
+// JSON. Processing stops at the first error and the error is returned in the
+// Result.
+//
+// Programming errors (unknown column, invalid path) are reported as table
+// errors via withErrf (the Result is Ok, but the table carries the error).
+// Data errors (unparseable JSON) are returned as result.Err.
+//
+//	res := t.TryMapJSON("data", ".user.name")
+func (t Table) TryMapJSON(col string, args ...any) result.Result[Table, error] {
+	idx := t.ColIndex(col)
+	if idx < 0 {
+		return result.Ok[Table, error](t.withErrf("TryMapJSON: unknown column %q", col))
+	}
+
+	path, cfg := parseMapJSONArgs(args)
+
+	if err := validateJSONPaths(path, cfg); err != nil {
+		return result.Ok[Table, error](t.withErrf("TryMapJSON: %v", err))
+	}
+
+	tryFn := buildTryMapJSONFunc(path, cfg)
+
+	rows := make(slice.Slice[Row], len(t.Rows))
+	for i, row := range t.Rows {
+		vals := make(slice.Slice[string], len(row.values))
+		copy(vals, row.values)
+		if idx < len(vals) && vals[idx] != "" {
+			newVal, err := tryFn(vals[idx])
+			if err != nil {
+				return result.Err[Table, error](err)
+			}
+			vals[idx] = newVal
+		}
+		rows[i] = NewRow(t.Headers, vals)
+	}
+	return result.Ok[Table, error](newTableFrom(t, t.Headers, rows))
+}
+
+// buildTryMapJSONFunc is like buildMapJSONFunc but returns an error on invalid JSON.
+func buildTryMapJSONFunc(path string, cfg *ExpandJSONConfig) func(string) (string, error) {
+	if path != "" {
+		segs, _ := ejParsePath(path) // already validated
+		return func(v string) (string, error) {
+			raw, err := ejDecodeJSON(v)
+			if err != nil {
+				return "", fmt.Errorf("invalid JSON: %w", err)
+			}
+			obj, ok := raw.(map[string]any)
+			if !ok {
+				return "", fmt.Errorf("expected JSON object, got %T", raw)
+			}
+			r := ejTraversePath(obj, segs)
+			return ejStringify(r), nil
+		}
+	}
+
+	if len(cfg.FieldMapping) > 0 {
+		type parsed struct {
+			col  string
+			segs []ejPathSegment
+		}
+		cols := make([]string, 0, len(cfg.FieldMapping))
+		for col := range cfg.FieldMapping {
+			cols = append(cols, col)
+		}
+		sort.Strings(cols)
+
+		mappings := make([]parsed, 0, len(cols))
+		for _, col := range cols {
+			segs, _ := ejParsePath(cfg.FieldMapping[col]) // already validated
+			mappings = append(mappings, parsed{col: col, segs: segs})
+		}
+
+		return func(v string) (string, error) {
+			raw, err := ejDecodeJSON(v)
+			if err != nil {
+				return "", fmt.Errorf("invalid JSON: %w", err)
+			}
+			obj, ok := raw.(map[string]any)
+			if !ok {
+				return "", fmt.Errorf("expected JSON object, got %T", raw)
+			}
+			r := make(map[string]any, len(mappings))
+			for _, m := range mappings {
+				val := ejTraversePath(obj, m.segs)
+				if val != nil {
+					r[m.col] = val
+				}
+			}
+			b, err := stdjson.Marshal(r)
+			if err != nil {
+				return "", fmt.Errorf("marshal result: %w", err)
+			}
+			return string(b), nil
+		}
+	}
+
+	return func(v string) (string, error) { return v, nil }
+}
+
 func resolveExpandJSONConfig(opts []ExpandJSONOption) *ExpandJSONConfig {
 	cfg := &ExpandJSONConfig{}
 	for _, opt := range opts {
@@ -292,12 +420,31 @@ func resolveExpandJSONConfig(opts []ExpandJSONOption) *ExpandJSONConfig {
 
 // --- Internal JSON helpers (not exported) ---
 
+// ejDecodeJSON decodes a JSON string into a raw value using UseNumber for
+// lossless number handling. Used by all JSON processing functions.
+func ejDecodeJSON(s string) (any, error) {
+	dec := stdjson.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
+	var raw any
+	err := dec.Decode(&raw)
+	return raw, err
+}
+
+// ejDecodeObject decodes a JSON string and returns the top-level object.
+// Returns nil, false if the string is not a valid JSON object.
+func ejDecodeObject(s string) (map[string]any, bool) {
+	raw, err := ejDecodeJSON(s)
+	if err != nil {
+		return nil, false
+	}
+	obj, ok := raw.(map[string]any)
+	return obj, ok
+}
+
 // ejExpandCell parses a JSON string and extracts fields.
 func ejExpandCell(cellVal, col string, cfg *ExpandJSONConfig) (map[string]string, []string) {
-	var raw any
-	dec := stdjson.NewDecoder(strings.NewReader(cellVal))
-	dec.UseNumber()
-	if err := dec.Decode(&raw); err != nil {
+	raw, err := ejDecodeJSON(cellVal)
+	if err != nil {
 		return map[string]string{}, nil
 	}
 
