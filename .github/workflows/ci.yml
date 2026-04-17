@@ -92,5 +92,4 @@ jobs:
       - name: Build examples
         run: |
           cd examples
-          go mod edit -replace github.com/stefanbethge/gseq-table=../
           go build ./...
