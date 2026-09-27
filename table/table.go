@@ -9,8 +9,7 @@
 // and MutableTable.Freeze to return to an immutable Table.
 //
 // Every cell value is a plain string. Type conversions (string → int, etc.)
-// are done on access, either through the schema package or, with Go 1.27+,
-// through the typed generic methods (GetAs, ColAs, MapAs, AddColAs, SumAs, ...).
+// are done on access, either through the schema package or through the typed generic methods (GetAs, ColAs, MapAs, AddColAs, SumAs, ...).
 //
 // # Row access
 //
@@ -18,18 +17,15 @@
 //	row.At(2)                 // option.Option[string]  (index-based)
 //	row.ToMap()               // map[string]string
 //
-// # Typed access (Go 1.27+)
+// # Typed access
 //
-// Built with Go 1.27 or newer, Row, Table and MutableTable provide generic
-// methods that parse cells on read and format them on write:
+// Row, Table and MutableTable provide generic methods that parse cells on read
+// and format them on write:
 //
 //	row.GetAs[float64]("price")                        // option.Option[float64]
 //	ages, err := t.ColAs[int]("age")                   // []int
 //	t = t.MapAs("price", func(p float64) float64 { return p * 1.19 })
 //	total := t.SumAs[int64]("qty")
-//
-// These methods live in files guarded by a go1.27 build constraint, so the
-// module still builds with older toolchains, just without them.
 //
 // # Table construction
 //

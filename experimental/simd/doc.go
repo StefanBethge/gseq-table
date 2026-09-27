@@ -12,8 +12,7 @@
 //
 //	GOEXPERIMENT=simd go build ./...
 //
-// which requires Go 1.27 or newer and uses the standard library's
-// experimental simd/archsimd package. Without the experiment, or on
+// which uses the standard library's experimental simd/archsimd package. Without the experiment, or on
 // architectures without a SIMD implementation, every function uses a
 // plain-Go scalar fallback. [Accelerated] reports which path is active.
 //

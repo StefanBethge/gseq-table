@@ -1,4 +1,4 @@
-//go:build go1.27 && !strict
+//go:build !strict
 
 package table
 

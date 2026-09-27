@@ -1,6 +1,6 @@
 module github.com/stefanbethge/gseq-table/examples
 
-go 1.23
+go 1.27
 
 require github.com/stefanbethge/gseq-table v1.1.1
 
