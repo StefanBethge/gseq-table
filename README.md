@@ -262,6 +262,22 @@ Compatibility notes:
 
 - Generic methods cannot satisfy interfaces, so no existing interface changed. The existing package-level helpers (`table.ColAs`, `table.MapColTo`, `table.AddColOf`) are still there.
 
+### Iterators
+
+`Table` and `MutableTable` provide `iter.Seq` iterators for range-over-func loops.
+They do not copy cells or allocate, and `break` stops the iteration.
+
+```go
+for i, r := range t.All() { ... }                  // iter.Seq2[int, table.Row]
+for r := range t.RowsSeq() { ... }                 // iter.Seq[table.Row]
+for city := range t.ColSeq("city") { ... }         // iter.Seq[string]
+for i, age := range t.ColSeqAs[int]("age") { ... } // iter.Seq2[int, int], row index + value
+```
+
+- `ColSeqAs` skips empty and unparseable cells, like `ReduceAs`. The index tells you which row the value came from.
+- An unknown column gives an empty sequence and records no error, like `Col`.
+- `MutableTable` iterators read the live table on each step. `Set`, `Map`, and similar calls on rows not yet visited are seen. Rows appended during the loop are visited too. After a structural change (`Select`, `Drop`, `Where`, `Sort`, ...) the loop does not panic, but which values it yields is unspecified. Iterate `m.Freeze()` if you need a stable snapshot.
+
 ## Two APIs: immutable and mutable
 
 ### Table
