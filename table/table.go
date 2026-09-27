@@ -403,14 +403,16 @@ func (t Table) AddCol(name string, fn func(Row) string) Table {
 //
 //	t.AddColConstValue("status", "active")
 func (t Table) AddColConstValue(name, value string) Table {
-	newHeaders := make(slice.Slice[string], len(t.Headers)+1)
+	width := len(t.Headers)
+	newHeaders := make(slice.Slice[string], width+1)
 	copy(newHeaders, t.Headers)
-	newHeaders[len(t.Headers)] = name
+	newHeaders[width] = name
 	rows := make(slice.Slice[Row], len(t.Rows))
 	for i, row := range t.Rows {
-		vals := make(slice.Slice[string], len(row.values)+1)
+		// Short rows are padded with "" so value always lands in the new column.
+		vals := make(slice.Slice[string], width+1)
 		copy(vals, row.values)
-		vals[len(row.values)] = value
+		vals[width] = value
 		rows[i] = NewRow(newHeaders, vals)
 	}
 	return newTableFrom(t, newHeaders, rows)

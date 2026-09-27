@@ -191,7 +191,7 @@ func (m *MutableTable) AddCol(name string, fn func(Row) string) *MutableTable {
 	return m
 }
 
-// AddColConstValue appends a derived column in place with a fixed value.
+// AddColConstValue appends a column in place with value in every row.
 func (m *MutableTable) AddColConstValue(name, value string) *MutableTable {
 	oldHeaders := m.headers
 	for i := range m.rows {

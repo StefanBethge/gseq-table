@@ -33,6 +33,17 @@ func TestWithSource_ErrorPrefix(t *testing.T) {
 	}
 }
 
+// TestAddColConstValue_PreservesErrs verifies that accumulated errors survive
+// AddColConstValue, as with AddCol.
+func TestAddColConstValue_PreservesErrs(t *testing.T) {
+	src := New([]string{"city"}, [][]string{{"Berlin"}}).Select("nonexistent")
+	if !src.HasErrs() {
+		t.Fatal("expected error")
+	}
+	out := src.AddColConstValue("status", "active")
+	assertEqual(t, len(out.Errs()), len(src.Errs()))
+}
+
 // ─── Join missing column tests ─────────────────────────────────────────────
 
 func TestRightJoin_MissingLeftCol(t *testing.T) {

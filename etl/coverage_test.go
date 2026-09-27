@@ -89,6 +89,25 @@ func TestCoverage_AddCol(t *testing.T) {
 	assertEq(t, out.Rows[0].Get("tag").UnwrapOr(""), "Alice@Berlin")
 }
 
+func TestCoverage_AddColConstValue(t *testing.T) {
+	out := etl.From(baseTable()).Then(etl.AddColConstValue("status", "active")).Unwrap()
+	assertEq(t, out.Rows[0].Get("status").UnwrapOr(""), "active")
+	assertEq(t, out.Rows[2].Get("status").UnwrapOr(""), "active")
+}
+
+func TestCoverage_AddColConstValue_DuplicateName(t *testing.T) {
+	out := etl.From(baseTable()).Then(etl.AddColConstValue("name", "x")).Unwrap()
+	assertEq(t, out.Headers[3], "name_2")
+	assertEq(t, out.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEq(t, out.Rows[0].Get("name_2").UnwrapOr(""), "x")
+}
+
+func TestCoverage_AddColConstValue_EmptyTable(t *testing.T) {
+	out := etl.From(table.New([]string{"a"}, nil)).Then(etl.AddColConstValue("b", "v")).Unwrap()
+	assertEq(t, len(out.Headers), 2)
+	assertEq(t, out.Len(), 0)
+}
+
 func TestCoverage_AddColFloat(t *testing.T) {
 	out := etl.From(baseTable()).Then(etl.AddColFloat("doubled", func(r table.Row) float64 {
 		v, _ := strconv.ParseFloat(r.Get("score").UnwrapOr("0"), 64)
@@ -425,6 +444,25 @@ func TestCoverage_Mut_AddCol(t *testing.T) {
 		return r.Get("name").UnwrapOr("") + "@" + r.Get("city").UnwrapOr("")
 	})).Frozen().Unwrap()
 	assertEq(t, out.Rows[0].Get("tag").UnwrapOr(""), "Alice@Berlin")
+}
+
+func TestCoverage_Mut_AddColConstValue(t *testing.T) {
+	out := etl.FromMutable(baseMutable()).Then(etl.Mut.AddColConstValue("status", "active")).Frozen().Unwrap()
+	assertEq(t, out.Rows[0].Get("status").UnwrapOr(""), "active")
+	assertEq(t, out.Rows[2].Get("status").UnwrapOr(""), "active")
+}
+
+func TestCoverage_Mut_AddColConstValue_DuplicateName(t *testing.T) {
+	out := etl.FromMutable(baseMutable()).Then(etl.Mut.AddColConstValue("name", "x")).Frozen().Unwrap()
+	assertEq(t, out.Headers[3], "name_2")
+	assertEq(t, out.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEq(t, out.Rows[0].Get("name_2").UnwrapOr(""), "x")
+}
+
+func TestCoverage_Mut_AddColConstValue_EmptyTable(t *testing.T) {
+	out := etl.FromMutable(table.NewMutable([]string{"a"}, nil)).Then(etl.Mut.AddColConstValue("b", "v")).Frozen().Unwrap()
+	assertEq(t, len(out.Headers), 2)
+	assertEq(t, out.Len(), 0)
 }
 
 func TestCoverage_Mut_AddColFloat(t *testing.T) {

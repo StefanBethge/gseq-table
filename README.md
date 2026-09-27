@@ -432,6 +432,7 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - select, drop, rename, transpose
 - filtering, partitioning, sampling
 - map and transform by column or row
+- add derived or constant-value columns (`AddCol`, `AddColConstValue`)
 - typed access, transforms, and aggregations via generic methods
 - joins: inner, left, right, outer, anti
 - stable sorting and multi-column sorting

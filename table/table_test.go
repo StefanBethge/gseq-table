@@ -126,6 +126,52 @@ func TestTable_AddCol_DeduplicatesNameAndClampsWideRows(t *testing.T) {
 	assertEqual(t, len(tb.Rows[0].Values()), 2)
 }
 
+func TestTable_AddColConstValue(t *testing.T) {
+	src := makeTable()
+	tb := src.AddColConstValue("status", "active")
+	assertEqual(t, len(tb.Headers), 4)
+	assertEqual(t, tb.Headers[3], "status")
+	for i := range tb.Rows {
+		assertEqual(t, tb.Rows[i].Get("status").UnwrapOr(""), "active")
+	}
+	assertEqual(t, tb.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEqual(t, len(src.Headers), 3) // source unchanged
+}
+
+func TestTable_AddColConstValue_DeduplicatesName(t *testing.T) {
+	tb := makeTable().AddColConstValue("name", "x").AddColConstValue("name", "y")
+	assertEqual(t, tb.Headers[3], "name_2")
+	assertEqual(t, tb.Headers[4], "name_3")
+	assertEqual(t, tb.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEqual(t, tb.Rows[0].Get("name_2").UnwrapOr(""), "x")
+	assertEqual(t, tb.Rows[0].Get("name_3").UnwrapOr(""), "y")
+}
+
+func TestTable_AddColConstValue_EmptyTable(t *testing.T) {
+	tb := New([]string{"a"}, nil).AddColConstValue("b", "v")
+	assertEqual(t, len(tb.Headers), 2)
+	assertEqual(t, tb.Headers[1], "b")
+	assertEqual(t, len(tb.Rows), 0)
+
+	noCols := New(nil, nil).AddColConstValue("b", "v")
+	assertEqual(t, len(noCols.Headers), 1)
+	assertEqual(t, len(noCols.Rows), 0)
+}
+
+func TestTable_AddColConstValue_ShortRow(t *testing.T) {
+	headers := []string{"a", "b"}
+	tb := NewFromRows(headers, []Row{NewRow(headers, []string{"1"})}).
+		AddColConstValue("c", "v")
+	assertEqual(t, tb.Rows[0].Get("a").UnwrapOr(""), "1")
+	assertEqual(t, tb.Rows[0].Get("b").UnwrapOr("x"), "")
+	assertEqual(t, tb.Rows[0].Get("c").UnwrapOr(""), "v")
+}
+
+func TestTable_AddColConstValue_PreservesSource(t *testing.T) {
+	tb := makeTable().WithSource("in.csv").AddColConstValue("status", "active")
+	assertEqual(t, tb.Source(), "in.csv")
+}
+
 func TestTable_GroupBy(t *testing.T) {
 	groups := makeTable().GroupBy("city")
 	assertEqual(t, len(groups), 2)
