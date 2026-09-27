@@ -1,5 +1,3 @@
-//go:build go1.27
-
 package table
 
 import (
@@ -12,9 +10,7 @@ import (
 	"github.com/stefanbethge/gseq/option"
 )
 
-// This file and the other typed*.go files use Go 1.27 generic methods. They
-// are guarded by the go1.27 build constraint so the module keeps building on
-// older toolchains; on those toolchains the typed methods are simply absent.
+// This file and the other typed*.go files use Go 1.27 generic methods.
 //
 // Parsing and formatting use the internal cell package, the same rules the
 // schema package uses: surrounding whitespace is trimmed, booleans accept

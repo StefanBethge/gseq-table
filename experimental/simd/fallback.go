@@ -1,10 +1,9 @@
-//go:build !goexperiment.simd || !go1.27 || !(amd64 || arm64)
+//go:build !goexperiment.simd || !(amd64 || arm64)
 
 package simd
 
-// Fallback build: GOEXPERIMENT=simd is not set, the toolchain is older than
-// Go 1.27, or the target architecture has no SIMD implementation. Every
-// kernel uses the scalar code.
+// Fallback build: GOEXPERIMENT=simd is not set or the target architecture
+// has no SIMD implementation. Every kernel uses the scalar code.
 
 const accelerated = false
 

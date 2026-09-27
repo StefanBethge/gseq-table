@@ -1,5 +1,3 @@
-//go:build go1.27
-
 package table
 
 import "github.com/stefanbethge/gseq/option"
