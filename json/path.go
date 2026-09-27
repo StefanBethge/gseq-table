@@ -94,18 +94,15 @@ func traversePath(v any, segments []pathSegment) any {
 	return current
 }
 
-// extractMapping extracts fields from JSON objects using explicit path
-// mappings. Returns headers in deterministic (sorted) order of the output
-// column names, the corresponding row maps, and an error if any path is
-// invalid.
-func extractMapping(records []record, mapping map[string]string) ([]string, []map[string]string, error) {
-	// Parse all paths upfront.
-	type parsedMapping struct {
-		col      string
-		segments []pathSegment
-	}
+// parsedMapping is a FieldMapping entry with its path pre-parsed.
+type parsedMapping struct {
+	col      string
+	segments []pathSegment
+}
 
-	// Sort column names for deterministic header order.
+// parseMappings parses every path in mapping and returns the entries sorted
+// by column name for deterministic header order.
+func parseMappings(mapping map[string]string) ([]parsedMapping, error) {
 	cols := make([]string, 0, len(mapping))
 	for col := range mapping {
 		cols = append(cols, col)
@@ -116,21 +113,39 @@ func extractMapping(records []record, mapping map[string]string) ([]string, []ma
 	for _, col := range cols {
 		segs, err := parsePath(mapping[col])
 		if err != nil {
-			return nil, nil, fmt.Errorf("json: field mapping %q: %w", col, err)
+			return nil, fmt.Errorf("json: field mapping %q: %w", col, err)
 		}
 		parsed = append(parsed, parsedMapping{col: col, segments: segs})
 	}
+	return parsed, nil
+}
 
-	headers := cols
+// mapRecord extracts the mapped fields of rec into a flat row.
+func mapRecord(rec record, parsed []parsedMapping) map[string]string {
+	row := make(map[string]string, len(parsed))
+	for _, pm := range parsed {
+		row[pm.col] = stringify(traversePath(rec.fields, pm.segments))
+	}
+	return row
+}
+
+// extractMapping extracts fields from JSON objects using explicit path
+// mappings. Returns headers in deterministic (sorted) order of the output
+// column names, the corresponding row maps, and an error if any path is
+// invalid.
+func extractMapping(records []record, mapping map[string]string) ([]string, []map[string]string, error) {
+	parsed, err := parseMappings(mapping)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	headers := make([]string, len(parsed))
+	for i, pm := range parsed {
+		headers[i] = pm.col
+	}
 	rows := make([]map[string]string, len(records))
-
 	for i, rec := range records {
-		row := make(map[string]string, len(parsed))
-		for _, pm := range parsed {
-			val := traversePath(rec.fields, pm.segments)
-			row[pm.col] = stringify(val)
-		}
-		rows[i] = row
+		rows[i] = mapRecord(rec, parsed)
 	}
 
 	return headers, rows, nil
