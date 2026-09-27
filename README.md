@@ -474,6 +474,8 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - melt and pivot
 - `GroupByAgg` aggregations: `Sum`, `Mean`, `Count`, `CountDistinct`, `Min`, `Max`, `Median`, `Quantile`, `Var`, `StdDev`, `StringJoin`, `First`, `Last`
 - lag, lead, cumulative sums, ranking, rolling aggregations
+- window functions per partition with optional ordering, keeping row order
+  (`t.PartitionBy("customer").OrderBy(table.Asc("date")).CumSum("revenue", "cum")`)
 
 ### IO
 
