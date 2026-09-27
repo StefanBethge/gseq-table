@@ -332,36 +332,24 @@ func BenchmarkMutableFreezeView(b *testing.B) {
 
 func BenchmarkMutableDistinct(b *testing.B) {
 	headers, records := benchmarkMutableRecords(50_000)
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		m := NewMutable(headers, records)
-		b.StartTimer()
+	benchMutableOp(b, benchFixture{src: NewMutable(headers, records)}, func(m *MutableTable) {
 		m.Distinct("city", "name")
-	}
+	})
 }
 
 func BenchmarkMutableIntersect(b *testing.B) {
 	headers, records := benchmarkMutableRecords(50_000)
 	other := benchmarkMutableBaseTable(50_000).Select("city", "name").Distinct("city", "name")
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		m := NewMutable(headers, records)
-		b.StartTimer()
+	benchMutableOp(b, benchFixture{src: NewMutable(headers, records)}, func(m *MutableTable) {
 		m.Intersect(other, "city", "name")
-	}
+	})
 }
 
 func BenchmarkMutableValueCounts(b *testing.B) {
 	headers, records := benchmarkMutableRecords(50_000)
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		m := NewMutable(headers, records)
-		b.StartTimer()
+	benchMutableOp(b, benchFixture{src: NewMutable(headers, records)}, func(m *MutableTable) {
 		m.ValueCounts("city")
-	}
+	})
 }
 
 func BenchmarkMutableGroupByAgg(b *testing.B) {
@@ -371,47 +359,31 @@ func BenchmarkMutableGroupByAgg(b *testing.B) {
 		{Col: "count", Agg: Count("revenue")},
 		{Col: "names", Agg: StringJoin("name", ",")},
 	}
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		m := NewMutable(headers, records)
-		b.StartTimer()
+	benchMutableOp(b, benchFixture{src: NewMutable(headers, records)}, func(m *MutableTable) {
 		m.GroupByAgg([]string{"city"}, aggs)
-	}
+	})
 }
 
 func BenchmarkMutableOuterJoin(b *testing.B) {
 	headers, records := benchmarkMutableRecords(50_000)
 	other := benchmarkMutableJoinTable(50_000)
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		m := NewMutable(headers, records)
-		b.StartTimer()
+	benchMutableOp(b, benchFixture{src: NewMutable(headers, records)}, func(m *MutableTable) {
 		m.OuterJoin(other, "id", "id")
-	}
+	})
 }
 
 func BenchmarkMutableCumSum(b *testing.B) {
 	headers, records := benchmarkMutableRecords(50_000)
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		m := NewMutable(headers, records)
-		b.StartTimer()
+	benchMutableOp(b, benchFixture{src: NewMutable(headers, records)}, func(m *MutableTable) {
 		m.CumSum("revenue", "cum")
-	}
+	})
 }
 
 func BenchmarkMutableRank(b *testing.B) {
 	headers, records := benchmarkMutableRecords(50_000)
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		b.StopTimer()
-		m := NewMutable(headers, records)
-		b.StartTimer()
+	benchMutableOp(b, benchFixture{src: NewMutable(headers, records)}, func(m *MutableTable) {
 		m.Rank("revenue", "rank", true)
-	}
+	})
 }
 
 func benchmarkMutableBaseTable(n int) Table {

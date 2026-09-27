@@ -65,6 +65,75 @@ func benchMutableView(n int) *MutableTable {
 	return benchTable(n).MutableView()
 }
 
+// benchFixture is a prepared MutableTable from which fresh tables are stamped
+// for benchmarks whose op modifies the receiver. By default only the outer rows
+// slice and the headers are copied and the row values are shared: the
+// benchmarked ops replace m.rows / m.headers instead of writing cells, and rows
+// are capped, so appends reallocate. Set copyCells for ops that write into row
+// values (Transform, MapJSON, ...) to get a packed deep copy per table.
+type benchFixture struct {
+	src       *MutableTable
+	copyCells bool
+}
+
+func (f benchFixture) fresh() *MutableTable {
+	var rows [][]string
+	if f.copyCells {
+		rows = cloneRecordsPacked(f.src.rows)
+	} else {
+		rows = make([][]string, len(f.src.rows))
+		copy(rows, f.src.rows)
+	}
+	return &MutableTable{
+		headers:   copyHeaders(f.src.headers),
+		rows:      rows,
+		headerIdx: buildHeaderIndex(f.src.headers),
+	}
+}
+
+// benchPoolRows bounds the number of rows prepared per batch, which keeps the
+// pool (and the op results it retains) at a few tens of MB for 100k-row tables.
+const benchPoolRows = 500_000
+
+// benchMutableOp runs op b.N times, each time on a fresh table from f.
+// Tables are prepared in batches outside the timer: StopTimer/StartTimer read
+// runtime memstats, so toggling them per iteration dominated wall-clock time.
+// Only op itself is timed and counted towards B/op and allocs/op.
+func benchMutableOp(b *testing.B, f benchFixture, op func(m *MutableTable)) {
+	b.ReportAllocs()
+	batch := max(1, min(64, benchPoolRows/max(1, len(f.src.rows))))
+	pool := make([]*MutableTable, batch)
+	b.ResetTimer()
+	for done := 0; done < b.N; done += batch {
+		n := min(batch, b.N-done)
+		b.StopTimer()
+		clear(pool)
+		for i := range pool[:n] {
+			pool[i] = f.fresh()
+		}
+		b.StartTimer()
+		for _, m := range pool[:n] {
+			op(m)
+		}
+	}
+}
+
+// TestBenchFixture_FreshIsIsolated guards the benchmark setup: ops on a fresh
+// table must never leak into the fixture or into later fresh tables.
+func TestBenchFixture_FreshIsIsolated(t *testing.T) {
+	headers, records := benchmarkMutableRecords(10)
+	shared := benchFixture{src: NewMutable(headers, records)}
+	shared.fresh().Sort("id", false).Bin("revenue", "tier", benchBinDefs()).Rename("city", "town")
+	m := shared.fresh()
+	assertEqual(t, len(m.Headers()), 4)
+	assertEqual(t, m.ColIndex("city"), 1)
+	assertEqual(t, m.Col("id")[0], "0")
+
+	cells := benchFixture{src: NewMutable(headers, records), copyCells: true}
+	cells.fresh().Map("city", func(string) string { return "x" })
+	assertEqual(t, cells.fresh().Col("city")[0], "Berlin")
+}
+
 // benchJoinTable returns a pre-generated join Table with n rows.
 func benchJoinTable(n int) Table {
 	if e, ok := benchCache[n]; ok {
@@ -863,48 +932,39 @@ func BenchmarkCartesianProduct(b *testing.B) {
 
 // ── MutableTable operations not yet benchmarked ───────────────────────────────
 //
-// Pattern: pre-generate headers+records ONCE outside b.N (same as mutable_test.go).
-// Only NewMutable (a cheap slice copy) lives inside StopTimer so the measurement
-// starts with a fresh table without re-allocating all the raw string data each time.
+// Pattern: prepare a benchFixture ONCE outside b.N; benchMutableOp stamps fresh
+// tables from it in batches outside the timer, so every timed iteration starts
+// from an unmodified table without paying for setup per iteration.
 
 func BenchmarkMutableSelect(b *testing.B) {
 	for _, sz := range benchSizes {
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Select("city", "revenue")
-			}
+			})
 		})
 	}
 }
 
 func BenchmarkMutableWhere(b *testing.B) {
 	for _, sz := range benchSizes {
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Where(func(r Row) bool { return r.Get("city").UnwrapOr("") == "Berlin" })
-			}
+			})
 		})
 	}
 }
 
 func BenchmarkMutableSort(b *testing.B) {
 	for _, sz := range benchSizes {
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Sort("revenue", true)
-			}
+			})
 		})
 	}
 }
@@ -912,14 +972,11 @@ func BenchmarkMutableSort(b *testing.B) {
 func BenchmarkMutableSortMulti(b *testing.B) {
 	keys := []SortKey{Desc("revenue"), Asc("city")}
 	for _, sz := range benchSizes {
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.SortMulti(keys...)
-			}
+			})
 		})
 	}
 }
@@ -927,14 +984,11 @@ func BenchmarkMutableSortMulti(b *testing.B) {
 func BenchmarkMutableJoin(b *testing.B) {
 	for _, sz := range benchSizes {
 		other := benchJoinTable(sz.n)
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Join(other, "id", "id")
-			}
+			})
 		})
 	}
 }
@@ -942,14 +996,11 @@ func BenchmarkMutableJoin(b *testing.B) {
 func BenchmarkMutableLeftJoin(b *testing.B) {
 	for _, sz := range benchSizes {
 		other := benchJoinTable(sz.n / 2)
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.LeftJoin(other, "id", "id")
-			}
+			})
 		})
 	}
 }
@@ -957,14 +1008,11 @@ func BenchmarkMutableLeftJoin(b *testing.B) {
 func BenchmarkMutableRightJoin(b *testing.B) {
 	for _, sz := range benchSizes {
 		other := benchJoinTable(sz.n / 2)
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.RightJoin(other, "id", "id")
-			}
+			})
 		})
 	}
 }
@@ -972,14 +1020,11 @@ func BenchmarkMutableRightJoin(b *testing.B) {
 func BenchmarkMutableAntiJoin(b *testing.B) {
 	for _, sz := range benchSizes {
 		other := benchJoinTable(sz.n / 2)
+		f := benchFixture{src: benchMutableView(sz.n)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.AntiJoin(other, "id", "id")
-			}
+			})
 		})
 	}
 }
@@ -988,27 +1033,24 @@ func BenchmarkMutableAppend(b *testing.B) {
 	for _, sz := range benchSizes {
 		headers, records := benchRecords(sz.n)
 		other := benchmarkMutableBaseTable(sz.n)
+		f := benchFixture{src: NewMutable(headers, records)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := NewMutable(headers, records)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Append(other)
-			}
+			})
 		})
 	}
 }
 
 func BenchmarkMutableFillForward(b *testing.B) {
 	for _, sz := range benchSizes {
-		// Test data has no empty city values, so FillForward only reads — safe with MutableView.
+		// Test data has no empty city values, so FillForward neither writes cells
+		// nor changes the structure — one prepared table can be reused.
+		m := benchMutableView(sz.n)
 		b.Run(sz.name, func(b *testing.B) {
 			b.ReportAllocs()
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := benchMutableView(sz.n)
-				b.StartTimer()
 				m.FillForward("city")
 			}
 		})
@@ -1018,14 +1060,11 @@ func BenchmarkMutableFillForward(b *testing.B) {
 func BenchmarkMutableLag(b *testing.B) {
 	for _, sz := range benchSizes {
 		headers, records := benchRecords(sz.n)
+		f := benchFixture{src: NewMutable(headers, records)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := NewMutable(headers, records)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Lag("revenue", "prev", 7)
-			}
+			})
 		})
 	}
 }
@@ -1033,14 +1072,11 @@ func BenchmarkMutableLag(b *testing.B) {
 func BenchmarkMutableLead(b *testing.B) {
 	for _, sz := range benchSizes {
 		headers, records := benchRecords(sz.n)
+		f := benchFixture{src: NewMutable(headers, records)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := NewMutable(headers, records)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Lead("revenue", "next", 7)
-			}
+			})
 		})
 	}
 }
@@ -1048,16 +1084,13 @@ func BenchmarkMutableLead(b *testing.B) {
 func BenchmarkMutableTransform(b *testing.B) {
 	for _, sz := range benchSizes {
 		headers, records := benchRecords(sz.n)
+		f := benchFixture{src: NewMutable(headers, records), copyCells: true}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := NewMutable(headers, records)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Transform(func(r Row) map[string]string {
 					return map[string]string{"city": r.Get("city").UnwrapOr("")}
 				})
-			}
+			})
 		})
 	}
 }
@@ -1065,16 +1098,13 @@ func BenchmarkMutableTransform(b *testing.B) {
 func BenchmarkMutableTransformParallel(b *testing.B) {
 	for _, sz := range benchSizes {
 		headers, records := benchRecords(sz.n)
+		f := benchFixture{src: NewMutable(headers, records), copyCells: true}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := NewMutable(headers, records)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.TransformParallel(func(r Row) map[string]string {
 					return map[string]string{"city": r.Get("city").UnwrapOr("")}
 				})
-			}
+			})
 		})
 	}
 }
@@ -1083,14 +1113,11 @@ func BenchmarkMutableBin(b *testing.B) {
 	bins := benchBinDefs()
 	for _, sz := range benchSizes {
 		headers, records := benchRecords(sz.n)
+		f := benchFixture{src: NewMutable(headers, records)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := NewMutable(headers, records)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Bin("revenue", "tier", bins)
-			}
+			})
 		})
 	}
 }
@@ -1098,14 +1125,11 @@ func BenchmarkMutableBin(b *testing.B) {
 func BenchmarkMutableMelt(b *testing.B) {
 	for _, sz := range benchSizes {
 		headers, records := benchRecords(sz.n)
+		f := benchFixture{src: NewMutable(headers, records)}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := NewMutable(headers, records)
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.Melt([]string{"id"}, "var", "val")
-			}
+			})
 		})
 	}
 }
