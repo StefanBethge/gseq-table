@@ -96,7 +96,7 @@ func main() {
 		}
 		fmt.Printf("%q ", r.Get("region").UnwrapOr(""))
 	}
-	fmt.Println("\n")
+	fmt.Print("\n\n")
 
 	// ── Step 6: AddCol (derived column) ──────────────────────────────────────
 
