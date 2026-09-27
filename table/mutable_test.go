@@ -128,6 +128,41 @@ func TestMutableTable_AddColKeepsShortRowAlignment(t *testing.T) {
 	assertEqual(t, frozen.Rows[0].Get("c").UnwrapOr(""), "1")
 }
 
+func TestMutableTable_AddColConstValue(t *testing.T) {
+	m := NewMutable([]string{"a", "b"}, [][]string{{"1", "2"}, {"3"}})
+
+	m.AddColConstValue("c", "v")
+
+	frozen := m.Freeze()
+	assertEqual(t, len(frozen.Headers), 3)
+	assertEqual(t, frozen.Rows[0].Get("a").UnwrapOr(""), "1")
+	assertEqual(t, frozen.Rows[0].Get("c").UnwrapOr(""), "v")
+	assertEqual(t, frozen.Rows[1].Get("a").UnwrapOr(""), "3")
+	assertEqual(t, frozen.Rows[1].Get("b").UnwrapOr("x"), "")
+	assertEqual(t, frozen.Rows[1].Get("c").UnwrapOr(""), "v")
+}
+
+func TestMutableTable_AddColConstValue_DeduplicatesName(t *testing.T) {
+	m := NewMutable([]string{"name"}, [][]string{{"Alice", "ignored"}})
+	m.AddColConstValue("name", "x")
+
+	frozen := m.Freeze()
+	assertEqual(t, frozen.Headers[1], "name_2")
+	assertEqual(t, frozen.Rows[0].Get("name").UnwrapOr(""), "Alice")
+	assertEqual(t, frozen.Rows[0].Get("name_2").UnwrapOr(""), "x")
+	assertEqual(t, len(frozen.Rows[0].Values()), 2)
+}
+
+func TestMutableTable_AddColConstValue_EmptyTable(t *testing.T) {
+	m := NewMutable([]string{"a"}, nil)
+	m.AddColConstValue("b", "v")
+
+	frozen := m.Freeze()
+	assertEqual(t, len(frozen.Headers), 2)
+	assertEqual(t, frozen.Headers[1], "b")
+	assertEqual(t, len(frozen.Rows), 0)
+}
+
 func TestMutableTable_ClampsWideRowsAndDeduplicatesHeaders(t *testing.T) {
 	m := NewMutable([]string{"name"}, [][]string{{"Alice", "ignored"}})
 	m.AddCol("name", func(r Row) string { return "derived-" + r.Get("name").UnwrapOr("") })

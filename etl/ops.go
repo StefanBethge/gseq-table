@@ -51,6 +51,11 @@ func AddCol(name string, fn func(table.Row) string) TableFunc {
 	return func(t table.Table) table.Table { return t.AddCol(name, fn) }
 }
 
+// AddColConstValue returns a TableFunc that appends a column with a constant value.
+func AddColConstValue(name, value string) TableFunc {
+	return func(t table.Table) table.Table { return t.AddColConstValue(name, value) }
+}
+
 // AddColFloat returns a TableFunc that appends a float-derived column.
 func AddColFloat(name string, fn func(table.Row) float64) TableFunc {
 	return func(t table.Table) table.Table { return t.AddColFloat(name, fn) }

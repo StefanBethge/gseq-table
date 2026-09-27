@@ -223,6 +223,19 @@ func (m *MutableTable) AddCol(name string, fn func(Row) string) *MutableTable {
 	return m
 }
 
+// AddColConstValue appends a column in place with value in every row.
+func (m *MutableTable) AddColConstValue(name, value string) *MutableTable {
+	oldHeaders := m.headers
+	for i := range m.rows {
+		m.ensureRowWidth(i, len(oldHeaders))
+		m.rows[i] = append(m.rows[i], value)
+	}
+	m.headers = append(m.headers, name)
+	m.headers = normalizeHeaders(m.headers)
+	m.headerIdx = buildHeaderIndex(m.headers)
+	return m
+}
+
 // Drop removes the named columns in place. Unknown column names are ignored.
 func (m *MutableTable) Drop(cols ...string) *MutableTable {
 	if len(cols) == 0 {

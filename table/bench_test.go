@@ -234,6 +234,20 @@ func BenchmarkAddCol(b *testing.B) {
 	}
 }
 
+// ── AddColConstValue ─────────────────────────────────────────────────────────
+
+func BenchmarkAddColConstValue(b *testing.B) {
+	for _, sz := range benchSizes {
+		tb := benchTable(sz.n)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				_ = tb.AddColConstValue("status", "active")
+			}
+		})
+	}
+}
+
 // ── AddColFloat ──────────────────────────────────────────────────────────────
 
 func BenchmarkAddColFloat(b *testing.B) {
