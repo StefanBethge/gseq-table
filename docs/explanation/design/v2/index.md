@@ -1,6 +1,6 @@
 # gseq-table v2
 
-**Profil:** voll · **Freeze:** noch nicht
+**Profil:** voll · **Freeze:** 2026-09-27 (3add20d) — ab hier append-only
 
 Design-Set für v2 von gseq-table: eine ETL-Library für Go, die für stabile Läufe über
 schmutzige Daten gebaut ist. Läufe kommen durch. Nicht verarbeitbare Datensätze werden
