@@ -9,13 +9,23 @@
 // and MutableTable.Freeze to return to an immutable Table.
 //
 // Every cell value is a plain string. Type conversions (string → int, etc.)
-// are the caller's responsibility; helper packages may be added in the future.
+// are done on access, either through the schema package or through the typed generic methods (GetAs, ColAs, MapAs, AddColAs, SumAs, ...).
 //
 // # Row access
 //
 //	row.Get("price")          // option.Option[string]
 //	row.At(2)                 // option.Option[string]  (index-based)
 //	row.ToMap()               // map[string]string
+//
+// # Typed access
+//
+// Row, Table and MutableTable provide generic methods that parse cells on read
+// and format them on write:
+//
+//	row.GetAs[float64]("price")                        // option.Option[float64]
+//	ages, err := t.ColAs[int]("age")                   // []int
+//	t = t.MapAs("price", func(p float64) float64 { return p * 1.19 })
+//	total := t.SumAs[int64]("qty")
 //
 // # Table construction
 //

@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         go-version:
-          - "1.23.x"
+          - "1.27.x"
 
     steps:
       - name: Check out repository
@@ -42,6 +42,43 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+  simd:
+    name: simd (experimental)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version:
+          - "1.27.x"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache-dependency-path: |
+            go.sum
+
+      - name: Run tests with GOEXPERIMENT=simd
+        env:
+          GOEXPERIMENT: simd
+        run: go test ./...
+
+      - name: Run vet with GOEXPERIMENT=simd (amd64, arm64)
+        env:
+          GOEXPERIMENT: simd
+        run: |
+          GOARCH=amd64 go vet ./...
+          GOARCH=arm64 go vet ./...
+
+      - name: Benchmark experimental/simd (informational)
+        env:
+          GOEXPERIMENT: simd
+        run: go test -run '^$' -bench . -benchtime 200ms ./experimental/simd
+
   excel:
     name: excel
     runs-on: ubuntu-latest
@@ -49,7 +86,7 @@ jobs:
       fail-fast: false
       matrix:
         go-version:
-          - "1.23.x"
+          - "1.27.x"
 
     defaults:
       run:
@@ -76,7 +113,7 @@ jobs:
       fail-fast: false
       matrix:
         go-version:
-          - "1.23.x"
+          - "1.27.x"
 
     steps:
       - name: Check out repository
@@ -93,3 +130,8 @@ jobs:
         run: |
           cd examples
           go build ./...
+
+      - name: Run vet
+        run: |
+          cd examples
+          go vet ./...
