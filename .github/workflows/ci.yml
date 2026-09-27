@@ -130,3 +130,8 @@ jobs:
         run: |
           cd examples
           go build ./...
+
+      - name: Run vet
+        run: |
+          cd examples
+          go vet ./...
