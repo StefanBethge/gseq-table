@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 )
 
 // record is a decoded JSON object that preserves key insertion order.
@@ -16,58 +17,91 @@ type record struct {
 // decodeArray reads a JSON array of objects from rd.
 // Each element must be a JSON object; non-object elements cause an error.
 func decodeArray(rd io.Reader) ([]record, error) {
-	dec := stdjson.NewDecoder(rd)
-	dec.UseNumber()
-
-	// Expect opening bracket.
-	tok, err := dec.Token()
-	if err == io.EOF {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	delim, ok := tok.(stdjson.Delim)
-	if !ok || delim != '[' {
-		return nil, errors.New("json: expected JSON array at top level")
-	}
-
-	var records []record
-	idx := 0
-	for dec.More() {
-		rec, err := decodeObject(dec, idx)
-		if err != nil {
-			return nil, err
-		}
-		records = append(records, rec)
-		idx++
-	}
-
-	// Consume closing bracket.
-	if _, err := dec.Token(); err != nil {
-		return nil, err
-	}
-
-	return records, nil
+	return collectRecords(iterArray(rd))
 }
 
 // decodeNDJSON reads newline-delimited JSON (one object per line) from rd.
 // Empty lines are silently skipped by the decoder.
 func decodeNDJSON(rd io.Reader) ([]record, error) {
-	dec := stdjson.NewDecoder(rd)
-	dec.UseNumber()
+	return collectRecords(iterNDJSON(rd))
+}
 
+// collectRecords drains seq into a slice, stopping at the first error.
+func collectRecords(seq iter.Seq2[record, error]) ([]record, error) {
 	var records []record
-	idx := 0
-	for dec.More() {
-		rec, err := decodeObject(dec, idx)
+	for rec, err := range seq {
 		if err != nil {
 			return nil, err
 		}
 		records = append(records, rec)
-		idx++
 	}
 	return records, nil
+}
+
+// iterArray yields the objects of a top-level JSON array one at a time.
+// An empty input yields nothing. The first error is yielded once and ends
+// the sequence.
+func iterArray(rd io.Reader) iter.Seq2[record, error] {
+	return func(yield func(record, error) bool) {
+		dec := stdjson.NewDecoder(rd)
+		dec.UseNumber()
+
+		// Expect opening bracket.
+		tok, err := dec.Token()
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			yield(record{}, err)
+			return
+		}
+		delim, ok := tok.(stdjson.Delim)
+		if !ok || delim != '[' {
+			yield(record{}, errors.New("json: expected JSON array at top level"))
+			return
+		}
+
+		idx := 0
+		for dec.More() {
+			rec, err := decodeObject(dec, idx)
+			if err != nil {
+				yield(record{}, err)
+				return
+			}
+			if !yield(rec, nil) {
+				return
+			}
+			idx++
+		}
+
+		// Consume closing bracket.
+		if _, err := dec.Token(); err != nil {
+			yield(record{}, err)
+		}
+	}
+}
+
+// iterNDJSON yields newline-delimited JSON objects one at a time.
+// Empty lines are silently skipped by the decoder. The first error is
+// yielded once and ends the sequence.
+func iterNDJSON(rd io.Reader) iter.Seq2[record, error] {
+	return func(yield func(record, error) bool) {
+		dec := stdjson.NewDecoder(rd)
+		dec.UseNumber()
+
+		idx := 0
+		for dec.More() {
+			rec, err := decodeObject(dec, idx)
+			if err != nil {
+				yield(record{}, err)
+				return
+			}
+			if !yield(rec, nil) {
+				return
+			}
+			idx++
+		}
+	}
 }
 
 // decodeObject decodes a single JSON object from the decoder, preserving

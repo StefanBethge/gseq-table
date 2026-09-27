@@ -15,6 +15,9 @@
 //	    log.Fatal(res.UnwrapErr())
 //	}
 //	t := res.Unwrap()
+//
+// Large inputs can be processed without loading them fully: Stream yields
+// one table.Row at a time, ReadStream yields Tables of a fixed chunk size.
 package csv
 
 import (
@@ -116,6 +119,75 @@ func (r *Reader) Read(rd io.Reader) result.Result[table.Table, error] {
 	return result.Ok[table.Table, error](table.New(headers, dataRows))
 }
 
+// Stream reads CSV from rd and yields one table.Row per data record, without
+// loading the whole input into memory. Header handling follows the Reader's
+// Config exactly as in Read; all yielded Rows share the same header slice.
+//
+// The iterator stops early if the caller returns false from yield or an error
+// is encountered; the error is yielded once with a zero Row. If rd contains
+// no data rows, nothing is yielded.
+//
+//	for row, err := range csv.New().Stream(f) {
+//	    if err != nil { log.Fatal(err) }
+//	    fmt.Println(row.Get("name").UnwrapOr(""))
+//	}
+func (r *Reader) Stream(rd io.Reader) iter.Seq2[table.Row, error] {
+	return func(yield func(table.Row, error) bool) {
+		sep := r.config.Separator
+		if sep == 0 {
+			sep = ','
+		}
+		cr := gcsv.NewReader(rd)
+		cr.Comma = sep
+
+		headers, dataRows, err := r.resolveHeadersStreaming(cr)
+		if err != nil {
+			yield(table.Row{}, err)
+			return
+		}
+
+		// flush any rows already read (e.g. when HasHeader=false and we read
+		// the first record to detect width)
+		for _, rec := range dataRows {
+			if !yield(table.NewRow(headers, rec), nil) {
+				return
+			}
+		}
+
+		for {
+			record, err := cr.Read()
+			if err == io.EOF {
+				return
+			}
+			if err != nil {
+				yield(table.Row{}, err)
+				return
+			}
+			if !yield(table.NewRow(headers, record), nil) {
+				return
+			}
+		}
+	}
+}
+
+// StreamFile opens the file at path and streams it row by row. See Stream for
+// details. The file is closed when iteration ends.
+func (r *Reader) StreamFile(path string) iter.Seq2[table.Row, error] {
+	return func(yield func(table.Row, error) bool) {
+		f, err := os.Open(path)
+		if err != nil {
+			yield(table.Row{}, err)
+			return
+		}
+		defer f.Close()
+		for row, err := range r.Stream(f) {
+			if !yield(row, err) {
+				return
+			}
+		}
+	}
+}
+
 // ReadStream reads CSV from rd and yields chunks of at most chunkSize rows as
 // Tables. This allows processing large files without loading them fully into
 // memory. Each yielded Table shares the same header slice.
@@ -129,45 +201,27 @@ func (r *Reader) Read(rd io.Reader) result.Result[table.Table, error] {
 //	}
 func (r *Reader) ReadStream(rd io.Reader, chunkSize int) iter.Seq2[table.Table, error] {
 	return func(yield func(table.Table, error) bool) {
-		sep := r.config.Separator
-		if sep == 0 {
-			sep = ','
-		}
 		if chunkSize <= 0 {
 			chunkSize = 1000
 		}
-		cr := gcsv.NewReader(rd)
-		cr.Comma = sep
-
-		headers, dataRows, err := r.resolveHeadersStreaming(cr)
-		if err != nil {
-			yield(table.Table{}, err)
-			return
-		}
-
-		// flush any rows already read (e.g. when HasHeader=false and we read
-		// the first record to detect width)
-		chunk := dataRows
-
-		for {
-			if len(chunk) >= chunkSize {
-				if !yield(table.New(headers, chunk), nil) {
-					return
-				}
-				chunk = chunk[:0]
-			}
-			record, err := cr.Read()
-			if err == io.EOF {
-				if len(chunk) > 0 {
-					yield(table.New(headers, chunk), nil)
-				}
-				return
-			}
+		var headers slice.Slice[string]
+		chunk := make(slice.Slice[table.Row], 0, chunkSize)
+		for row, err := range r.Stream(rd) {
 			if err != nil {
 				yield(table.Table{}, err)
 				return
 			}
-			chunk = append(chunk, record)
+			headers = row.Headers()
+			chunk = append(chunk, row)
+			if len(chunk) >= chunkSize {
+				if !yield(table.NewFromRows(headers, chunk), nil) {
+					return
+				}
+				chunk = make(slice.Slice[table.Row], 0, chunkSize)
+			}
+		}
+		if len(chunk) > 0 {
+			yield(table.NewFromRows(headers, chunk), nil)
 		}
 	}
 }
