@@ -1,4 +1,5 @@
-// Package excel reads Excel (.xlsx) files into a table.Table.
+// Package excel reads Excel (.xlsx) files into a table.Table and writes
+// tables back to .xlsx workbooks.
 //
 // This package is a separate Go module so that its dependency on excelize
 // is not pulled in by consumers who only need csv or table.
@@ -19,6 +20,15 @@
 //	    log.Fatal(res.UnwrapErr())
 //	}
 //	t := res.Unwrap()
+//
+// Writing mirrors the csv and json writers; several tables can be written as
+// separate sheets of one workbook:
+//
+//	err := excel.NewWriter(excel.WithWriteSheet("Sales")).WriteFile("out.xlsx", t)
+//	err := excel.NewWriter().WriteFileSheets("report.xlsx",
+//	    excel.Sheet{Name: "Sales", Table: sales},
+//	    excel.Sheet{Name: "Costs", Table: costs},
+//	)
 package excel
 
 import (

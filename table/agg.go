@@ -8,8 +8,9 @@ import (
 )
 
 // Agg defines how a group of rows is reduced to a single string value.
-// Use the provided constructors (Sum, Mean, Count, StringJoin, First, Last)
-// rather than implementing this interface directly.
+// Use the provided constructors (Sum, Mean, Count, StringJoin, First, Last,
+// Min, Max, Median, Quantile, Var, StdDev, CountDistinct) rather than
+// implementing this interface directly.
 type Agg interface {
 	reduce(group aggRows) string
 	plan(cols aggColIndex) aggPlan

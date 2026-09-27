@@ -16,18 +16,26 @@ func extractDefault(records []record) ([]string, []map[string]string) {
 	rows := make([]map[string]string, len(records))
 
 	for i, rec := range records {
-		row := make(map[string]string, len(rec.fields))
 		for _, k := range rec.keys {
 			if !seen[k] {
 				seen[k] = true
 				headers = append(headers, k)
 			}
-			row[k] = stringify(rec.fields[k])
 		}
-		rows[i] = row
+		rows[i] = defaultRecord(rec)
 	}
 
 	return headers, rows
+}
+
+// defaultRecord converts a single record into a flat row. Nested objects and
+// arrays are serialised as compact JSON strings.
+func defaultRecord(rec record) map[string]string {
+	row := make(map[string]string, len(rec.fields))
+	for _, k := range rec.keys {
+		row[k] = stringify(rec.fields[k])
+	}
+	return row
 }
 
 // extractFlatten recursively flattens nested JSON objects into dot-separated
