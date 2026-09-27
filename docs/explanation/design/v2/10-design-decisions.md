@@ -295,3 +295,61 @@ liefern. Der Inhalts-Hash deckt den Fall ab, dass dieselbe Lieferung unter ander
 erneut kommt und der Fundstellen-Schlüssel dann ein anderer wäre.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D19 — Es gibt drei Fehlerarten: Planfehler, Lieferfehler und Datenfehler
+
+**Entscheidung:** Fehler fallen in drei Arten.
+**Planfehler** betreffen die Pipeline selbst, zum Beispiel ein Ausdruck auf eine Spalte,
+die kein Schritt erzeugt, ein Typkonflikt oder ein ungültiger Parameter. Sie werden vor
+dem Lauf geprüft, und der Lauf startet nicht.
+**Lieferfehler** betreffen den Aufbau einer Lieferung, zum Beispiel eine fehlende
+erwartete Spalte oder ein fehlendes Sheet. Sie werden beim Lesen des Kopfs erkannt.
+**Datenfehler** betreffen einzelne Zeilen, zum Beispiel einen nicht parsebaren Wert, eine
+verletzte Validierung oder eine unzerlegbare Zeile.
+Wie Liefer- und Datenfehler behandelt werden, ist konfigurierbar, je Fehlerart und je
+Fehlercode ([D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix)). Zur
+Wahl stehen "aussortieren" und "stoppen" nach
+[D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen).
+Voreinstellung für beide ist die Einstellung der Pipeline, standardmäßig "aussortieren"
+([D5](#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen)). Ein
+Lieferfehler, der aussortiert wird, sortiert alle betroffenen Zeilen aus (bei einer
+fehlenden Spalte: alle Zeilen, Code `missing_column`).
+**Begründung:** Planfehler sind Fehler der Pipeline, nicht der Lieferung. Einen Lauf trotz
+eines solchen Fehlers durchzuziehen, bringt keine brauchbaren Ergebnisse, deshalb ist ihr
+Verhalten nicht konfigurierbar. Bei Liefer- und Datenfehlern will der Maintainer je nach
+Pipeline und Kunde unterschiedlich reagieren, deshalb ist ihr Verhalten konfigurierbar.
+Sortiert ein Lieferfehler alle Zeilen aus, macht die Schwelle aus
+[D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-standardmassig-zu-ende-laufen)
+die Formatänderung aus [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt) sichtbar.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D20 — Die Schwelle ist absolut oder als Anteil, je Lauf oder je Schritt, und lässt den Lauf standardmäßig zu Ende laufen
+
+**Entscheidung:** Die Schwelle aus
+[D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen) wird absolut
+(Anzahl Zeilen), als Anteil (Prozent der gelesenen Zeilen) oder beides angegeben.
+Standardmäßig gilt sie für den ganzen Lauf, optional auch je Schritt. Wird sie
+überschritten, läuft der Lauf standardmäßig bis zum Ende und gilt dann als fehlgeschlagen.
+Eine Option bricht den Lauf stattdessen sofort ab.
+**Begründung:** Läuft der Lauf zu Ende, liegen alle aussortierten Zeilen vor, und der
+Pipeline-Entwickler sieht bei einer Formatänderung das ganze Ausmaß. Der sofortige Abbruch
+spart bei großen Lieferungen Zeit, wenn das Ausmaß nicht gebraucht wird.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G3](70-gap-ledger.md#g3-bemessung-und-wirkung-der-schwelle))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D21 — Ein Lauf liefert einen Status und Zählungen, aus denen sich ein Exit-Code ableiten lässt
+
+**Entscheidung:** Das Ergebnis eines Laufs trägt einen Status: `ok`, `failed_threshold`
+(Schwelle überschritten), `aborted` (gestoppt nach
+[D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
+oder abgebrochen über den Kontext) oder `plan_error` (Planfehler nach
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)). Dazu
+kommen die Zählungen gelesener, durchgelaufener und aussortierter Zeilen, je Schritt und
+je Fehlercode. Eine Hilfsfunktion bildet den Status auf einen Exit-Code für den Scheduler ab.
+**Begründung:** Der Scheduler braucht ein eindeutiges Signal, der Pipeline-Entwickler die
+Zählungen, um zu sehen, wo etwas passiert ist. Den Status als Wert zurückzugeben, statt ihn
+nur über einen `error` auszudrücken, erlaubt es, zwischen "Lauf gescheitert" und
+"Lauf durch, aber zu viele aussortiert" zu unterscheiden.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G3](70-gap-ledger.md#g3-bemessung-und-wirkung-der-schwelle))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)

@@ -24,7 +24,7 @@ Datenspalten kollidieren, und ob eine Zeile mehrere Gründe tragen kann
 
 ### G3 — Bemessung und Wirkung der Schwelle
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D20](10-design-decisions.md#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-standardmassig-zu-ende-laufen) und [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst)
 [D4](10-design-decisions.md#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen)
 führt die Schwelle ein. Offen: absolut oder als Anteil, für den ganzen Lauf oder je
 Schritt, und ob der Lauf beim Überschreiten sofort stoppt oder bis zum Ende läuft und dann
