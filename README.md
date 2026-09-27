@@ -273,6 +273,15 @@ m.FillForward("region").Map("status", normalizeStatus)
 out := m.Freeze()
 ```
 
+Rows can also be appended from a map with `AppendMap`. Columns missing from
+the map become `""`; keys that are not a column are recorded as table errors
+(like `Set` or `Map` on an unknown column) while the row is still appended:
+
+```go
+m := table.NewMutable([]string{"id", "name", "city"}, nil)
+m.AppendMap(map[string]string{"id": "1", "name": "Alice"}) // city = ""
+```
+
 ## Error model
 
 `gseq-table` has two distinct error-handling layers.

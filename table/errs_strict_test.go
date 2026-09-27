@@ -39,3 +39,14 @@ func TestWithSource_StrictPanicsWithPrefix(t *testing.T) {
 		WithSource("sales.csv").
 		Select("nonexistent")
 }
+
+// TestMutableTable_AppendMapUnknownKey_StrictPanics verifies that unknown map
+// keys in AppendMap panic in the strict build.
+func TestMutableTable_AppendMapUnknownKey_StrictPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for unknown column, got none")
+		}
+	}()
+	NewMutable([]string{"id"}, nil).AppendMap(map[string]string{"missing": "x"})
+}
