@@ -121,9 +121,9 @@ spezialisiertes Werkzeug, aber er kommt mit begrenztem Speicher durch.
 **Erzwingt Entscheidungen:**
 - Wie wird zwischen "alles im Speicher" und "während des Lesens verarbeiten" umgeschaltet, und muss der Entwickler das überhaupt wählen? → [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
 - Was passiert mit Schritten, die alle Zeilen brauchen (Sortieren, Gruppieren, Joins, Pivot), wenn nicht alles in den Speicher passt: auslagern auf die Platte, verbieten, oder nur für kleine Seiten erlauben? → auslagern: [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
-- Wie wird der Speicherbedarf begrenzt oder konfiguriert?
+- Wie wird der Speicherbedarf begrenzt oder konfiguriert? → [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)
 - Braucht es eine veränderbare (mutable) Datenstruktur, um schnell und speichersparend genug zu sein, oder erreicht eine unveränderliche mit geteilten Spalten dieselben Ergebnisse? Der Maintainer braucht die mutable Variante nicht, wenn es ohne sie gleich gut geht. → Engine entscheidet: [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert); Voreinstellung unveränderlich: [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen); Bedarf offen: [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht)
-- Bringt spaltenorientierte Speicherung hier messbare Vorteile?
+- Bringt spaltenorientierte Speicherung hier messbare Vorteile? → [D29](10-design-decisions.md#d29-daten-fliessen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text), Messung offen: [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse)
 
 ### UC7 — Externer Entwickler baut seine erste Pipeline
 

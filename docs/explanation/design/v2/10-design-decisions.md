@@ -449,3 +449,55 @@ gescheitert ist und warum. Mehrfach zu zählen würde die Schwelle aus
 verfälschen.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D28 — Ein Lauf hat ein Speicherbudget und ein Verzeichnis zum Auslagern
+
+**Entscheidung:** Jeder Lauf hat ein Speicherbudget, das die Engine nach
+[D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
+einhält, indem sie auslagert. Es ist je Lauf einstellbar. Voreinstellung ist ein Anteil
+des verfügbaren Speichers, wobei die Engine das Limit eines Containers bzw. der cgroup
+berücksichtigt. Das Verzeichnis zum Auslagern ist einstellbar, Standard ist das temporäre
+Verzeichnis des Systems. Ausgelagerte Daten werden am Ende des Laufs gelöscht, auch bei
+einem Abbruch.
+**Begründung:** Läufe starten per Cron, auch in Containern
+([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)). Ein Budget, das das
+Container-Limit ignoriert, würde dort zum Abbruch durch das System führen statt zum
+Auslagern. Wie groß der Anteil als Voreinstellung sein soll, klärt der Prototyp
+([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D29 — Daten fließen in Blöcken typisierter Spalten, Rohspalten bleiben bis zum Cast Text
+
+**Entscheidung:** Die Blöcke aus
+[D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
+bestehen aus typisierten Spalten (mindestens Ganzzahl, Gleitkomma, Text, Wahrheitswert,
+Zeitpunkt). Die Blockgröße wählt die Engine, sie ist einstellbar. Spalten, die ein Reader
+aus einer Lieferung liest, sind Text, bis ein Schritt sie in einen Typ umwandelt.
+**Begründung:** Typisierte Spalten sparen Speicher gegenüber Text, lassen sich blockweise
+billig weiterreichen und erlauben vektorisierte Verarbeitung, wie sie `experimental/simd`
+in v1.2 gemessen hat. Dass Rohspalten Text bleiben, passt zu schmutzigen Lieferungen:
+Erst beim Umwandeln entscheidet sich, ob ein Wert passt oder die Zeile aussortiert wird
+([D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte)).
+Ob der Vorteil gegenüber v1 messbar ist, klärt der Prototyp
+([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D30 — Es gibt echte Nullwerte, getrennt vom leeren Text
+
+**Entscheidung:** Jede Spalte kennzeichnet, welche Zellen keinen Wert haben (null). Ein
+leerer Text ist ein Wert und nicht null. Beim Lesen wird ein leeres Feld in Rohspalten zu
+leerem Text und beim Umwandeln in einen Typ zu null. Welche Texte beim Umwandeln
+zusätzlich als null gelten (z. B. `NULL`, `n/a`, `-`), ist konfigurierbar. In Ausdrücken
+verhält sich null wie in SQL: Rechnen mit null ergibt null, Vergleiche mit null sind nicht
+wahr. Aggregationen überspringen Nullwerte. Das Profil aus
+[D24](#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)
+zählt sie.
+**Begründung:** In v1 bedeutete `""` gleichzeitig "leer", "fehlt" und "nicht parsebar".
+Dadurch sind Fehler still verschwunden. Das Zusammenführen nach
+[D26](#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler)
+braucht einen Wert für "fehlt". Konfigurierbare Null-Texte decken Platzhalter ab, die in
+Anbieter-Excel-Dateien häufig vorkommen.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)

@@ -118,3 +118,12 @@ Eintrag je Spalte beim Lesen hilft oder stört.
 demselben Fehlercode scheitert. Offen ist die Grenze: fester Anteil, konfigurierbar, oder
 relativ zum Profil eines früheren Laufs ([D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)). Soll an echten Lieferungen im Prototyp
 erprobt werden.
+
+### G13 — Vorteil spaltenorientierter Blöcke und Voreinstellungen für Budget und Blockgröße
+
+**Type:** Assumption · **Kind:** verify · **Status:** offen
+Annahme: Blöcke typisierter Spalten nach [D29](10-design-decisions.md#d29-daten-fliessen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) sind bei Laufzeit und Speicher messbar
+besser als die zeilenbasierte Speicherung aus v1. Offen sind außerdem die Voreinstellungen
+für den Anteil des Speichers ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)) und die Blockgröße. Soll im Prototyp mit Benchmarks
+gegen v1 geklärt werden
+([UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)).
