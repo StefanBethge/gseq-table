@@ -423,3 +423,8 @@ Die Maskierung nach [D56](10-design-decisions.md#d56-die-library-begrenzt-feldla
 
 **Type:** Gap · **Kind:** verify · **Status:** offen
 [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets) entstand zusammen mit [D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle) und enthält Fragen, die nicht mehrteilige Lieferungen betreffen (Fundstelle in Excel, CSV ohne Kopf), sowie ein Akzeptanzkriterium im Ablauf. Es fehlen die eigentlichen Fragen mehrteiliger Lieferungen: Wann ist eine Lieferung vollständig, wenn Teile zu verschiedenen Zeiten kommen? Was, wenn ein Teil anders aufgebaut ist oder doppelt kommt? Braucht einen Blick des Maintainers auf echte Abläufe.
+
+### G62 — D68 nennt keinen Use Case, fällt aber nicht unter die Ausnahme von D37
+
+**Type:** Inconsistency · **Kind:** design · **Status:** akzeptiert — Revisit, wenn eine weitere Decision über Werkzeuge des Repos entsteht
+[D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) nimmt nur Decisions über das Design-Set selbst davon aus, einen Use Case zu nennen. [D68](10-design-decisions.md#d68-mise-ist-der-task-runner-und-mise-run-test-fuhrt-alle-tests-aller-module-aus) regelt den Task-Runner des Repos und betrifft keinen Ablauf der Library, ist also keine solche Decision. Das Docs-Gate führt beide Ausnahmen ausdrücklich in einer Liste, statt jede Decision mit "keine" durchzulassen. Kommen weitere Werkzeug-Decisions hinzu, sollte [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) per Amendment auf Decisions über die Pflege des Repos erweitert werden (vgl. [G39](70-gap-ledger.md#g39-d37-nennt-keinen-use-case)).
