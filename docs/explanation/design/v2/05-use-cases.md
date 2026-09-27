@@ -138,5 +138,5 @@ ersten schmutzigen Wert.
 **Erzwingt Entscheidungen:**
 - Welche Voreinstellungen gelten, wenn der Entwickler nichts zum Fehlerverhalten angibt? → [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen)
 - Welche Typen tauchen in der öffentlichen API auf (eigene Typen der Library, Standardtypen, Typen aus gseq)?
-- Wie viele Wege gibt es, dieselbe Operation auszudrücken (Methode, Pipeline-Schritt, Ausdruck), und welcher ist der naheliegende?
+- Wie viele Wege gibt es, dieselbe Operation auszudrücken (Methode, Pipeline-Schritt, Ausdruck), und welcher ist der naheliegende? → [D31](10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan), [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg)
 - Welche Stabilitätszusage gibt v2 gegenüber externen Nutzern?

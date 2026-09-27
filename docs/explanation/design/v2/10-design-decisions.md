@@ -501,3 +501,44 @@ braucht einen Wert für "fehlt". Konfigurierbare Null-Texte decken Platzhalter a
 Anbieter-Excel-Dateien häufig vorkommen.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D31 — Jede Operation gibt es einmal als Wert, mit zwei Einstiegen: sofort auf einer Tabelle oder im Plan
+
+**Entscheidung:** Jede Operation ist genau einmal implementiert, als Wert (`Op`). Es gibt
+zwei Einstiege. Eine `Table` ist eine fertige Tabelle im Speicher; ihre Methoden wenden die
+Operation sofort an. Eine Pipeline ist ein Plan nach
+[D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
+und nimmt dieselben Operationen als Schritte. Beide laufen über dieselbe Engine. Die
+Pipeline bietet nur Ablaufsteuerung: Schritte benennen, Zweige
+([D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-fliessen-danach-zuruck)),
+Fehlerverhalten, Schwelle, Trace und `Run`. Sie bietet keine eigenen Datenoperationen.
+Es gibt keine eigene veränderbare Tabelle
+([D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert))
+und keine Wrapper-Schicht, die Tabellen-Methoden für die Pipeline nachbildet.
+**Begründung:** In v1 gab es fast jede Operation viermal (`Table`, `MutableTable`,
+`etl.X`, `etl.Mut.X`), und die Pipelines hatten zusätzlich eigene Datenoperationen wie
+`TryMap` und `AssertColumns`. Jedes Feature musste bis zu viermal geschrieben werden. Mit
+Operationen als Werten gibt es einen Weg, eine Operation auszudrücken, und der naheliegende
+Einstieg ergibt sich aus der Frage "kleine Tabelle jetzt" oder "Lieferung im Lauf". Die
+Methoden auf `Table` erhalten die v1-Konvention, Tabellen-Operationen als Methoden
+anzubieten. Vorbild: Polars mit `DataFrame` und `LazyFrame`.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D32 — Ausdrücke sind der Standard für Berechnungen, Closures der Ausweg
+
+**Entscheidung:** Berechnungen, Filter und abgeleitete Spalten werden als Ausdrücke
+formuliert (z. B. `Col("netto").Mul(Lit(1.19))`). Ausdrücke sind typisiert. Die Engine
+prüft sie vor dem Lauf, Fehler darin sind Planfehler nach
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler), und sie
+führt sie spaltenweise aus. Die String-, Datums- und Rechen-Helfer aus v1 `schema` werden
+zu Ausdrucksfunktionen. Für Logik, die sich nicht als Ausdruck fassen lässt, gibt es
+Operationen mit Closures. Gibt eine Closure einen Fehler zurück, wird die Zeile mit
+`code=custom` und dem Fehlertext als Grund aussortiert.
+**Begründung:** Closures (`func(Row) string` in v1) sind für die Engine undurchsichtig:
+Sie lassen sich weder vorab prüfen noch spaltenweise oder vektorisiert ausführen. Ohne
+Ausweg ließe sich aber Sonderlogik einzelner Kunden nicht ausdrücken. Dass Fehler einer
+Closure zu aussortierten Zeilen werden, hält das Fehlermodell auch für eigene Logik
+einheitlich.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
