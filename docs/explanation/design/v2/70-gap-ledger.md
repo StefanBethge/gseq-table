@@ -56,7 +56,7 @@ und Stelle, wo Daten nicht geteilt sind, erreicht Laufzeit und Speicher von v1
 
 ### G6 — Writer für Datenbank und HTTP
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)
 [D2](10-design-decisions.md#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse)
 schreibt aussortierte Zeilen und Ergebnisse über Writer. Offen ist, ob die Library Writer
 für Datenbank und HTTP mitbringt oder nur eine Schnittstelle, die der Pipeline-Entwickler

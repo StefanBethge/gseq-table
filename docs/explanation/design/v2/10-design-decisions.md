@@ -542,3 +542,61 @@ Closure zu aussortierten Zeilen werden, hält das Fehlermodell auch für eigene 
 einheitlich.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D33 — Die öffentliche API verwendet Standard-Go-Typen und eigene Typen der Library, keine gseq-Typen
+
+**Entscheidung:** In der öffentlichen API von v2 kommen nur Standard-Go-Typen vor
+(`[]string`, `iter.Seq`, Rückgaben der Form `(T, bool)` und `(T, error)`) sowie eigene
+Typen der Library (`Table`, `Column`, `Expr`, `Op`, `Result` und Ähnliche). Typen aus gseq
+(`slice.Slice`, `option.Option`, `result.Result`) erscheinen nicht in Signaturen. Intern
+darf gseq weiter verwendet werden.
+**Begründung:** Externe Entwickler ([UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline))
+sollen die Library ohne eine zweite Library und deren Idiome nutzen können. Standardtypen
+sind in Go vertraut, und Iteratoren gibt es seit Go 1.23 in der Standardbibliothek.
+Beibehalten der gseq-Typen wurde verworfen, weil es externe Nutzer an gseq bindet.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D34 — Der Prototyp liegt unter experimental/v2 ohne Zusage, v2.0.0 ist ein eigenes Modul mit SemVer
+
+**Entscheidung:** Der Prototyp entsteht in diesem Repo unter `experimental/v2` und hat
+keine Stabilitätszusage. v2.0.0 erscheint als eigenes Modul mit dem Pfad `/v2` und folgt
+SemVer. Teile unter `experimental/…` sind von der Zusage ausgenommen, wie in v1
+`experimental/simd`. v1 wird weiter mit Fehlerkorrekturen gepflegt, bekommt aber keine
+großen neuen Funktionen mehr.
+**Begründung:** Der Prototyp soll Grundsatzfragen klären
+([G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht),
+[G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren),
+[G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt),
+[G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse))
+und darf sich dabei frei ändern. Externe Nutzer brauchen ab v2.0.0 eine verlässliche
+Zusage. Bestehende v1-Pipelines laufen weiter.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D35 — Ziele werden über eine Sink-Schnittstelle beschrieben, mit Datei-Writern und kleinen Paketen für Datenbank und HTTP
+
+**Entscheidung:** Alle Writer erfüllen eine gemeinsame `Sink`-Schnittstelle, die Blöcke
+entgegennimmt und Fehler meldet. Die Library bringt Datei-Writer mit (CSV, JSON/NDJSON,
+Excel, Markdown). Kleine Unterpakete bringen einen Writer für Datenbanken über
+`database/sql` mit Insert und Upsert (auch auf `record_key` nach
+[D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash))
+und einen Writer für HTTP mit JSON bzw. NDJSON, Batching und Wiederholung. Der Prototyp
+enthält die Schnittstelle und die Datei-Writer.
+**Begründung:** Die Ziele in [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+sind Datenbank, Datei und HTTP. Datenbank- und HTTP-Writer mitzubringen erspart jedem
+Nutzer den Nachbau. Eigene Unterpakete halten die Abhängigkeiten des Kerns klein. Über die
+gemeinsame Schnittstelle gilt
+[D2](#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse) für
+alle Ziele.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G6](70-gap-ledger.md#g6-writer-fur-datenbank-und-http))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D36 — Ein Adapter wandelt zwischen v1- und v2-Tabellen
+
+**Entscheidung:** v2 bringt einen Adapter mit, der eine v1-Tabelle in eine v2-Tabelle
+wandelt und zurück. Er ist Teil von v2.0.0, nicht des Prototyps.
+**Begründung:** Bestehende Pipelines sollen schrittweise umsteigen können, zum Beispiel
+indem ein neuer v2-Teil auf dem Ergebnis eines unveränderten v1-Teils arbeitet.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
