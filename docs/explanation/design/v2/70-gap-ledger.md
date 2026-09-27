@@ -110,3 +110,11 @@ Quelle unterschiedlich belegt sind. Hängt mit
 sie nach dem Prototyp noch einmal validieren, anhand echter Lieferungen: ob die
 Info-Spalten reichen, ob "je Quelle plus Übersicht" im Alltag handlich ist, und ob ein
 Eintrag je Spalte beim Lesen hilft oder stört.
+
+### G12 — Ab wann eine Häufung von Fehlern als Formatänderung gilt
+
+**Type:** Gap · **Kind:** verify · **Status:** offen
+[D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht) meldet `format_change`, wenn ein erheblicher Teil der Werte einer Spalte mit
+demselben Fehlercode scheitert. Offen ist die Grenze: fester Anteil, konfigurierbar, oder
+relativ zum Profil eines früheren Laufs ([D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)). Soll an echten Lieferungen im Prototyp
+erprobt werden.

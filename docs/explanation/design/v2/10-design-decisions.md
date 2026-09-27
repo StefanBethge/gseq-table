@@ -353,3 +353,52 @@ nur über einen `error` auszudrücken, erlaubt es, zwischen "Lauf gescheitert" u
 "Lauf durch, aber zu viele aussortiert" zu unterscheiden.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G3](70-gap-ledger.md#g3-bemessung-und-wirkung-der-schwelle))
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D22 — Eine Quelle kann einen erwarteten Aufbau haben, gegen den die Lieferung beim Lesen geprüft wird
+
+**Entscheidung:** Zu jeder Quelle kann die Pipeline einen erwarteten Aufbau angeben:
+Spalten, Typen und bei Bedarf Formate (z. B. ein Datumsformat). Man schreibt ihn von Hand
+oder leitet ihn einmal aus einer Referenz-Lieferung ab und legt ihn im Code ab. Beim Lesen
+des Kopfs vergleicht die Engine die Lieferung damit. Eine fehlende Spalte ist ein
+Lieferfehler nach [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler).
+Für neue, unerwartete Spalten ist konfigurierbar, ob sie ignoriert, gemeldet oder
+durchgereicht werden. Standard: melden und durchreichen. Fehlt eine Spalte und ist eine
+ähnlich benannte neu, meldet die Engine eine vermutliche Umbenennung.
+**Begründung:** Eine Formatänderung soll beim Lesen des Kopfs auffallen und nicht erst
+daran, dass viele Zeilen scheitern. Neue Spalten brechen die Pipeline in der Regel nicht,
+sollen aber sichtbar werden. Deshalb ist der Standard "melden und durchreichen" und nicht
+"ignorieren" oder "Fehler". Ohne erwarteten Aufbau verhält sich eine Quelle wie in v1:
+Sie liest, was kommt.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D23 — Das Laufergebnis enthält einen Änderungsbericht
+
+**Entscheidung:** Das Ergebnis eines Laufs enthält eine Tabelle mit einer Zeile je Befund:
+Art (`missing_column`, `new_column`, `probably_renamed`, `format_change`), Quelle, Spalte,
+Detail, Anzahl und Beispiele. `format_change` entsteht, wenn ein erheblicher Teil der Werte
+einer Spalte mit demselben Fehlercode scheitert. Die Beispiele zeigen, wie die Werte jetzt
+aussehen.
+**Begründung:** Die aussortierten Zeilen
+([D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen))
+sind die vollständige Grundlage. Der Bericht beantwortet die Frage "was genau hat sich
+geändert?" aus [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+auf einen Blick. Ab welchem Anteil eine Häufung als `format_change` gilt, ist offen
+([G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D24 — Ein Lauf kann ein Profil liefern, das mit dem Profil eines früheren Laufs verglichen wird
+
+**Entscheidung:** Ein Lauf kann ein Profil seiner Quellen als Tabelle liefern: je Spalte
+Anteil leerer Werte, erkannte Typen, Anzahl verschiedener Werte und Parse-Quote. Die
+Pipeline schreibt es weg ([D17](#d17-die-library-bewahrt-aussortierte-zeilen-nicht-selbst-auf)
+gilt sinngemäß). Ein späterer Lauf vergleicht sein Profil damit und meldet auffällige
+Abweichungen als Befunde im Änderungsbericht aus
+[D23](#d23-das-laufergebnis-enthalt-einen-anderungsbericht). Das gehört nicht zum Scope
+des Prototyps.
+**Begründung:** Manche Änderungen lassen keine Zeile scheitern, zum Beispiel wenn
+plötzlich ein Drittel der Kundennummern leer ist. Die fallen nur im Vergleich mit früheren
+Läufen auf.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)

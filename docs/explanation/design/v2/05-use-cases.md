@@ -59,10 +59,10 @@ Pipeline-Entwickler bemerkt die Änderung am Ergebnis des Laufs, sieht, was gena
 geändert hat, und hat die betroffenen Zeilen vorliegen, um die Pipeline anzupassen.
 
 **Erzwingt Entscheidungen:**
-- Woran bemerkt der Pipeline-Entwickler eine Änderung: am Anstieg der aussortierten Zeilen, an einem Abgleich gegen einen erwarteten Aufbau, oder an beidem?
+- Woran bemerkt der Pipeline-Entwickler eine Änderung: am Anstieg der aussortierten Zeilen, an einem Abgleich gegen einen erwarteten Aufbau, oder an beidem? → beides: [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird), [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht), später [D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)
 - Fehlt eine erwartete Spalte ganz: Werden alle Zeilen aussortiert, oder ist das ein Konfigurationsfehler, der den Lauf stoppt? → Lieferfehler, konfigurierbar: [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler), [D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
-- Wie wird eine neue, unerwartete Spalte behandelt (ignorieren, melden, durchreichen)?
-- Wie wird "was genau hat sich geändert" dargestellt (Spalte, betroffene Werte, Beispiele)?
+- Wie wird eine neue, unerwartete Spalte behandelt (ignorieren, melden, durchreichen)? → [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird)
+- Wie wird "was genau hat sich geändert" dargestellt (Spalte, betroffene Werte, Beispiele)? → [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht)
 
 ### UC3 — Pipeline-Entwickler untersucht aussortierte Zeilen
 
