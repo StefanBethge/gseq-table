@@ -340,3 +340,59 @@ angegeben, genügt eine. Der Abbruch ergibt den Status `failed_threshold`.
 
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
+
+## Welcher Test beweist welchen Fall
+
+Nachtrag zu [F24](20-feature-catalogue.md#f24-docs-gates-fur-das-design-set) nach [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut), 2026-09-27. Jede Zeile nennt einen T-Fall
+und die Go-Tests, die ihn mit `Proves(t, "T<n>")` beweisen: Testnamen in Backticks, mehrere
+durch Komma getrennt, zum Beispiel `` `TestRejectsKeepRawState` ``. `ausstehend` heißt, dass
+es noch keinen Test gibt. `TestPlanMappingConsistency` gleicht die Tabelle in beiden
+Richtungen mit den `Proves`-Aufrufen im Modul `experimental/v2` ab: Ein genannter Test muss
+den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile mit
+`ausstehend` wird ungültig, sobald ein Test den Fall beweist.
+
+| T-Fall | Tests |
+|---|---|
+| [T1](#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) | ausstehend |
+| [T2](#t2-aussortierte-zeilen-lassen-sich-mit-den-datei-writern-schreiben-und-mit-dem-passenden-reader-wieder-lesen) | ausstehend |
+| [T3](#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht) | ausstehend |
+| [T4](#t4-die-schwelle-markiert-den-lauf-als-fehlgeschlagen-und-lasst-ihn-standardmaig-zu-ende-laufen) | ausstehend |
+| [T5](#t5-ohne-angaben-kommt-ein-lauf-uber-eine-schmutzige-lieferung-durch) | ausstehend |
+| [T6](#t6-eine-im-schritt-scheiternde-zeile-steht-einmal-in-ihrer-tabelle-je-quelle-hat-einen-ubersichtseintrag-je-spalte-und-erreicht-spatere-schritte-nicht) | ausstehend |
+| [T7](#t7-aussortierte-zeilen-gibt-es-je-quelle-und-die-ubersicht-stimmt-mit-ihnen-uberein) | ausstehend |
+| [T8](#t8-scheitert-eine-ergebniszeile-nach-einem-join-sind-ihre-quellzeilen-mit-gemeinsamer-kennung-aussortiert) | ausstehend |
+| [T9](#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) | ausstehend |
+| [T10](#t10-unzerlegbare-zeilen-werden-mit-rohbytes-und-richtiger-fundstelle-aussortiert) | ausstehend |
+| [T11](#t11-die-fundstelle-bleibt-uber-sortieren-und-filtern-richtig) | ausstehend |
+| [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | ausstehend |
+| [T13](#t13-record_key-ist-innerhalb-einer-lieferung-stabil-ein-fachlicher-schlussel-daruber-hinaus) | ausstehend |
+| [T14](#t14-die-prufung-des-kopfs-erkennt-fehlende-neue-und-umbenannte-spalten) | ausstehend |
+| [T15](#t15-planfehler-verhindern-den-lauf-liefer-und-datenfehler-folgen-der-konfiguration-je-code) | ausstehend |
+| [T16](#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) | ausstehend |
+| [T17](#t17-gehaufte-formatfehler-erscheinen-im-anderungsbericht-mit-beispielen) | ausstehend |
+| [T18](#t18-der-profilvergleich-meldet-eine-abweichung-ohne-dass-eine-zeile-scheitert) | ausstehend |
+| [T19](#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck) | ausstehend |
+| [T20](#t20-zweige-werden-nach-namen-zusammengefuhrt-und-typkonflikte-fallen-vor-dem-lauf-auf) | ausstehend |
+| [T21](#t21-eine-im-zweig-erneut-scheiternde-zeile-behalt-kennung-weg-und-vorigen-grund-und-zahlt-einmal) | ausstehend |
+| [T22](#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) | ausstehend |
+| [T23](#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) | ausstehend |
+| [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | ausstehend |
+| [T25](#t25-kein-zweig-sieht-anderungen-eines-anderen-in-jedem-modus) | ausstehend |
+| [T26](#t26-die-modi-fur-kopieren-und-andern-liefern-dasselbe-ergebnis) | ausstehend |
+| [T27](#t27-nullwerte-sind-vom-leeren-text-getrennt-und-verhalten-sich-wie-in-sql) | ausstehend |
+| [T28](#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus) | ausstehend |
+| [T29](#t29-der-datenbank-writer-ist-bei-nachverarbeitung-idempotent) | ausstehend |
+| [T30](#t30-der-http-writer-liefert-jede-zeile-trotz-vorubergehender-fehler-aus) | ausstehend |
+| [T31](#t31-die-offentliche-api-enthalt-keine-gseq-typen) | ausstehend |
+| [T32](#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert) | ausstehend |
+| [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | ausstehend |
+| [T34](#t34-excel-zellen-tragen-den-gespeicherten-wert-in-fester-textform-aussortierte-zeilen-auch-den-angezeigten-text) | ausstehend |
+| [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | ausstehend |
+| [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | ausstehend |
+| [T37](#t37-die-kennung-einer-lieferung-steht-beim-offnen-fest-und-andert-sich-mit-der-datei) | ausstehend |
+| [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | ausstehend |
+| [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
+| [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | ausstehend |
+| [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | ausstehend |
+| [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | ausstehend |
+| [T43](#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort) | ausstehend |

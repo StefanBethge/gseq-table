@@ -1104,3 +1104,56 @@ Limit. Für den häufigen Fall "ein Lauf je Prozess" per Cron bleibt das Setzen 
 einfach.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G53](70-gap-ledger.md#g53-gomemlimit-wirkt-auf-den-ganzen-prozess))
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D66 — Der Prototyp ist ein eigenes Go-Modul unter experimental/v2
+
+**Entscheidung:** `experimental/v2` ist ein eigenes Go-Modul mit dem Pfad
+`github.com/stefanbethge/gseq-table/experimental/v2` und eigener `go.mod` (Go 1.27). Das
+Wurzelmodul, `excel` und `examples` bleiben davon unberührt. Abhängigkeiten des Prototyps,
+etwa die Excel-Bibliothek für den Reader nach [P3](40-scope-prototype.md#p3-reader-fur-csv-und-excel), stehen nur in diesem
+Modul. Die Tests des Moduls, einschließlich der Docs-Gates nach [D37](#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut), laufen in
+dessen normalem `go test ./...`; CI führt das Modul als eigenen Job neben `core`, `excel`
+und `examples`.
+**Begründung:** Der Kern von v1 hängt nur von gseq ab, schwerere Integrationen liegen in
+eigenen Modulen. Läge der Prototyp im Wurzelmodul, bekäme jeder v1-Nutzer die
+Excel-Bibliothek als Abhängigkeit, oder der Excel-Teil bräuchte ein weiteres Untermodul.
+Ein eigenes Modul hält v1 frei vom Prototyp, wie [D34](#d34-der-prototyp-liegt-unter-experimentalv2-ohne-zusage-v200-ist-ein-eigenes-modul-mit-semver) es vorsieht, und nimmt den Schnitt
+zum späteren `/v2`-Modul vorweg. Weil der Pfad auf `/v2` endet, liest Go ihn als
+Hauptversion 2; für einen Prototyp ohne Zusage, der per Commit eingebunden wird, ist das
+unerheblich. Verworfen: das Wurzelmodul mit einem Untermodul nur für Excel (zwei Module für
+einen Prototyp) und das Wurzelmodul mit der Excel-Bibliothek (bricht die
+Abhängigkeitsregel des Kerns).
+**Quelle:** Maintainer bei der Umsetzung von #44, 2026-09-27
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D67 — Ein Kernpaket gtable, Formatpakete für CSV und Excel, Engine-Interna unter internal
+
+**Entscheidung:** Die öffentlichen Kerntypen nach [D33](#d33-die-offentliche-api-verwendet-standard-go-typen-und-eigene-typen-der-library-keine-gseq-typen) (`Table`, `Column`, `Expr`, `Op`,
+`Pipeline`, `Result`, `Sink` und Ähnliche) liegen in einem Paket im Wurzelverzeichnis des
+Moduls nach [D66](#d66-der-prototyp-ist-ein-eigenes-go-modul-unter-experimentalv2), mit dem Paketnamen `gtable`. Reader und Writer je Dateiformat liegen in
+den Unterpaketen `csv` und `excel`. Was nur die Engine braucht (Blöcke, Auslagern, Budget)
+und die Test-Helfer mit `Proves` und den Docs-Gates liegen unter `internal/` und gehören
+damit nicht zur öffentlichen API.
+**Begründung:** Nach [D31](#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan) gibt es jede Operation einmal als Wert für `Table` und
+Pipeline, und nach [D32](#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg) nehmen Operationen Ausdrücke. In getrennten öffentlichen Paketen
+für Tabellen, Ausdrücke und Pipelines verwiesen diese gegenseitig aufeinander und bräuchten
+Schnittstellen oder ein gemeinsames Typ-Paket nur gegen Import-Zyklen. Einen eigenen
+Paketnamen braucht es, weil der Pfad auf `/v2` endet. `gtable` unterscheidet sich von den
+v1-Paketen `table` und `etl`, die neben v2 importiert werden, etwa für den Adapter nach
+[D36](#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen). Verworfen: viele öffentliche Pakete und die Namen `table` und `etl`.
+**Quelle:** Maintainer bei der Umsetzung von #44, 2026-09-27
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D68 — mise ist der Task-Runner, und mise run test führt alle Tests aller Module aus
+
+**Entscheidung:** Das Repo hat eine `mise.toml` im Wurzelverzeichnis mit der Aufgabe `test`.
+Sie führt `go test ./...` in allen Modulen aus (Wurzel, `excel`, `examples` und
+`experimental/v2` nach [D66](#d66-der-prototyp-ist-ein-eigenes-go-modul-unter-experimentalv2)), einschließlich der Docs-Gates nach [D37](#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut), und in
+den v1-Modulen zusätzlich mit `-tags strict`. CI ruft `go` weiterhin direkt auf. Einen
+Linter über `go vet` hinaus gibt es vorerst nicht.
+**Begründung:** Der Team-Standard nennt mise als Task-Runner und `mise run test` als
+Testlauf, der die Docs-Gates einschließt. Das Repo hat vier Module, und ein Befehl für alle
+erspart es, sie einzeln aufzurufen. Einen Linter mit eigener Konfiguration hat der
+Maintainer nicht gewählt.
+**Quelle:** Maintainer bei der Umsetzung von #44, 2026-09-27
+**Betroffene Use Cases:** keine. Die Decision betrifft die Werkzeuge des Repos, nicht Abläufe der Library ([G62](70-gap-ledger.md#g62-d68-nennt-keinen-use-case-fallt-aber-nicht-unter-die-ausnahme-von-d37)).
