@@ -925,14 +925,11 @@ func BenchmarkExpandJSON_Flatten(b *testing.B) {
 func BenchmarkMutableMapJSON_Path(b *testing.B) {
 	for _, sz := range benchJSONSizes {
 		tb := benchJSONTable(sz.n)
+		f := benchFixture{src: tb.Mutable(), copyCells: true}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := tb.Mutable()
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.MapJSON("data", ".user.name")
-			}
+			})
 		})
 	}
 }
@@ -940,14 +937,11 @@ func BenchmarkMutableMapJSON_Path(b *testing.B) {
 func BenchmarkMutableExpandJSON_Default(b *testing.B) {
 	for _, sz := range benchJSONSizes {
 		tb := benchJSONTable(sz.n)
+		f := benchFixture{src: tb.Mutable()}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := tb.Mutable()
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.ExpandJSON("data")
-			}
+			})
 		})
 	}
 }
@@ -955,14 +949,11 @@ func BenchmarkMutableExpandJSON_Default(b *testing.B) {
 func BenchmarkMutableTryMapJSON_Path(b *testing.B) {
 	for _, sz := range benchJSONSizes {
 		tb := benchJSONTable(sz.n)
+		f := benchFixture{src: tb.Mutable()}
 		b.Run(sz.name, func(b *testing.B) {
-			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
-				b.StopTimer()
-				m := tb.Mutable()
-				b.StartTimer()
+			benchMutableOp(b, f, func(m *MutableTable) {
 				m.TryMapJSON("data", ".user.name")
-			}
+			})
 		})
 	}
 }

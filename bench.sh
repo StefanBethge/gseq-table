@@ -5,7 +5,10 @@
 #   ./bench.sh                    # sequential, all packages
 #   ./bench.sh -parallel          # packages run in parallel (faster, noisier)
 #   ./bench.sh table              # only the table package
+#   ./bench.sh -profile=fast      # quick check: -benchtime=200ms -count=3
+#   ./bench.sh -profile=thorough  # default: -benchtime=1s -count=5
 #   ./bench.sh -count=3           # override iteration count (default 5)
+#   ./bench.sh -benchtime=500ms   # override per-benchmark time (default 1s)
 #   ./bench.sh -filter=Join       # only benchmarks matching "Join"
 #   ./bench.sh -parallel table csv  # parallel subset
 #
@@ -19,6 +22,7 @@ OUT="$ROOT/bench_latest.txt"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 COUNT=5
+BENCHTIME=1s
 FILTER="."
 PARALLEL=false
 PACKAGES=("./table/" "./csv/" "./etl/" "./schema/")
@@ -26,7 +30,10 @@ PACKAGES=("./table/" "./csv/" "./etl/" "./schema/")
 # ── Argument parsing ──────────────────────────────────────────────────────────
 for arg in "$@"; do
   case "$arg" in
+    -profile=fast)     COUNT=3; BENCHTIME=200ms ;;
+    -profile=thorough) COUNT=5; BENCHTIME=1s ;;
     -count=*)    COUNT="${arg#-count=}" ;;
+    -benchtime=*) BENCHTIME="${arg#-benchtime=}" ;;
     -filter=*)   FILTER="${arg#-filter=}" ;;
     -parallel)   PARALLEL=true ;;
     table)       PACKAGES=("./table/") ;;
@@ -37,7 +44,7 @@ for arg in "$@"; do
     all)         PACKAGES=("./table/" "./csv/" "./etl/" "./schema/") ;;
     *)
       echo "Unknown argument: $arg" >&2
-      echo "Usage: $0 [table|csv|etl|schema|all] [-parallel] [-count=N] [-filter=PATTERN]" >&2
+      echo "Usage: $0 [table|csv|etl|schema|all] [-parallel] [-profile=fast|thorough] [-count=N] [-benchtime=D] [-filter=PATTERN]" >&2
       exit 1
       ;;
   esac
@@ -47,6 +54,7 @@ echo "┌───────────────────────�
 echo "│ gseq-table benchmark run"
 echo "│ packages  : ${PACKAGES[*]}"
 echo "│ -count    : $COUNT"
+echo "│ -benchtime: $BENCHTIME"
 echo "│ -bench    : $FILTER"
 echo "│ -parallel : $PARALLEL"
 echo "│ output    : $OUT"
@@ -61,7 +69,8 @@ if [ "$PARALLEL" = false ]; then
     -bench="$FILTER" \
     -benchmem \
     -count="$COUNT" \
-    -timeout=30m \
+    -benchtime="$BENCHTIME" \
+    -timeout=90m \
     "${PACKAGES[@]}" \
     2>&1 | tee "$OUT"
 
@@ -87,7 +96,8 @@ else
       -bench="$FILTER" \
       -benchmem \
       -count="$COUNT" \
-      -timeout=30m \
+      -benchtime="$BENCHTIME" \
+      -timeout=90m \
       "$pkg" \
       >"$tmpfile" 2>&1 &
 
