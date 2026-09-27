@@ -233,6 +233,31 @@ A date at midnight UTC is written as `2006-01-02`. Any other time is written as 
 
 `MapAs` leaves empty and unparseable cells unchanged. If the column does not exist, it records a table error like `Map` does.
 
+#### Structs
+
+`FromStructs` builds a table from a slice of structs, and `ToStructs[T]` (on `Table` and `MutableTable`) parses the rows back into them.
+Each exported field is one column, named by its `gseq` tag or else by the field name:
+
+```go
+type Person struct {
+    Name  string                `gseq:"name"`
+    Age   int                   `gseq:"age"`
+    Email option.Option[string] `gseq:"email"` // empty cell ⇄ None
+    Born  *time.Time            `gseq:"born"`  // empty cell ⇄ nil
+    Note  string                `gseq:"note,omitempty"`
+    Cache string                `gseq:"-"`     // skipped
+}
+
+t := table.FromStructs(people)          // also accepts []*Person
+people, err := t.ToStructs[Person]()
+```
+
+- Field types: `table.Value` types, named types over built-in numbers, strings and bools (`type Status string`), pointers to these, and `option.Option[T]`. Cells use the parse and format rules above.
+- Fields of embedded structs are flattened into the parent.
+- `ToStructs` returns an error for a missing column, an unparseable cell (for example `ToStructs: column "age" row 3: cannot parse "x" as int`), or an empty cell in a field that is not a pointer, `Option`, or string. It ignores extra columns.
+- `omitempty` writes zero values as empty cells. On read, it leaves the field at zero when the cell is empty or the column is missing.
+- `FromStructs` records a table error for an unsupported type (it panics under `-tags strict`).
+
 Compatibility notes:
 
 - Generic methods cannot satisfy interfaces, so no existing interface changed. The existing package-level helpers (`table.ColAs`, `table.MapColTo`, `table.AddColOf`) are still there.
