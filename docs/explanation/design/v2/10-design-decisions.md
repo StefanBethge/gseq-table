@@ -623,10 +623,12 @@ alle Ziele.
 ### D36 — Ein Adapter wandelt zwischen v1- und v2-Tabellen
 
 **Entscheidung:** v2 bringt einen Adapter mit, der eine v1-Tabelle in eine v2-Tabelle
-wandelt und zurück. Er ist Teil von v2.0.0, nicht des Prototyps.
+wandelt und zurück. Er ist Teil von v2.0.0, nicht des Prototyps. Zugesagt ist, dass eine v1-Tabelle den Weg über v2 zurück nach v1
+unverändert übersteht. Der Weg von v2 nach v1 verliert Nullwerte (sie werden zu leerem
+Text) und Typen (sie werden zu formatiertem Text).
 **Begründung:** Bestehende Pipelines sollen schrittweise umsteigen können, zum Beispiel
 indem ein neuer v2-Teil auf dem Ergebnis eines unveränderten v1-Teils arbeitet.
-**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (ergänzt nach [G41](70-gap-ledger.md#g41-umfang-des-v1-adapters-und-ma-fur-auffallige-abweichungen))
 **Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
 
 ### D37 — Die Docs-Gates werden in diesem Repo selbst gebaut
@@ -636,13 +638,14 @@ Mindestzahl je ID-Familie, keine nackten IDs, kanonische Links mit nachgerechnet
 aktuelle Bereichsangaben, Abgleich der Tabelle "welcher Test beweist welchen Fall" mit
 `Proves(t, "T<n>")`) werden als normale Go-Tests in diesem Repo selbst geschrieben. Sie
 decken auch die Familie UC ab und prüfen, dass jeder Use Case von mindestens einer Decision
-genannt wird und jede Decision mindestens einen Use Case nennt.
+genannt wird und jede Decision mindestens einen Use Case nennt. Ausgenommen sind
+Decisions über das Design-Set selbst, wie diese.
 **Begründung:** Die Referenzfassung liegt im Archivar-Repo, auf das beim Entwurf kein
 Zugriff bestand. Der Maintainer hat sich ausdrücklich für einen eigenen Bau entschieden.
 Er folgt der Spezifikation der Methode und kann die dort noch fehlende UC-Familie gleich
 mit abdecken.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen))
-**Betroffene Use Cases:** keine. Die Decision betrifft die Pflege des Design-Sets, keinen Ablauf der Library.
+**Betroffene Use Cases:** keine. Die Decision betrifft die Pflege des Design-Sets und ist nach ihrer eigenen Regel ausgenommen ([G39](70-gap-ledger.md#g39-d37-nennt-keinen-use-case)).
 
 ### D38 — Ein späterer Lauf entfernt verwaiste ausgelagerte Daten
 
@@ -916,3 +919,30 @@ Teile mit gleichem Aufbau ab. JSON hat keine Kopfzeile, deshalb lässt sich ein 
 Feld erst am Ende sicher feststellen.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G33](70-gap-ledger.md#g33-lieferungen-ohne-kopf-und-aus-mehreren-dateien-oder-sheets))
 **Betroffene Use Cases:** [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D54 — Laufzeitfehler in Ausdrücken sortieren die Zeile mit dem Code expr aus
+
+**Entscheidung:** Scheitert ein Ausdruck nach [D32](#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg) erst bei der Ausführung für eine
+Zeile (Division durch null, Überlauf, Datum außerhalb des gültigen Bereichs), wird die Zeile
+mit dem Code `expr` aussortiert. Soll ein solcher Fehler null ergeben, schreibt der
+Pipeline-Entwickler das ausdrücklich an den Ausdruck (z. B. `OrNull()`). Die Codes aus
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix) sind ein fester Kern. Closures können über einen typisierten Fehler einen eigenen
+Code setzen, der mit `custom:` beginnt.
+**Begründung:** Ein stilles null würde Fehler verschwinden lassen, gegen den Zweck des
+Fehlermodells. Das ausdrückliche `OrNull()` deckt die Fälle ab, in denen SQL-Verhalten
+gewollt ist. Eigene Codes erlauben es, Zweige nach
+[D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) fachlich zu bilden, ohne Texte zu vergleichen.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G34](70-gap-ledger.md#g34-laufzeitfehler-in-ausdrucken-und-vollstandigkeit-der-fehlercodes))
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D55 — Roh- und Arbeitsdaten teilen Spalten, bis ein Schritt eine Spalte ändert
+
+**Entscheidung:** Rohzustand nach [D9](#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert) und Arbeitsdaten teilen sich die Spalten eines
+Blocks, bis ein Schritt eine Spalte ändert. Erst dann erhält die Arbeitsseite eine eigene
+Spalte. Der Rohzustand kostet damit nur für geänderte Spalten zusätzlichen Speicher.
+**Begründung:** Beim Sortieren und Joinen werden alle Zeilen gehalten oder ausgelagert. Eine
+vollständige Kopie des Rohzustands würde Speicher und Auslagern grob verdoppeln. Rohspalten
+bleiben nach [D29](#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) ohnehin Text, bis ein Schritt sie umwandelt. Ob das im Budget
+reicht, misst der Prototyp ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G36](70-gap-ledger.md#g36-speicherkosten-des-rohzustands-beim-sortieren-und-joinen))
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

@@ -128,6 +128,7 @@ besser als die zeilenbasierte Speicherung aus v1. Offen sind außerdem die Vorei
 für den Anteil des Speichers ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)) und die Blockgröße. Ebenfalls offen: ob das Lesen großer Excel-Dateien im Budget bleibt ([D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)). Soll im Prototyp mit Benchmarks
 gegen v1 geklärt werden
 ([UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)).
+Zusätzlich zu messen: Spitzenspeicher und Auslagern mit und ohne Rohzustand ([D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert)).
 
 ### G14 — Docs-Gates aus dem Archivar-Repo übernehmen
 
@@ -262,7 +263,7 @@ Excel ist das häufigste Lieferformat ([UC1](05-use-cases.md#uc1-geplanter-lauf-
 
 ### G34 — Laufzeitfehler in Ausdrücken und Vollständigkeit der Fehlercodes
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D54](10-design-decisions.md#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus)
 [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg) macht Fehler in Ausdrücken zu Planfehlern. Division durch null, Überlauf und Datumsrechnung außerhalb des Bereichs entstehen aber erst zur Laufzeit je Zeile. Offen ist, ob sie wie in SQL null ergeben oder die Zeile aussortieren. Die Liste der Codes in [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix) enthält `custom` aus [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg) nicht.
 
 ### G35 — Zurückgeführte Zeilen verlieren ihre Geschichte
@@ -272,7 +273,7 @@ Excel ist das häufigste Lieferformat ([UC1](05-use-cases.md#uc1-geplanter-lauf-
 
 ### G36 — Speicherkosten des Rohzustands beim Sortieren und Joinen
 
-**Type:** Assumption · **Kind:** verify · **Status:** offen
+**Type:** Assumption · **Kind:** verify · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert); Messung in [G13](#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)
 Nach [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert) wird der Rohzustand erst beim Ziel oder bei einer Aggregation freigegeben. Sortieren und Join brauchen alle Zeilen, fassen aber nicht zusammen. Bei einer umfangreichen Lieferung liegt deshalb der ganze Rohzustand neben den Arbeitsdaten im Speicher oder auf der Platte, was Auslagern und Ein-/Ausgabe grob verdoppelt. [G13](#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) misst das nicht. Denkbar ist, Roh- und Arbeitsdaten zu teilen, bis eine Spalte geändert wird ([D29](10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text), [D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert)).
 
 ### G37 — Bestehkriterien und fehlende Festlegungen im Scope des Prototyps
@@ -293,7 +294,7 @@ still verloren. Mit dem Maintainer zu klären.
 
 ### G39 — D37 nennt keinen Use Case
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch Ausnahme in [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut)
 [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) verlangt,
 dass jede Decision mindestens einen Use Case nennt, nennt aber selbst keinen, weil die
 Docs-Gates die Pflege des Design-Sets betreffen und keinen Ablauf der Library. Optionen:
@@ -312,7 +313,7 @@ prüft deshalb nur den Status.
 
 ### G41 — Umfang des v1-Adapters und Maß für auffällige Abweichungen
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** akzeptiert — Adapter geklärt in [D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen); Maß für auffällige Abweichungen: Revisit, wenn [F18](20-feature-catalogue.md#f18-profil-und-vergleich-mit-fruheren-laufen) umgesetzt wird
 [D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen) sagt nicht,
 ob der Weg von v2 über v1 zurück verlustfrei sein muss. v1 kennt weder Nullwerte noch
 Typen. [T32](30-test-plan.md#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert)
