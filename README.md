@@ -447,6 +447,7 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - stable sorting and multi-column sorting
 - distinct, union, intersect
 - melt and pivot
+- `GroupByAgg` aggregations: `Sum`, `Mean`, `Count`, `CountDistinct`, `Min`, `Max`, `Median`, `Quantile`, `Var`, `StdDev`, `StringJoin`, `First`, `Last`
 - lag, lead, cumulative sums, ranking, rolling aggregations
 
 ### IO

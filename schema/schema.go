@@ -38,12 +38,13 @@ package schema
 import (
 	"fmt"
 	"math"
-	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/stefanbethge/gseq-table/internal/cell"
+	"github.com/stefanbethge/gseq-table/internal/stats"
 	"github.com/stefanbethge/gseq-table/table"
 	"github.com/stefanbethge/gseq/option"
 	"github.com/stefanbethge/gseq/result"
@@ -529,20 +530,24 @@ func CountWhere(t table.Table, col, val string) int {
 //
 //	schema.StdDevCol(t, "revenue")
 func StdDevCol(t table.Table, col string) float64 {
-	mean := MeanCol(t, col)
-	var sumSq float64
-	var n int
-	colVals(t, col, func(v string) {
-		if f, err := cell.ParseFloat(v, 64); err == nil {
-			d := f - mean
-			sumSq += d * d
-			n++
+	v, n := stats.Variance(func(yield func(float64) bool) {
+		idx := t.ColIndex(col)
+		if idx < 0 {
+			return
+		}
+		for _, row := range t.Rows {
+			if idx >= len(row.Values()) {
+				continue
+			}
+			if f, err := cell.ParseFloat(row.Values()[idx], 64); err == nil && !yield(f) {
+				return
+			}
 		}
 	})
 	if n < 2 {
 		return 0
 	}
-	return math.Sqrt(sumSq / float64(n))
+	return math.Sqrt(v)
 }
 
 // MedianCol returns the median of the parseable float values in col.
@@ -556,14 +561,14 @@ func MedianCol(t table.Table, col string) float64 {
 			vals = append(vals, f)
 		}
 	})
-	return floatMedian(vals)
+	return stats.Median(vals)
 }
 
-// colStats computes count, sum, sumSq, min, max and all numeric values in a
+// colStats computes count, sum, min, max and all numeric values in a
 // single pass over the rows. Used by Describe to avoid repeated column scans.
 type colStats struct {
 	count       int
-	sum, sumSq  float64
+	sum         float64
 	min, max    float64
 	numericVals []float64
 }
@@ -592,13 +597,6 @@ func computeColStats(t table.Table, col string) colStats {
 		}
 		first = false
 	}
-	if s.count > 0 {
-		mean := s.sum / float64(s.count)
-		for _, f := range s.numericVals {
-			d := f - mean
-			s.sumSq += d * d
-		}
-	}
 	return s
 }
 
@@ -623,9 +621,10 @@ func Describe(t table.Table) table.Table {
 		mean := s.sum / float64(s.count)
 		var std float64
 		if s.count >= 2 {
-			std = math.Sqrt(s.sumSq / float64(s.count))
+			v, _ := stats.Variance(slices.Values(s.numericVals))
+			std = math.Sqrt(v)
 		}
-		median := floatMedian(s.numericVals)
+		median := stats.Median(s.numericVals)
 		records[i] = []string{
 			col,
 			strconv.Itoa(s.count),
@@ -1160,64 +1159,4 @@ func DateQuarter(col string) func(table.Row) string {
 		}
 		return strconv.Itoa((int(t.Month())-1)/3 + 1)
 	}
-}
-
-// floatMedian returns the median of vals (reordered in place) in expected O(n)
-// time using randomized quickselect. Returns 0 for empty input.
-func floatMedian(vals []float64) float64 {
-	n := len(vals)
-	if n == 0 {
-		return 0
-	}
-	if n == 1 {
-		return vals[0]
-	}
-	if n%2 == 1 {
-		return floatQuickselect(vals, n/2)
-	}
-	// For even n: upper median lands at vals[n/2]; vals[0..n/2-1] are all <=
-	// that value, so the lower median is max(vals[0..n/2-1]).
-	hi := floatQuickselect(vals, n/2)
-	lo := vals[0]
-	for _, v := range vals[1 : n/2] {
-		if v > lo {
-			lo = v
-		}
-	}
-	return (lo + hi) / 2
-}
-
-// floatQuickselect rearranges vals in place and returns the k-th smallest
-// element (0-indexed) in expected O(n) time using a randomized Lomuto partition.
-func floatQuickselect(vals []float64, k int) float64 {
-	lo, hi := 0, len(vals)-1
-	for lo < hi {
-		p := floatPartition(vals, lo, hi)
-		if p == k {
-			return vals[k]
-		} else if p < k {
-			lo = p + 1
-		} else {
-			hi = p - 1
-		}
-	}
-	return vals[k]
-}
-
-// floatPartition partitions vals[lo..hi] around a randomly chosen pivot
-// (avoids O(n²) worst case on sorted, reverse-sorted, or cyclic data)
-// and returns the pivot's final index.
-func floatPartition(vals []float64, lo, hi int) int {
-	pivotIdx := lo + rand.Intn(hi-lo+1)
-	vals[pivotIdx], vals[hi] = vals[hi], vals[pivotIdx]
-	pivot := vals[hi]
-	i := lo
-	for j := lo; j < hi; j++ {
-		if vals[j] <= pivot {
-			vals[i], vals[j] = vals[j], vals[i]
-			i++
-		}
-	}
-	vals[i], vals[hi] = vals[hi], vals[i]
-	return i
 }
