@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stefanbethge/gseq-table/internal/cell"
 	"github.com/stefanbethge/gseq/option"
 )
 
@@ -15,11 +16,11 @@ import (
 // are guarded by the go1.27 build constraint so the module keeps building on
 // older toolchains; on those toolchains the typed methods are simply absent.
 //
-// Parsing follows the conventions of the schema package's row accessors
-// (schema.Int, schema.Float, schema.Bool, schema.Time): surrounding whitespace
-// is trimmed, booleans accept true/false, 1/0 and yes/no (case-insensitive),
-// and dates are tried against the same list of common layouts. Empty cells are
-// treated as missing for every type except string.
+// Parsing and formatting use the internal cell package, the same rules the
+// schema package uses: surrounding whitespace is trimmed, booleans accept
+// true/false, 1/0 and yes/no (case-insensitive), and dates are tried against
+// cell.DateLayouts. Empty cells are treated as missing for every type except
+// string.
 
 // Integer is the set of built-in integer types supported by the typed methods.
 type Integer interface {
@@ -53,97 +54,68 @@ type Value interface {
 	Number | string | bool | time.Time
 }
 
-// typedDateLayouts mirrors the layouts the schema package tries when parsing
-// dates, in the same order.
-var typedDateLayouts = []string{
-	time.RFC3339,
-	"2006-01-02T15:04:05",
-	"2006-01-02",
-	"02.01.2006",
-	"01/02/2006",
-	"02 Jan 2006",
-	"Jan 02, 2006",
-}
-
-// parseValue parses a raw cell string as T. It reports false if raw is empty
-// (for non-string types) or cannot be parsed.
+// parseValue parses a raw cell string as T using the shared cell rules. It
+// reports false if raw is empty (for non-string types) or cannot be parsed.
 func parseValue[T Value](raw string) (T, bool) {
 	var out T
 	if p, ok := any(&out).(*string); ok {
 		*p = raw
 		return out, true
 	}
-	s := strings.TrimSpace(raw)
-	if s == "" {
+	if strings.TrimSpace(raw) == "" {
 		return out, false
 	}
 	var err error
 	switch p := any(&out).(type) {
 	case *int:
-		var n int64
-		n, err = strconv.ParseInt(s, 10, strconv.IntSize)
-		*p = int(n)
+		*p, err = parseInt[int](raw, strconv.IntSize)
 	case *int8:
-		var n int64
-		n, err = strconv.ParseInt(s, 10, 8)
-		*p = int8(n)
+		*p, err = parseInt[int8](raw, 8)
 	case *int16:
-		var n int64
-		n, err = strconv.ParseInt(s, 10, 16)
-		*p = int16(n)
+		*p, err = parseInt[int16](raw, 16)
 	case *int32:
-		var n int64
-		n, err = strconv.ParseInt(s, 10, 32)
-		*p = int32(n)
+		*p, err = parseInt[int32](raw, 32)
 	case *int64:
-		*p, err = strconv.ParseInt(s, 10, 64)
+		*p, err = cell.ParseInt(raw, 64)
 	case *uint:
-		var n uint64
-		n, err = strconv.ParseUint(s, 10, strconv.IntSize)
-		*p = uint(n)
+		*p, err = parseUint[uint](raw, strconv.IntSize)
 	case *uint8:
-		var n uint64
-		n, err = strconv.ParseUint(s, 10, 8)
-		*p = uint8(n)
+		*p, err = parseUint[uint8](raw, 8)
 	case *uint16:
-		var n uint64
-		n, err = strconv.ParseUint(s, 10, 16)
-		*p = uint16(n)
+		*p, err = parseUint[uint16](raw, 16)
 	case *uint32:
-		var n uint64
-		n, err = strconv.ParseUint(s, 10, 32)
-		*p = uint32(n)
+		*p, err = parseUint[uint32](raw, 32)
 	case *uint64:
-		*p, err = strconv.ParseUint(s, 10, 64)
+		*p, err = cell.ParseUint(raw, 64)
 	case *float32:
 		var f float64
-		f, err = strconv.ParseFloat(s, 32)
+		f, err = cell.ParseFloat(raw, 32)
 		*p = float32(f)
 	case *float64:
-		*p, err = strconv.ParseFloat(s, 64)
+		*p, err = cell.ParseFloat(raw, 64)
 	case *bool:
-		switch strings.ToLower(s) {
-		case "true", "1", "yes":
-			*p = true
-		case "false", "0", "no":
-			*p = false
-		default:
+		var ok bool
+		if *p, ok = cell.ParseBool(raw); !ok {
 			return out, false
 		}
 	case *time.Time:
-		for _, layout := range typedDateLayouts {
-			if t, perr := time.Parse(layout, s); perr == nil {
-				*p = t
-				return out, true
-			}
-		}
-		return out, false
+		*p, err = cell.ParseDate(raw)
 	}
 	if err != nil {
 		var zero T
 		return zero, false
 	}
 	return out, true
+}
+
+func parseInt[T Integer](raw string, bitSize int) (T, error) {
+	n, err := cell.ParseInt(raw, bitSize)
+	return T(n), err
+}
+
+func parseUint[T Integer](raw string, bitSize int) (T, error) {
+	n, err := cell.ParseUint(raw, bitSize)
+	return T(n), err
 }
 
 // parseValueErr is parseValue with a descriptive error for strict callers.
@@ -155,44 +127,40 @@ func parseValueErr[T Value](raw string) (T, error) {
 	return v, nil
 }
 
-// formatValue renders v in the canonical cell form: base-10 integers, the
-// shortest round-tripping float representation, "true"/"false", and dates as
-// "2006-01-02" when v is midnight UTC (RFC 3339 otherwise).
+// formatValue renders v in the canonical cell form defined by the cell
+// package.
 func formatValue[T Value](v T) string {
 	switch x := any(v).(type) {
 	case string:
 		return x
 	case int:
-		return strconv.FormatInt(int64(x), 10)
+		return cell.FormatInt(int64(x))
 	case int8:
-		return strconv.FormatInt(int64(x), 10)
+		return cell.FormatInt(int64(x))
 	case int16:
-		return strconv.FormatInt(int64(x), 10)
+		return cell.FormatInt(int64(x))
 	case int32:
-		return strconv.FormatInt(int64(x), 10)
+		return cell.FormatInt(int64(x))
 	case int64:
-		return strconv.FormatInt(x, 10)
+		return cell.FormatInt(x)
 	case uint:
-		return strconv.FormatUint(uint64(x), 10)
+		return cell.FormatUint(uint64(x))
 	case uint8:
-		return strconv.FormatUint(uint64(x), 10)
+		return cell.FormatUint(uint64(x))
 	case uint16:
-		return strconv.FormatUint(uint64(x), 10)
+		return cell.FormatUint(uint64(x))
 	case uint32:
-		return strconv.FormatUint(uint64(x), 10)
+		return cell.FormatUint(uint64(x))
 	case uint64:
-		return strconv.FormatUint(x, 10)
+		return cell.FormatUint(x)
 	case float32:
-		return strconv.FormatFloat(float64(x), 'f', -1, 32)
+		return cell.FormatFloat(float64(x), 32)
 	case float64:
-		return strconv.FormatFloat(x, 'f', -1, 64)
+		return cell.FormatFloat(x, 64)
 	case bool:
-		return strconv.FormatBool(x)
+		return cell.FormatBool(x)
 	case time.Time:
-		if x.Location() == time.UTC && x.Equal(x.Truncate(24*time.Hour)) {
-			return x.Format("2006-01-02")
-		}
-		return x.Format(time.RFC3339Nano)
+		return cell.FormatTime(x)
 	}
 	return fmt.Sprint(v)
 }

@@ -40,6 +40,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stefanbethge/gseq-table/internal/cell"
 	"github.com/stefanbethge/gseq-table/table"
 	"github.com/stefanbethge/gseq/option"
 	"github.com/stefanbethge/gseq/result"
@@ -56,17 +57,6 @@ const (
 	TypeBool   ColType = "bool"
 	TypeDate   ColType = "date"
 )
-
-// dateLayouts are tried in order during inference and Time parsing.
-var dateLayouts = []string{
-	time.RFC3339,
-	"2006-01-02T15:04:05",
-	"2006-01-02",
-	"02.01.2006",
-	"01/02/2006",
-	"02 Jan 2006",
-	"Jan 02, 2006",
-}
 
 // Schema maps column names to their ColType. It is immutable; Cast returns a
 // new Schema.
@@ -182,7 +172,7 @@ func Int(r table.Row, col string) option.Option[int64] {
 	if !ok {
 		return option.None[int64]()
 	}
-	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	n, err := cell.ParseInt(v, 64)
 	if err != nil {
 		return option.None[int64]()
 	}
@@ -196,7 +186,7 @@ func Float(r table.Row, col string) option.Option[float64] {
 	if !ok {
 		return option.None[float64]()
 	}
-	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	f, err := cell.ParseFloat(v, 64)
 	if err != nil {
 		return option.None[float64]()
 	}
@@ -211,13 +201,11 @@ func Bool(r table.Row, col string) option.Option[bool] {
 	if !ok {
 		return option.None[bool]()
 	}
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "true", "1", "yes":
-		return option.Some(true)
-	case "false", "0", "no":
-		return option.Some(false)
+	b, ok := cell.ParseBool(v)
+	if !ok {
+		return option.None[bool]()
 	}
-	return option.None[bool]()
+	return option.Some(b)
 }
 
 // Time parses the value of col in r as time.Time using layout.
@@ -228,15 +216,14 @@ func Time(r table.Row, col string, layout string) option.Option[time.Time] {
 	if !ok {
 		return option.None[time.Time]()
 	}
-	raw := strings.TrimSpace(v)
 	if layout != "" {
-		t, err := time.Parse(layout, raw)
+		t, err := cell.ParseDateLayout(layout, v)
 		if err != nil {
 			return option.None[time.Time]()
 		}
 		return option.Some(t)
 	}
-	t := tryParseDate(raw)
+	t := tryParseDate(v)
 	if t.IsZero() {
 		return option.None[time.Time]()
 	}
@@ -293,19 +280,17 @@ func inferColAt(t table.Table, idx int) ColType {
 func narrow(current ColType, v string) ColType {
 	switch current {
 	case TypeInt:
-		if _, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+		if _, err := cell.ParseInt(v, 64); err == nil {
 			return TypeInt
 		}
 		return narrow(TypeFloat, v)
 	case TypeFloat:
-		clean := strings.ReplaceAll(strings.TrimSpace(v), ",", "")
-		if _, err := strconv.ParseFloat(clean, 64); err == nil {
+		if _, err := parseGroupedFloat(v); err == nil {
 			return TypeFloat
 		}
 		return narrow(TypeBool, v)
 	case TypeBool:
-		switch strings.ToLower(strings.TrimSpace(v)) {
-		case "true", "false", "1", "0", "yes", "no":
+		if _, ok := cell.ParseBool(v); ok {
 			return TypeBool
 		}
 		return narrow(TypeDate, v)
@@ -318,14 +303,17 @@ func narrow(current ColType, v string) ColType {
 	return TypeString
 }
 
+// tryParseDate parses v with cell.ParseDate and returns the zero time on
+// failure.
 func tryParseDate(v string) time.Time {
-	v = strings.TrimSpace(v)
-	for _, layout := range dateLayouts {
-		if t, err := time.Parse(layout, v); err == nil {
-			return t
-		}
-	}
-	return time.Time{}
+	t, _ := cell.ParseDate(v)
+	return t
+}
+
+// parseGroupedFloat parses v as a float after removing thousands separators
+// (","), as used by inference and normalization.
+func parseGroupedFloat(v string) (float64, error) {
+	return cell.ParseFloat(strings.ReplaceAll(v, ",", ""), 64)
 }
 
 // normalize parses v as typ and returns it in canonical string form.
@@ -333,31 +321,29 @@ func normalize(v string, typ ColType) (string, error) {
 	v = strings.TrimSpace(v)
 	switch typ {
 	case TypeInt:
-		n, err := strconv.ParseInt(v, 10, 64)
+		n, err := cell.ParseInt(v, 64)
 		if err != nil {
 			return "", err
 		}
-		return strconv.FormatInt(n, 10), nil
+		return cell.FormatInt(n), nil
 	case TypeFloat:
-		f, err := strconv.ParseFloat(strings.ReplaceAll(v, ",", ""), 64)
+		f, err := parseGroupedFloat(v)
 		if err != nil {
 			return "", err
 		}
-		return strconv.FormatFloat(f, 'f', -1, 64), nil
+		return cell.FormatFloat(f, 64), nil
 	case TypeBool:
-		switch strings.ToLower(v) {
-		case "true", "1", "yes":
-			return "true", nil
-		case "false", "0", "no":
-			return "false", nil
+		b, ok := cell.ParseBool(v)
+		if !ok {
+			return "", fmt.Errorf("unrecognised bool value %q", v)
 		}
-		return "", fmt.Errorf("unrecognised bool value %q", v)
+		return cell.FormatBool(b), nil
 	case TypeDate:
 		t := tryParseDate(v)
 		if t.IsZero() {
 			return "", fmt.Errorf("unrecognised date value %q", v)
 		}
-		return t.Format("2006-01-02"), nil
+		return cell.FormatDate(t), nil
 	}
 	return v, nil
 }
@@ -395,7 +381,7 @@ func colVals(t table.Table, col string, fn func(string)) {
 func SumCol(t table.Table, col string) float64 {
 	var sum float64
 	colVals(t, col, func(v string) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+		if f, err := cell.ParseFloat(v, 64); err == nil {
 			sum += f
 		}
 	})
@@ -410,7 +396,7 @@ func MeanCol(t table.Table, col string) float64 {
 	var sum float64
 	var n int
 	colVals(t, col, func(v string) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+		if f, err := cell.ParseFloat(v, 64); err == nil {
 			sum += f
 			n++
 		}
@@ -429,7 +415,7 @@ func MinCol(t table.Table, col string) float64 {
 	var min float64
 	first := true
 	colVals(t, col, func(v string) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+		if f, err := cell.ParseFloat(v, 64); err == nil {
 			if first || f < min {
 				min = f
 				first = false
@@ -447,7 +433,7 @@ func MaxCol(t table.Table, col string) float64 {
 	var max float64
 	first := true
 	colVals(t, col, func(v string) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+		if f, err := cell.ParseFloat(v, 64); err == nil {
 			if first || f > max {
 				max = f
 				first = false
@@ -492,7 +478,7 @@ func StdDevCol(t table.Table, col string) float64 {
 	var sumSq float64
 	var n int
 	colVals(t, col, func(v string) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+		if f, err := cell.ParseFloat(v, 64); err == nil {
 			d := f - mean
 			sumSq += d * d
 			n++
@@ -511,7 +497,7 @@ func StdDevCol(t table.Table, col string) float64 {
 func MedianCol(t table.Table, col string) float64 {
 	vals := make([]float64, 0, t.Len())
 	colVals(t, col, func(v string) {
-		if f, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+		if f, err := cell.ParseFloat(v, 64); err == nil {
 			vals = append(vals, f)
 		}
 	})
@@ -536,7 +522,7 @@ func computeColStats(t table.Table, col string) colStats {
 			continue
 		}
 		v := row.Values()[idx]
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		f, err := cell.ParseFloat(v, 64)
 		if err != nil {
 			continue
 		}
@@ -588,11 +574,11 @@ func Describe(t table.Table) table.Table {
 		records[i] = []string{
 			col,
 			strconv.Itoa(s.count),
-			strconv.FormatFloat(s.min, 'f', -1, 64),
-			strconv.FormatFloat(s.max, 'f', -1, 64),
-			strconv.FormatFloat(mean, 'f', -1, 64),
-			strconv.FormatFloat(std, 'f', -1, 64),
-			strconv.FormatFloat(median, 'f', -1, 64),
+			cell.FormatFloat(s.min, 64),
+			cell.FormatFloat(s.max, 64),
+			cell.FormatFloat(mean, 64),
+			cell.FormatFloat(std, 64),
+			cell.FormatFloat(median, 64),
 		}
 	}
 	return table.New(headers, records)
@@ -622,11 +608,11 @@ func MinMaxNorm(t table.Table, col string) table.Table {
 		return t
 	}
 	return t.Map(col, func(v string) string {
-		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		f, err := cell.ParseFloat(v, 64)
 		if err != nil {
 			return v
 		}
-		return strconv.FormatFloat((f-min)/(max-min), 'f', -1, 64)
+		return cell.FormatFloat((f-min)/(max-min), 64)
 	})
 }
 
@@ -644,7 +630,7 @@ func floatVal(r table.Row, col string) float64 {
 	if !ok {
 		return 0
 	}
-	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	f, err := cell.ParseFloat(v, 64)
 	if err != nil {
 		return 0
 	}
@@ -716,7 +702,7 @@ func Div(colA, colB string) func(table.Row) float64 {
 // --- Date column operations ---
 //
 // These functions return closures for use with AddCol or AddColFloat.
-// Dates are parsed using the same dateLayouts as Infer/Time. Unparseable
+// Dates are parsed using the same cell.DateLayouts as Infer/Time. Unparseable
 // values produce an empty string (for string functions) or 0 (for float
 // functions).
 //
