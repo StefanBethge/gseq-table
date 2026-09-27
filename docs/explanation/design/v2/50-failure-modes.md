@@ -26,6 +26,6 @@ Fehlermodells ([D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfeh
 
 | Failure | Detection | Response |
 |---|---|---|
-| Ziel nimmt einen Block nicht an (Datenbank-Constraint, HTTP 4xx) | Fehler vom Sink | Der Lauf endet sofort mit einer Panik ([D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-beendet-den-lauf-mit-einer-panik)) |
-| Ziel ist vorübergehend nicht erreichbar | Fehler vom Sink | Wiederholung beim HTTP-Writer ([D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)), Zusage offen ([G15](70-gap-ledger.md#g15-zustellzusage-des-http-writers)) |
-| Schreiben der aussortierten Zeilen scheitert | Fehler vom Sink der aussortierten Zeilen | Der Lauf endet sofort mit einer Panik, damit keine aussortierten Zeilen still verloren gehen ([D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-beendet-den-lauf-mit-einer-panik)) |
+| Ziel nimmt einen Block nicht an (Datenbank-Constraint, HTTP 4xx) | Fehler vom Sink | Der Lauf bricht sofort mit `sink_error` ab ([D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)) |
+| Ziel ist vorübergehend nicht erreichbar | Fehler vom Sink | Wiederholung beim HTTP-Writer ([D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)), Zusage "mindestens einmal" ([D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit)) |
+| Schreiben der aussortierten Zeilen scheitert | Fehler vom Sink der aussortierten Zeilen | Der Lauf bricht sofort mit `sink_error` ab, damit keine aussortierten Zeilen still verloren gehen ([D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)) |

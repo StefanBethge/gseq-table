@@ -224,8 +224,7 @@ doppelten Zeilen im Ziel. 1:n-Fälle siehe
 
 **Beweist:** [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)
 Gegen einen Testserver, der einzelne Anfragen vorübergehend ablehnt, kommt jede Zeile an.
-Welche Zusage bei Wiederholung nach einer unklaren Antwort gilt, ist offen
-([G15](70-gap-ledger.md#g15-zustellzusage-des-http-writers)).
+Wiederholte Batches tragen denselben Idempotenzschlüssel ([D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit)).
 
 ### T31 — Die öffentliche API enthält keine gseq-Typen
 

@@ -142,7 +142,7 @@ laut Methode die UC-Familie noch nicht.
 
 ### G15 — Zustellzusage des HTTP-Writers
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit)
 [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)
 sieht Wiederholung vor. Bleibt nach einer Anfrage unklar, ob der Empfänger sie verarbeitet
 hat (Zeitüberschreitung), führt Wiederholung zu doppelter Zustellung. Offen ist, ob der
@@ -178,7 +178,7 @@ Datenfehler tarnen. Nicht vom Maintainer entschieden.
 
 ### G19 — Fehler beim Schreiben ins Ziel
 
-**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-beendet-den-lauf-mit-einer-panik)
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)
 Keine Decision legt fest, was passiert, wenn ein Ziel einen Block ablehnt oder das
 Schreiben der aussortierten Zeilen scheitert ([Failure Modes](50-failure-modes.md),
 Abschnitt Ziele). [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)
@@ -282,8 +282,8 @@ Die Exit-Kriterien im [Scope](40-scope-prototype.md) verlangen, dass [G5](#g5-ob
 
 ### G38 — Panik oder Rückgabe bei Schreibfehlern
 
-**Type:** Gap · **Kind:** design · **Status:** offen
-[D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-beendet-den-lauf-mit-einer-panik)
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)
+[D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)
 beendet den Lauf bei einem Schreibfehler mit einer Panik. Eine Panik in einer Library
 beendet das ganze Programm, auch andere Läufe im selben Prozess, und lässt sich von einem
 Dienst nur mit `recover` abfangen. Die Alternative ist ein sofortiger Abbruch mit eigenem

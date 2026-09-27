@@ -356,8 +356,9 @@ spart bei großen Lieferungen Zeit, wenn das Ausmaß nicht gebraucht wird.
 **Entscheidung:** Das Ergebnis eines Laufs trägt einen Status: `ok`, `failed_threshold`
 (Schwelle überschritten), `aborted` (gestoppt nach
 [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
-oder abgebrochen über den Kontext) oder `plan_error` (Planfehler nach
-[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)). Dazu
+oder abgebrochen über den Kontext) `plan_error` (Planfehler nach
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)) oder
+`sink_error` (Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)). Dazu
 kommen die Zählungen gelesener, durchgelaufener und aussortierter Zeilen, je Schritt und
 je Fehlercode. Eine Hilfsfunktion bildet den Status auf einen Exit-Code für den Scheduler ab.
 **Begründung:** Der Scheduler braucht ein eindeutiges Signal, der Pipeline-Entwickler die
@@ -656,17 +657,41 @@ machen ihn sichtbar.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G18](70-gap-ledger.md#g18-verhalten-bei-panik-in-einer-closure))
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
 
-### D40 — Ein Fehler beim Schreiben in ein Ziel beendet den Lauf mit einer Panik
+### D40 — Ein Fehler beim Schreiben in ein Ziel bricht den Lauf sofort mit dem Status sink_error ab
 
 **Entscheidung:** Lehnt ein Ziel einen Block ab oder scheitert das Schreiben, gilt das
-nicht als Daten-, Liefer- oder Planfehler. Der Lauf wird sofort beendet, und zwar mit einer
-Panik. Das gilt für Ergebnisse und für aussortierte Zeilen.
+nicht als Daten-, Liefer- oder Planfehler. Der Lauf bricht sofort ab und liefert den Status
+`sink_error` nach [D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst)
+zusammen mit dem Fehler des Ziels. Das gilt für Ergebnisse und für aussortierte Zeilen.
+Die Library löst keine Panik aus.
 **Begründung:** Ein stiller Schreibfehler würde genau die Daten verlieren, die das
 Fehlermodell bewahren soll
-([D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten)). Ein harter
-Abbruch hält die Daten in der Quelle vorhanden, und der Lauf lässt sich nach Behebung des
-Ziels wiederholen. Ob es beim wörtlichen Go-`panic` bleibt oder ein Rückgabewert mit
-eigenem Status gewählt wird, ist offen
-([G38](70-gap-ledger.md#g38-panik-oder-ruckgabe-bei-schreibfehlern)).
-**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G19](70-gap-ledger.md#g19-fehler-beim-schreiben-ins-ziel))
+([D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten)). Der
+sofortige Abbruch hält die Daten in der Quelle vorhanden, und der Lauf lässt sich nach
+Behebung des Ziels wiederholen. Eine Panik wurde erwogen und verworfen: In einer Library
+beendet sie das ganze Programm, auch andere Läufe im selben Prozess. Der eigene Status
+ist für den Scheduler genauso eindeutig. Wie auf einen Schreibfehler reagiert wird, hängt
+vom Ziel ab und bleibt Sache der Pipeline.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G19](70-gap-ledger.md#g19-fehler-beim-schreiben-ins-ziel) und [G38](70-gap-ledger.md#g38-panik-oder-ruckgabe-bei-schreibfehlern))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D41 — Der HTTP-Writer liefert mindestens einmal und schickt einen Idempotenzschlüssel mit
+
+**Entscheidung:** Der HTTP-Writer nach
+[D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)
+wiederholt eine Anfrage bei vorübergehenden Fehlern (Zeitüberschreitung, Serverfehler,
+Überlastung) mit wachsendem Abstand. Jeder Batch trägt einen Idempotenzschlüssel, der aus
+den `record_key`s des Batches abgeleitet ist und bei einer Wiederholung gleich bleibt, und
+jede Zeile trägt ihren `record_key`
+([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)).
+Die Zusage ist "mindestens einmal". Deduplizieren ist Sache des Empfängers.
+Wiederholungsregeln sind je Writer konfigurierbar. Sind die Wiederholungen erschöpft oder
+lehnt der Empfänger endgültig ab, gilt
+[D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab),
+und die weitere Behandlung programmiert der Pipeline-Entwickler.
+**Begründung:** "Genau einmal" kann ein Client ohne Mitwirkung des Empfängers nicht
+zusichern. Ganz ohne Wiederholung wären Läufe über unzuverlässige Verbindungen zu
+empfindlich. Endpunkte verhalten sich unterschiedlich, deshalb sind die Regeln
+konfigurierbar und die Reaktion auf ein endgültiges Scheitern liegt beim Entwickler.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G15](70-gap-ledger.md#g15-zustellzusage-des-http-writers))
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)

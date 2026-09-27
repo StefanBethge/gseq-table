@@ -47,7 +47,7 @@ sequenceDiagram
 - Wie erfährt der Scheduler vom Ergebnis (Exit-Code, Rückgabewert, Bericht)? → [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst), Bericht: [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht)
 - Wohin gehen die aussortierten Zeilen eines Laufs, und in welchem Format? → [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), [D2](10-design-decisions.md#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse), je Quelle: [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen)
 - Gehören Writer für Datenbank und HTTP-JSON zur Library, oder nur Datei-Writer? → [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)
-- Was passiert, wenn das Ziel das Schreiben ablehnt? → [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-beendet-den-lauf-mit-einer-panik), Form offen: [G38](70-gap-ledger.md#g38-panik-oder-ruckgabe-bei-schreibfehlern)
+- Was passiert, wenn das Ziel das Schreiben ablehnt? → [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)
 
 ### UC2 — Datenlieferant ändert das Lieferformat unangekündigt
 
