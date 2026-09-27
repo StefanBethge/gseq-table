@@ -24,7 +24,8 @@ sie an und schreibt das Ergebnis ins Ziel. Zeilen, die ein Schritt nicht verarbe
 werden aussortiert, statt den Lauf abzubrechen. Der Lauf kommt durch, und die verarbeitbaren
 Daten kommen im Ziel an, auch wenn ein Teil der Lieferung fehlerhaft ist. Am Ende ist
 festgehalten, wie viele Zeilen durchgelaufen sind und wie viele in welchem Schritt aus
-welchem Grund aussortiert wurden.
+welchem Grund aussortiert wurden. Die aussortierten Zeilen schickt die Pipeline über einen
+Writer in einem gewünschten Format an ein Ziel.
 
 ```mermaid
 sequenceDiagram
@@ -41,11 +42,11 @@ sequenceDiagram
 ```
 
 **Erzwingt Entscheidungen:**
-- Was ist ein Datenfehler, der eine Zeile aussortiert, und was ist ein Konfigurationsfehler, der den Lauf verhindert oder abbricht?
-- Wann ist ein Lauf erfolgreich: immer, wenn er durchkommt, oder gibt es eine Schwelle (z. B. Anteil aussortierter Zeilen), ab der er als fehlgeschlagen gilt?
-- Wie erfährt der Scheduler vom Ergebnis (Exit-Code, Rückgabewert, Bericht)?
-- Wohin gehen die aussortierten Zeilen eines Laufs, und in welchem Format?
-- Gehören Writer für Datenbank und HTTP-JSON zur Library, oder nur Datei-Writer?
+- Was ist ein Datenfehler, der eine Zeile aussortiert, und was ist ein Konfigurationsfehler, der den Lauf verhindert oder abbricht? → offen
+- Wann ist ein Lauf erfolgreich: immer, wenn er durchkommt, oder gibt es eine Schwelle (z. B. Anteil aussortierter Zeilen), ab der er als fehlgeschlagen gilt? → [D4](10-design-decisions.md#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen), Bemessung offen: [G3](70-gap-ledger.md#g3-bemessung-und-wirkung-der-schwelle)
+- Wie erfährt der Scheduler vom Ergebnis (Exit-Code, Rückgabewert, Bericht)? → offen, [G3](70-gap-ledger.md#g3-bemessung-und-wirkung-der-schwelle)
+- Wohin gehen die aussortierten Zeilen eines Laufs, und in welchem Format? → [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), [D2](10-design-decisions.md#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse)
+- Gehören Writer für Datenbank und HTTP-JSON zur Library, oder nur Datei-Writer? → offen, [G6](70-gap-ledger.md#g6-writer-fur-datenbank-und-http)
 
 ### UC2 — Datenlieferant ändert das Lieferformat unangekündigt
 
@@ -59,7 +60,7 @@ geändert hat, und hat die betroffenen Zeilen vorliegen, um die Pipeline anzupas
 
 **Erzwingt Entscheidungen:**
 - Woran bemerkt der Pipeline-Entwickler eine Änderung: am Anstieg der aussortierten Zeilen, an einem Abgleich gegen einen erwarteten Aufbau, oder an beidem?
-- Fehlt eine erwartete Spalte ganz: Werden alle Zeilen aussortiert, oder ist das ein Konfigurationsfehler, der den Lauf stoppt?
+- Fehlt eine erwartete Spalte ganz: Werden alle Zeilen aussortiert, oder ist das ein Konfigurationsfehler, der den Lauf stoppt? → wählbar: [D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
 - Wie wird eine neue, unerwartete Spalte behandelt (ignorieren, melden, durchreichen)?
 - Wie wird "was genau hat sich geändert" dargestellt (Spalte, betroffene Werte, Beispiele)?
 
@@ -73,10 +74,10 @@ der sie aussortiert hat, dem Grund, der betroffenen Spalte und dem Rohwert. Er f
 Zeile in der Originaldatei wieder und kann den Fehler nachstellen.
 
 **Erzwingt Entscheidungen:**
-- Was genau ist der Originalzustand: die Zellwerte, wie der Reader sie gelesen hat, oder auch die Rohbytes (z. B. eine CSV-Zeile mit kaputten Anführungszeichen)?
+- Was genau ist der Originalzustand: die Zellwerte, wie der Reader sie gelesen hat, oder auch die Rohbytes (z. B. eine CSV-Zeile mit kaputten Anführungszeichen)? → [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), genauer Umfang offen: [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst)
 - Wie wird eine Zeile in der Quelle wiedergefunden (Datei, Sheet, Zeilennummer, Byte-Offset), und bleibt das über Sortieren, Filtern und Joins hinweg erhalten?
-- Was wird bei großen Lieferungen für jede Zeile mitgeführt, damit der Originalzustand der aussortierten Zeilen verfügbar ist, ohne den Speicherbedarf aller Zeilen zu vervielfachen?
-- Wird eine Zeile, die in mehreren Schritten scheitern würde, beim ersten Fehler aussortiert, oder werden alle Gründe gesammelt?
+- Was wird bei großen Lieferungen für jede Zeile mitgeführt, damit der Originalzustand der aussortierten Zeilen verfügbar ist, ohne den Speicherbedarf aller Zeilen zu vervielfachen? → offen, [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst)
+- Wird eine Zeile, die in mehreren Schritten scheitern würde, beim ersten Fehler aussortiert, oder werden alle Gründe gesammelt? → offen, [G2](70-gap-ledger.md#g2-welche-info-spalten-eine-aussortierte-zeile-tragt)
 
 ### UC4 — Aussortierte Zeilen werden nach einer Anpassung nachverarbeitet
 
@@ -118,10 +119,10 @@ Stelle etwas ändern, nicht jeden Schritt umschreiben. Der Lauf ist langsamer al
 spezialisiertes Werkzeug, aber er kommt mit begrenztem Speicher durch.
 
 **Erzwingt Entscheidungen:**
-- Wie wird zwischen "alles im Speicher" und "während des Lesens verarbeiten" umgeschaltet, und muss der Entwickler das überhaupt wählen?
-- Was passiert mit Schritten, die alle Zeilen brauchen (Sortieren, Gruppieren, Joins, Pivot), wenn nicht alles in den Speicher passt: auslagern auf die Platte, verbieten, oder nur für kleine Seiten erlauben?
+- Wie wird zwischen "alles im Speicher" und "während des Lesens verarbeiten" umgeschaltet, und muss der Entwickler das überhaupt wählen? → offen, [G4](70-gap-ledger.md#g4-verarbeitungsmodell-fur-grosse-lieferungen)
+- Was passiert mit Schritten, die alle Zeilen brauchen (Sortieren, Gruppieren, Joins, Pivot), wenn nicht alles in den Speicher passt: auslagern auf die Platte, verbieten, oder nur für kleine Seiten erlauben? → offen, [G4](70-gap-ledger.md#g4-verarbeitungsmodell-fur-grosse-lieferungen)
 - Wie wird der Speicherbedarf begrenzt oder konfiguriert?
-- Braucht es eine veränderbare (mutable) Datenstruktur, um schnell und speichersparend genug zu sein, oder erreicht eine unveränderliche mit geteilten Spalten dieselben Ergebnisse? Der Maintainer braucht die mutable Variante nicht, wenn es ohne sie gleich gut geht.
+- Braucht es eine veränderbare (mutable) Datenstruktur, um schnell und speichersparend genug zu sein, oder erreicht eine unveränderliche mit geteilten Spalten dieselben Ergebnisse? Der Maintainer braucht die mutable Variante nicht, wenn es ohne sie gleich gut geht. → Voreinstellung unveränderlich: [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen); Bedarf offen: [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht)
 - Bringt spaltenorientierte Speicherung hier messbare Vorteile?
 
 ### UC7 — Externer Entwickler baut seine erste Pipeline
@@ -135,7 +136,7 @@ zu müssen. Die Voreinstellungen führen zu einem stabilen Lauf, nicht zu einem 
 ersten schmutzigen Wert.
 
 **Erzwingt Entscheidungen:**
-- Welche Voreinstellungen gelten, wenn der Entwickler nichts zum Fehlerverhalten angibt?
+- Welche Voreinstellungen gelten, wenn der Entwickler nichts zum Fehlerverhalten angibt? → [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen)
 - Welche Typen tauchen in der öffentlichen API auf (eigene Typen der Library, Standardtypen, Typen aus gseq)?
 - Wie viele Wege gibt es, dieselbe Operation auszudrücken (Methode, Pipeline-Schritt, Ausdruck), und welcher ist der naheliegende?
 - Welche Stabilitätszusage gibt v2 gegenüber externen Nutzern?
