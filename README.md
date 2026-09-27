@@ -448,6 +448,8 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - distinct, union, intersect
 - melt and pivot
 - lag, lead, cumulative sums, ranking, rolling aggregations
+- window functions per partition with optional ordering, keeping row order
+  (`t.PartitionBy("customer").OrderBy(table.Asc("date")).CumSum("revenue", "cum")`)
 
 ### IO
 
