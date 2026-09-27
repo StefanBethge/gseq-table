@@ -68,14 +68,19 @@ func (l *ErrorLog) Len() int {
 // ToTable returns all error entries as an immutable Table suitable for CSV export.
 //
 // The table contains the following columns:
+//
 //   - _source   – dataset name (from WithSource)
+//
 //   - _step     – pipeline step name
+//
 //   - _row      – original zero-based row index
+//
 //   - _error    – error message
+//
 //   - one column per field from the original rows, merged across all entries
 //     (empty string for missing values)
 //
-//	csv.NewWriter().WriteFile("rejected.csv", log.ToTable())
+//     csv.NewWriter().WriteFile("rejected.csv", log.ToTable())
 func (l *ErrorLog) ToTable() table.Table {
 	l.mu.Lock()
 	entries := make([]ErrorEntry, len(l.entries))

@@ -302,4 +302,3 @@ func TestExplode_ShortRow(t *testing.T) {
 	assertEqual(t, len(result.Rows), 1)
 	assertEqual(t, result.Rows[0].Get("name").UnwrapOr(""), "Alice")
 }
-

@@ -23,12 +23,12 @@ import (
 
 // benchLine holds the parsed fields of one Go benchmark result line.
 type benchLine struct {
-	pkg     string
-	name    string
-	n       int     // iterations (b.N)
-	nsOp    float64 // ns/op
-	bOp     float64 // B/op  (0 if not reported)
-	allocs  float64 // allocs/op (0 if not reported)
+	pkg    string
+	name   string
+	n      int     // iterations (b.N)
+	nsOp   float64 // ns/op
+	bOp    float64 // B/op  (0 if not reported)
+	allocs float64 // allocs/op (0 if not reported)
 }
 
 // key groups lines that belong to the same benchmark.

@@ -69,4 +69,3 @@ func (p Pipeline) FanOut(fns ...func(table.Table) table.Table) []Pipeline {
 	wg.Wait()
 	return out
 }
-

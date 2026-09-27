@@ -55,4 +55,3 @@ func TestTryMap_Error(t *testing.T) {
 	})
 	assertEqual(t, res.IsErr(), true)
 }
-

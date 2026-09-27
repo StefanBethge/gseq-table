@@ -99,7 +99,6 @@ func (r *Reader) ReadFile(path string) result.Result[table.Table, error] {
 	})
 }
 
-
 // Read parses CSV from rd and returns a table.Table.
 // Returns Err if the CSV is malformed.
 func (r *Reader) Read(rd io.Reader) result.Result[table.Table, error] {

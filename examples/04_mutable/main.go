@@ -30,9 +30,9 @@ func main() {
 		[]string{"id", "region", "product", "revenue", "status"},
 		[][]string{
 			{"1", "EU", "Widget A", "1200", "active"},
-			{"2", "US", "Widget B", "850", ""},       // missing status
+			{"2", "US", "Widget B", "850", ""}, // missing status
 			{"3", "EU", "Gizmo X", "2300", "active"},
-			{"4", "APAC", "Widget A", "", "active"},   // missing revenue
+			{"4", "APAC", "Widget A", "", "active"}, // missing revenue
 			{"5", "US", "Gizmo X", "3100", "active"},
 			{"6", "EU", "Gadget Z", "450", "inactive"},
 		},
@@ -109,7 +109,7 @@ func main() {
 		[]string{"date", "region", "revenue"},
 		[][]string{
 			{"2024-01", "EU", "1200"},
-			{"", "US", "850"},  // date missing — will be filled forward
+			{"", "US", "850"}, // date missing — will be filled forward
 			{"2024-02", "EU", "2300"},
 			{"", "APAC", "970"}, // date missing — will be filled forward
 		},
@@ -178,7 +178,7 @@ func main() {
 		[]string{"city", "sales", "region"},
 		[][]string{
 			{"berlin", "1200", "eu"},
-			{"", "850", "us"},    // empty city — will be dropped
+			{"", "850", "us"}, // empty city — will be dropped
 			{"paris", "2300", "eu"},
 			{"austin", "3100", "us"},
 		},
@@ -192,7 +192,7 @@ func main() {
 		Then(etl.Mut.Map("city", strings.ToTitle)).
 		Then(etl.Mut.Map("region", strings.ToUpper)).
 		Then(etl.Mut.Sort("sales", false)). // descending
-		Frozen().                            // → immutable Pipeline
+		Frozen().                           // → immutable Pipeline
 		Then(etl.Select("city", "region", "sales")).
 		Unwrap()
 

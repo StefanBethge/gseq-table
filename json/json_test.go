@@ -724,10 +724,10 @@ func TestFlattenMixedArrayTypes(t *testing.T) {
 	tbl := res.Unwrap()
 
 	tests := map[string]string{
-		"items.0":          "text",
-		"items.1":          "42",
-		"items.2.nested":   "val",
-		"items.3":          "",
+		"items.0":        "text",
+		"items.1":        "42",
+		"items.2.nested": "val",
+		"items.3":        "",
 	}
 	for col, want := range tests {
 		got := tbl.Rows[0].Get(col).UnwrapOr("MISSING")

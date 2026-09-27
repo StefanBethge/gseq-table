@@ -323,10 +323,10 @@ func main() {
 	]`
 
 	t = gjson.New(gjson.WithFieldMapping(map[string]string{
-		"order_id":     ".order_id",
-		"customer":     ".customer.name",
-		"first_sku":    ".items[0].sku",
-		"first_qty":    ".items[0].qty",
+		"order_id":  ".order_id",
+		"customer":  ".customer.name",
+		"first_sku": ".items[0].sku",
+		"first_qty": ".items[0].qty",
 	})).ReadString(orders).Unwrap()
 
 	t = t.AddCol("summary", func(r table.Row) string {
