@@ -33,7 +33,7 @@ als fehlgeschlagen gilt. Offen ist auch, wie der Scheduler das Ergebnis erfährt
 
 ### G4 — Verarbeitungsmodell für große Lieferungen
 
-**Type:** Gap · **Kind:** verify · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
 [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 verlangt, dass dieselbe Pipeline große Lieferungen verarbeitet, ohne sie vollständig zu
 laden. Offen ist, wie Streaming und In-Memory-Verarbeitung zusammenspielen und was mit
@@ -52,7 +52,8 @@ Soll durch Messung im Prototyp gegen v1 `MutableTable` geprüft werden.
 Seit [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert)
 entscheidet die Engine über Kopieren oder Ändern. Die Annahme lautet damit: Ändern an Ort
 und Stelle, wo Daten nicht geteilt sind, erreicht Laufzeit und Speicher von v1
-`MutableTable`.
+`MutableTable`. Fällt die Messung negativ aus, wird [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) über eine neue Decision
+wieder aufgemacht.
 
 ### G6 — Writer für Datenbank und HTTP
 

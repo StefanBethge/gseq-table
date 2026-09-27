@@ -32,7 +32,7 @@ Er liegt unter `experimental/v2` ohne Stabilitätszusage
 | [F17](20-feature-catalogue.md#f17-anderungsbericht) | Erprobung von [G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt) |
 | [F19](20-feature-catalogue.md#f19-sink-schnittstelle-und-datei-writer) | eingeschränkt nach [P4](#p4-datei-writer-fur-csv-und-excel) |
 | [F21](20-feature-catalogue.md#f21-offentliche-api-ohne-gseq-typen) | Die API-Form soll schon im Prototyp gelten, damit die Erprobung aussagekräftig ist |
-| [F23](20-feature-catalogue.md#f23-auslieferung-als-experimenteller-prototyp-und-als-v2-modul) | nur der Teil `experimental/v2` |
+| [F23](20-feature-catalogue.md#f23-auslieferung-als-experimenteller-prototyp-und-als-v2-modul) | nur der Teil `experimental/v2`, nach [P5](#p5-nur-experimentalv2) |
 
 Nicht im Prototyp:
 [F18](20-feature-catalogue.md#f18-profil-und-vergleich-mit-fruheren-laufen) (laut
@@ -47,8 +47,7 @@ und [F22](20-feature-catalogue.md#f22-v1-adapter) (laut
 ### P1 — Auslagern nur für Sortieren und Gruppieren
 
 Der Prototyp lagert beim Sortieren und Gruppieren aus. Bei Joins muss die rechte Seite in
-den Speicher passen, sonst scheitert der Lauf mit einer klaren Meldung. Pivot lagert nicht
-aus. Produktion: Alle Schritte über alle Zeilen lagern aus
+den Speicher passen, sonst scheitert der Lauf mit einer klaren Meldung. Produktion: Alle Schritte über alle Zeilen lagern aus
 ([D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)).
 
 ### P2 — Teilmenge der Operationen
@@ -64,12 +63,19 @@ und Ausdrücke
 ### P3 — Reader für CSV und Excel
 
 Der Prototyp liest CSV und Excel, die beiden häufigsten Lieferformate. Produktion: dazu
-JSON und NDJSON ([F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand)).
+JSON und NDJSON ([F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand);
+keine Decision, siehe [G37](70-gap-ledger.md#g37-bestehkriterien-und-fehlende-festlegungen-im-scope-des-prototyps)).
 
 ### P4 — Datei-Writer für CSV und Excel
 
 Der Prototyp schreibt CSV und Excel. Produktion: dazu JSON/NDJSON und Markdown
 ([D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)).
+
+### P5 — Nur experimental/v2
+
+Der Prototyp erscheint nur unter `experimental/v2`, ohne Stabilitätszusage. Produktion:
+v2.0.0 als eigenes `/v2`-Modul mit SemVer
+([D34](10-design-decisions.md#d34-der-prototyp-liegt-unter-experimentalv2-ohne-zusage-v200-ist-ein-eigenes-modul-mit-semver)).
 
 ## Exit-Kriterien
 
@@ -77,7 +83,10 @@ Der Prototyp schreibt CSV und Excel. Produktion: dazu JSON/NDJSON und Markdown
   [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand)–[T17](30-test-plan.md#t17-gehaufte-formatfehler-erscheinen-im-anderungsbericht-mit-beispielen)
   und [T19](30-test-plan.md#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck)–[T28](30-test-plan.md#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus)
   sowie [T31](30-test-plan.md#t31-die-offentliche-api-enthalt-keine-gseq-typen), jeweils
-  im Umfang von [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren)–[P4](#p4-datei-writer-fur-csv-und-excel).
+  im Umfang von [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren)–[P5](#p5-nur-experimentalv2).
+  [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) gilt
+  im Umfang von [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren), also nur für Sortieren
+  und Gruppieren, nicht für Join.
 - [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und
   [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)
   sind durch Benchmarks gegen v1 (`Table` und `MutableTable`) beantwortet: Laufzeit und

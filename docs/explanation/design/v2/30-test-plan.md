@@ -16,15 +16,16 @@ nicht den veränderten.
 ### T2 — Aussortierte Zeilen lassen sich mit jedem Writer schreiben und wieder lesen
 
 **Beweist:** [D2](10-design-decisions.md#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse), [F19](20-feature-catalogue.md#f19-sink-schnittstelle-und-datei-writer)
-Die Tabelle aussortierter Zeilen wird mit jedem Datei-Writer geschrieben und mit dem
-passenden Reader gelesen. Rohspalten und Info-Spalten bleiben erhalten.
+Die Tabelle aussortierter Zeilen wird mit jedem Datei-Writer geschrieben, zu dem es einen
+Reader gibt (CSV und Excel im Prototyp), und mit dem passenden Reader gelesen. Rohspalten
+und Info-Spalten bleiben erhalten. Nullwerte in `value` bleiben nur erhalten, wo das Format
+sie darstellen kann.
 
 ### T3 — Im Modus "stoppen" endet der Lauf beim ersten Datenfehler, im Modus "aussortieren" nicht
 
 **Beweist:** [D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
 Dieselbe Lieferung mit einem fehlerhaften Wert ergibt im Modus "stoppen" den Status
-`aborted` ohne weitere geschriebene Zeilen nach dem Fehler, im Modus "aussortieren" den
-Status `ok` mit genau einer aussortierten Zeile.
+`aborted`, im Modus "aussortieren" den Status `ok` mit genau einer aussortierten Zeile.
 
 ### T4 — Die Schwelle markiert den Lauf als fehlgeschlagen und lässt ihn standardmäßig zu Ende laufen
 
@@ -57,13 +58,18 @@ wird nicht überschrieben.
 ### T8 — Scheitert eine Zeile nach einem Join, sind beide Quellzeilen mit gemeinsamer Kennung aussortiert
 
 **Beweist:** [D11](10-design-decisions.md#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert)
+Eine Zeile aus einem Join zweier Quellen scheitert in einem späteren Schritt. Die Tabellen
+aussortierter Zeilen beider Quellen enthalten je die beteiligte Quellzeile mit eigenem
+Rohzustand und eigener Fundstelle, und beide Einträge tragen dieselbe `reject_id`.
+1:n-Fälle siehe [G24](70-gap-ledger.md#g24-1n-joins-identitat-der-ergebniszeilen-und-teilweiser-erfolg).
 
 ### T9 — Nach einer Gruppierung werden aggregierte Zeilen aussortiert, und der Rohzustand ist freigegeben
 
 **Beweist:** [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)
 Eine nach der Gruppierung scheiternde Zeile wird mit Gruppenschlüssel und Anzahl der
-Quellzeilen aussortiert. Der Speicher für den Rohzustand ist nach der Gruppierung wieder
-frei. Mit der Option "volle Herkunft" enthält der Eintrag die Kennungen der Quellzeilen.
+Quellzeilen aussortiert. Der Spitzenspeicher eines Laufs mit Gruppierung über eine
+Lieferung, die ein Vielfaches des Budgets groß ist, bleibt im Budget
+([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)). Mit der Option "volle Herkunft" enthält der Eintrag die Kennungen der Quellzeilen.
 
 ## Quellen
 
@@ -91,6 +97,9 @@ Reader-Konfiguration verarbeitet.
 ### T13 — record_key ist über Läufe stabil, record_hash über Dateinamen
 
 **Beweist:** [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)
+Zwei Läufe über dieselbe Lieferung ergeben für jede Zeile denselben `record_key`. Dieselbe
+Lieferung unter anderem Dateinamen ergibt einen anderen `record_key`, aber für jede Zeile
+denselben `record_hash`.
 
 ### T14 — Die Prüfung des Kopfs erkennt fehlende, neue und umbenannte Spalten
 
@@ -117,10 +126,17 @@ bildet auf einen eigenen Exit-Code ab.
 ### T17 — Gehäufte Formatfehler erscheinen im Änderungsbericht mit Beispielen
 
 **Beweist:** [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht)
+Scheitert in einer Lieferung ein erheblicher Teil der Werte einer Spalte mit demselben
+Fehlercode, enthält der Änderungsbericht einen Befund `format_change` mit Quelle, Spalte,
+Anzahl und Beispielen der Werte, wie sie jetzt aussehen. Die Grenze für "erheblich" ist
+offen ([G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt)).
 
 ### T18 — Der Profilvergleich meldet eine Abweichung, ohne dass eine Zeile scheitert
 
 **Beweist:** [D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)
+Ein Lauf liefert ein Profil seiner Quellen. Ein späterer Lauf über eine Lieferung, in der
+plötzlich ein Drittel der Werte einer Spalte leer ist, lässt keine Zeile scheitern und
+meldet die Abweichung als Befund im Änderungsbericht.
 
 ## Zweige
 
@@ -133,10 +149,17 @@ Im Zweig verarbeitete Zeilen erscheinen im Ergebnis ohne Info-Spalten.
 ### T20 — Zweige werden nach Namen zusammengeführt, und Typkonflikte fallen vor dem Lauf auf
 
 **Beweist:** [D26](10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler)
+Zwei Zweige mit teils verschiedenen Spalten werden zusammengeführt. Spalten sind nach Namen
+zugeordnet, eine in einem Zweig fehlende Spalte ist mit Nullwerten aufgefüllt, und die
+Info-Spalten sind nach dem Zurückführen weg. Haben gleichnamige Spalten verschiedene Typen,
+ergibt der Plan `plan_error`, bevor eine Zeile gelesen wird.
 
 ### T21 — Eine im Zweig erneut scheiternde Zeile behält Kennung, Weg und vorigen Grund und zählt einmal
 
 **Beweist:** [D27](10-design-decisions.md#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)
+Eine Zeile scheitert im Hauptweg und im Fehlerzweig erneut. Ihr Eintrag behält die
+`reject_id`, `step` enthält den ganzen Weg, und `prev_reason` enthält den Grund aus dem
+Hauptweg. In den Zählungen erscheint die Quellzeile einmal.
 
 ## Engine
 
@@ -172,6 +195,8 @@ Verzweigung.
 ### T26 — Die Modi für Kopieren und Ändern liefern dasselbe Ergebnis
 
 **Beweist:** [D8](10-design-decisions.md#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert)
+Dieselbe Pipeline über dieselbe Lieferung liefert in den Modi "automatisch", "immer
+kopieren" und "immer ändern" dasselbe Ergebnis und dieselben aussortierten Zeilen.
 
 ### T27 — Nullwerte sind vom leeren Text getrennt und verhalten sich wie in SQL
 
@@ -183,6 +208,8 @@ und Aggregationen überspringen Nullwerte.
 ### T28 — Eine Closure, die einen Fehler meldet, sortiert die Zeile mit code=custom aus
 
 **Beweist:** [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg)
+Eine Closure gibt für bestimmte Zeilen einen Fehler zurück. Diese Zeilen sind mit
+`code=custom` und dem Fehlertext als Grund aussortiert, die übrigen laufen durch.
 
 ## Ziele und API
 
@@ -190,7 +217,8 @@ und Aggregationen überspringen Nullwerte.
 
 **Beweist:** [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http), [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)
 Ein Lauf und eine anschließende Nachverarbeitung mit Upsert auf `record_key` ergeben keine
-doppelten Zeilen im Ziel.
+doppelten Zeilen im Ziel. 1:n-Fälle siehe
+[G24](70-gap-ledger.md#g24-1n-joins-identitat-der-ergebniszeilen-und-teilweiser-erfolg).
 
 ### T30 — Der HTTP-Writer liefert jede Zeile trotz vorübergehender Fehler aus
 
@@ -208,6 +236,7 @@ aus gseq.
 ### T32 — Der v1-Adapter wandelt verlustfrei hin und zurück
 
 **Beweist:** [D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen)
+Eine v1-Tabelle, in eine v2-Tabelle gewandelt und zurück, ist gleich der ursprünglichen.
 
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
