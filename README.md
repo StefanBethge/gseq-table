@@ -225,6 +225,7 @@ Parsing follows the same rules as the `schema` row accessors:
 - empty cells count as missing for every type except `string`
 - booleans accept `true`/`false`, `1`/`0`, `yes`/`no` (case-insensitive)
 - dates use the same layouts as `schema.Time`
+- the zero date (`0001-01-01`) counts as not parsed, the same as in `schema.Time`
 
 Formatting writes integers in base 10, floats in their shortest round-trip form, and booleans as `true`/`false`.
 A date at midnight UTC is written as `2006-01-02`. Any other time is written as RFC 3339.

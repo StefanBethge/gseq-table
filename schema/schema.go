@@ -304,7 +304,8 @@ func narrow(current ColType, v string) ColType {
 }
 
 // tryParseDate parses v with cell.ParseDate and returns the zero time on
-// failure.
+// failure. cell.ParseDate never returns the zero time for a successful parse,
+// so IsZero reliably means "not a date".
 func tryParseDate(v string) time.Time {
 	t, _ := cell.ParseDate(v)
 	return t

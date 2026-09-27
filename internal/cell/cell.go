@@ -8,7 +8,8 @@
 // Rules:
 //   - surrounding whitespace is trimmed before parsing
 //   - booleans accept true/false, 1/0 and yes/no (case-insensitive)
-//   - dates are tried against DateLayouts in order
+//   - dates are tried against DateLayouts in order; the zero time
+//     ("0001-01-01") counts as not parsed
 //   - floats are formatted in their shortest round-tripping form
 package cell
 
@@ -33,7 +34,10 @@ var DateLayouts = []string{
 // DateFormat is the canonical output layout for dates.
 const DateFormat = "2006-01-02"
 
-var errNoDateLayout = errors.New("no date layout matches")
+var (
+	errNoDateLayout = errors.New("no date layout matches")
+	errZeroDate     = errors.New("zero date is treated as not parsed")
+)
 
 // ParseInt parses s as a base-10 integer that fits in bitSize bits.
 func ParseInt(s string, bitSize int) (int64, error) {
@@ -63,10 +67,17 @@ func ParseBool(s string) (value, ok bool) {
 }
 
 // ParseDate parses s using the first matching layout in DateLayouts.
+//
+// A value that parses to the zero time (time.Time.IsZero, e.g. "0001-01-01")
+// is rejected with an error. The zero time doubles as the "no date" marker in
+// schema, so it is never reported as a successfully parsed date.
 func ParseDate(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	for _, layout := range DateLayouts {
 		if t, err := time.Parse(layout, s); err == nil {
+			if t.IsZero() {
+				return time.Time{}, errZeroDate
+			}
 			return t, nil
 		}
 	}

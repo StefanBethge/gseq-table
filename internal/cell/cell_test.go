@@ -157,3 +157,30 @@ func TestRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+func TestParseDate_ZeroTimeIsNotParsed(t *testing.T) {
+	for _, in := range []string{
+		"0001-01-01",
+		" 0001-01-01 ",
+		"0001-01-01T00:00:00Z",
+		"0001-01-01T00:00:00",
+		"01.01.0001",
+		"01/01/0001",
+		"01 Jan 0001",
+		"Jan 01, 0001",
+		"0001-01-01T01:00:00+01:00", // same instant as the zero time
+	} {
+		got, err := ParseDate(in)
+		if err == nil {
+			t.Errorf("ParseDate(%q) = %v, want error", in, got)
+		}
+		if !got.IsZero() {
+			t.Errorf("ParseDate(%q) returned non-zero time %v on failure", in, got)
+		}
+	}
+	// the day after the zero date is a normal date
+	got, err := ParseDate("0001-01-02")
+	if err != nil || !got.Equal(time.Date(1, 1, 2, 0, 0, 0, 0, time.UTC)) {
+		t.Errorf("ParseDate(0001-01-02) = %v, %v", got, err)
+	}
+}
