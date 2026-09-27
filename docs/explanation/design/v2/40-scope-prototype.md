@@ -1,0 +1,122 @@
+# Scope Prototyp
+
+Der Prototyp soll die Grundsatzfragen klären, die sich nur durch Messung und Erprobung an
+echten Lieferungen beantworten lassen:
+[G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht),
+[G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren),
+[G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt) und
+[G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange).
+Er liegt unter `experimental/v2` ohne Stabilitätszusage
+([D34](10-design-decisions.md#d34-der-prototyp-liegt-unter-experimentalv2-ohne-zusage-v200-ist-ein-eigenes-modul-mit-semver)).
+
+## Selektion
+
+| Feature | Begründung |
+|---|---|
+| [F1](20-feature-catalogue.md#f1-blocke-aus-typisierten-spalten-mit-nullwerten) | Grundlage der Messung für [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) |
+| [F2](20-feature-catalogue.md#f2-plan-und-blockweise-ausfuhrung) | Grundlage für Streaming und vorab geprüfte Pläne |
+| [F3](20-feature-catalogue.md#f3-speicherbudget-und-auslagern) | Nachweis, dass große Lieferungen mit begrenztem Speicher durchkommen, eingeschränkt nach [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren) |
+| [F4](20-feature-catalogue.md#f4-kopieren-oder-andern-an-ort-und-stelle) | Grundlage der Messung für [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) |
+| [F5](20-feature-catalogue.md#f5-operationen-als-werte-sofort-auf-tabellen-oder-im-plan) | eingeschränkt nach [P2](#p2-teilmenge-der-operationen) |
+| [F6](20-feature-catalogue.md#f6-ausdrucke) | eingeschränkt nach [P2](#p2-teilmenge-der-operationen) |
+| [F7](20-feature-catalogue.md#f7-operationen-mit-eigener-logik) | Sonderlogik echter Kunden-Pipelines |
+| [F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand) | eingeschränkt nach [P3](#p3-reader-fur-csv-und-excel), [P7](#p7-keine-dateigruppen) und [P8](#p8-keine-formelmaskierung-im-csv-writer) |
+| [F9](20-feature-catalogue.md#f9-erwarteter-aufbau-und-prufung-des-kopfs) | Erprobung von [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt) an echten Lieferungen |
+| [F10](20-feature-catalogue.md#f10-aussortierte-zeilen-als-quelle) | Erprobung von [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet) |
+| [F11](20-feature-catalogue.md#f11-aussortierte-zeilen) | Kern des Fehlermodells, Validierung nach [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren) |
+| [F12](20-feature-catalogue.md#f12-herkunft-uber-joins-und-aggregationen) | Herkunft ist ohne Joins und Gruppierung nicht erprobt, eingeschränkt nach [P6](#p6-aggregierte-aussortierte-zeilen-ohne-volle-herkunft) |
+| [F13](20-feature-catalogue.md#f13-fehlerverhalten) | Kern des Fehlermodells |
+| [F14](20-feature-catalogue.md#f14-schwelle) | Kern des Fehlermodells |
+| [F15](20-feature-catalogue.md#f15-fehlerzweige-split-und-merge) | Erprobung von [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig) |
+| [F16](20-feature-catalogue.md#f16-status-zahlungen-trace-und-exit-code) | Signal für den Scheduler |
+| [F17](20-feature-catalogue.md#f17-anderungsbericht) | Erprobung von [G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt) |
+| [F19](20-feature-catalogue.md#f19-sink-schnittstelle-und-datei-writer) | eingeschränkt nach [P4](#p4-datei-writer-fur-csv-und-excel) |
+| [F21](20-feature-catalogue.md#f21-offentliche-api-ohne-gseq-typen) | Die API-Form soll schon im Prototyp gelten, damit die Erprobung aussagekräftig ist |
+| [F23](20-feature-catalogue.md#f23-auslieferung-als-experimenteller-prototyp-und-als-v2-modul) | nur der Teil `experimental/v2`, nach [P5](#p5-nur-experimentalv2) |
+| [F24](20-feature-catalogue.md#f24-docs-gates-fur-das-design-set) | Phase 6 der Methode, eigene Gates nach [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) |
+
+Nicht im Prototyp:
+[F18](20-feature-catalogue.md#f18-profil-und-vergleich-mit-fruheren-laufen) (laut
+[D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)),
+[F20](20-feature-catalogue.md#f20-writer-fur-datenbank-und-http) (laut
+[D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http),
+damit auch der HTTP-Writer nach [D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit))
+und [F22](20-feature-catalogue.md#f22-v1-adapter) (laut
+[D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen)).
+
+## Lokale Vereinfachungen
+
+### P1 — Auslagern nur für Sortieren und Gruppieren
+
+Der Prototyp lagert beim Sortieren und Gruppieren aus. Bei Joins muss die rechte Seite in
+den Speicher passen, sonst scheitert der Lauf mit einer klaren Meldung. Produktion: Alle Schritte über alle Zeilen lagern aus
+([D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)).
+
+### P2 — Teilmenge der Operationen
+
+Der Prototyp enthält Auswahl, Umbenennen, Filter, abgeleitete Spalten, Umwandeln (auch mit
+Datumsformat), Inner und Left Join, Gruppieren mit den v1-Aggregationen, Sortieren, `Split`
+und `Merge` sowie die Ausdrucksfunktionen, die diese Operationen und die echten
+Kunden-Pipelines brauchen. Produktion: alle Operationen und Helfer aus v1 als Operationen
+und Ausdrücke
+([D31](10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan),
+[D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg)).
+
+### P3 — Reader für CSV und Excel
+
+Der Prototyp liest CSV und Excel, die beiden häufigsten Lieferformate. Produktion: dazu
+JSON und NDJSON ([D57](10-design-decisions.md#d57-der-prototyp-liest-csv-und-excel-v20-zusatzlich-json-und-ndjson),
+[F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand)).
+
+### P4 — Datei-Writer für CSV und Excel
+
+Der Prototyp schreibt CSV und Excel. Produktion: dazu JSON/NDJSON und Markdown
+([D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)).
+
+### P5 — Nur experimental/v2
+
+Der Prototyp erscheint nur unter `experimental/v2`, ohne Stabilitätszusage. Produktion:
+v2.0.0 als eigenes `/v2`-Modul mit SemVer
+([D34](10-design-decisions.md#d34-der-prototyp-liegt-unter-experimentalv2-ohne-zusage-v200-ist-ein-eigenes-modul-mit-semver)).
+
+### P6 — Aggregierte aussortierte Zeilen ohne volle Herkunft
+
+Der Prototyp hat die eigene Tabelle aggregierter aussortierter Zeilen, aber nicht die
+Option "volle Herkunft". Produktion: mit voller Herkunft stehen auch die einzelnen
+Quellzeilen in ihren Tabellen je Quelle ([D48](10-design-decisions.md#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle), [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)).
+
+### P7 — Keine Dateigruppen
+
+Der Prototyp behandelt jede Datei und jedes Sheet als eigene Quelle, kennt aber keine
+Gruppen von Dateien nach Muster und damit kein `missing_file`. Produktion: Gruppen wirken als
+eine Quelle ([D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle)).
+
+### P8 — Keine Formelmaskierung im CSV-Writer
+
+Der CSV-Writer des Prototyps maskiert keine Werte, die als Formel gelesen würden.
+Produktion: Maskierung auf Wunsch ([D56](10-design-decisions.md#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch)).
+
+## Exit-Kriterien
+
+- Die T-Fälle der selektierten Features sind grün:
+  [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand)–[T17](30-test-plan.md#t17-gehaufte-formatfehler-erscheinen-im-anderungsbericht-mit-beispielen)
+  und [T19](30-test-plan.md#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck)–[T28](30-test-plan.md#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus),
+  [T31](30-test-plan.md#t31-die-offentliche-api-enthalt-keine-gseq-typen) sowie
+  [T33](30-test-plan.md#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error)–[T43](30-test-plan.md#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort), jeweils im Umfang von
+  [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren)–[P8](#p8-keine-formelmaskierung-im-csv-writer).
+  [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) gilt
+  im Umfang von [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren), also nur für Sortieren
+  und Gruppieren, nicht für Join.
+- [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und
+  [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)
+  sind nach den Bestehkriterien aus [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) durch Benchmarks gegen v1 (`Table` und `MutableTable`) beantwortet: Laufzeit und
+  Spitzenspeicher für Filter, abgeleitete Spalten, Umwandeln, Sortieren, Gruppieren und
+  Join auf generierten Lieferungen verschiedener Größe. Die Ergebnisse stehen im Repo, und
+  die Gaps sind geschlossen oder mit neuer Decision aufgelöst.
+- Die 1BRC-Datei (13,8 GB) läuft mit Gruppieren und Sortieren in Docker mit mehreren
+  Speicher-Limits durch ([T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein), [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt)). Budgets, Limits und
+  Laufzeiten sind festgehalten.
+- Die Beispiel-Lieferungen nach [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt) sind mit einer Pipeline
+  verarbeitet. Der Maintainer hat die aussortierten Zeilen und den Änderungsbericht geprüft,
+  und [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren) ist geschlossen oder mit neuer Decision aufgelöst.
+  Die Voreinstellung nach [D59](10-design-decisions.md#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt) ist festgelegt.
