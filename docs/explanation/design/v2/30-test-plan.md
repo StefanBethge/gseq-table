@@ -119,8 +119,8 @@ eine Zeile gelesen wird, in jedem Modus. Ist `parse` auf "aussortieren" und
 
 ### T16 — Status und Zählungen sind konsistent und bilden auf Exit-Codes ab
 
-**Beweist:** [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst)
-Gelesene Zeilen sind gleich durchgelaufene plus aussortierte Quellzeilen. Jeder Status
+**Beweist:** [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst), [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)
+Gelesene Quellzeilen sind gleich durchgelaufene plus aussortierte plus verworfene ([D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)), auch mit Filtern, Inner Joins ohne Partner und Filtern über Nullwerte. Jeder Status
 bildet auf einen eigenen Exit-Code ab.
 
 ### T17 — Gehäufte Formatfehler erscheinen im Änderungsbericht mit Beispielen

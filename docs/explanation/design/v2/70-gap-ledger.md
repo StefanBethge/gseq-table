@@ -207,7 +207,7 @@ Nach [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schri
 
 ### G23 — Absichtlich verworfene Zeilen fehlen in Zählung und Freigabe des Rohzustands
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)
 Eine Zeile, die ein Filter absichtlich verwirft, ist weder durchgelaufen noch aussortiert. Dasselbe gilt für Zeilen ohne Partner im Inner Join und für Zweige ohne Ziel. Damit gilt die Gleichung aus [T16](30-test-plan.md#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) nicht mehr, und nach [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert) wird ihr Rohzustand nie freigegeben. Im Streaming wäre das ein Speicherleck. Mit der Null-Semantik aus [D30](10-design-decisions.md#d30-es-gibt-echte-nullwerte-getrennt-vom-leeren-text) verschwinden Zeilen in Filtern still, genau der v1-Mangel, den [D30](10-design-decisions.md#d30-es-gibt-echte-nullwerte-getrennt-vom-leeren-text) beheben soll. Vorschlag: eine gezählte Kategorie "verworfen" je Schritt, und die Freigabe gilt für jedes Verlassen des Plans.
 
 ### G24 — 1:n-Joins: Identität der Ergebniszeilen und teilweiser Erfolg
@@ -217,7 +217,7 @@ Verbindet ein Join eine linke Zeile mit fünf rechten und scheitert eine der fü
 
 ### G25 — Ein Eintrag je Spalte vervielfacht Rohzeilen und macht Zählungen mehrdeutig
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D44](10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler)
 Nach [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte) erzeugt eine in drei Spalten scheiternde Zeile drei Einträge in der Tabelle je Quelle, jeder mit der vollen Rohzeile. [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) liest die Tabelle wieder ein und verarbeitet die Zeile dann dreimal. Die absolute Schwelle aus [D20](10-design-decisions.md#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen) und die Zählungen je Code aus [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) lassen offen, ob Einträge oder Quellzeilen gezählt werden. Optionen: je Quellzeile eine Zeile in der Tabelle je Quelle und Einzelheiten nur in der Übersicht; [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) dedupliziert nach `reject_id`; Zählungen immer nach verschiedenen Quellzeilen.
 
 ### G26 — Wo die aussortierten Zeilen großer Läufe liegen
@@ -227,7 +227,7 @@ Bei einer umfangreichen Lieferung, in der alle Zeilen scheitern, ist die Tabelle
 
 ### G27 — Schwelle als Anteil im Streaming
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D45](10-design-decisions.md#d45-die-schwelle-bezieht-anteile-auf-bisher-gelesene-zeilen-gilt-bei-einer-der-grenzen-und-bricht-erst-nach-einer-mindestzahl-ab)
 Der Anteil aus [D20](10-design-decisions.md#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen) bezieht sich auf die gelesenen Zeilen, deren Gesamtzahl im Streaming nicht vorab bekannt ist. Mit sofortigem Abbruch ergibt die erste aussortierte von einer gelesenen Zeile 100 % und bricht ab. Offen sind der Nenner bei einer Schwelle je Schritt, die Zählung nach Aggregationen, ob "beides" UND oder ODER bedeutet, und ob ein Abbruch an der Schwelle `failed_threshold` oder `aborted` ergibt ([D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst)). Braucht eine Mindestmenge vor einem vorzeitigen Abbruch.
 
 ### G28 — Abgeschnittene und unlesbare Lieferungen
@@ -267,7 +267,7 @@ Excel ist das häufigste Lieferformat ([UC1](05-use-cases.md#uc1-geplanter-lauf-
 
 ### G35 — Zurückgeführte Zeilen verlieren ihre Geschichte
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D46](10-design-decisions.md#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte)
 [D26](10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler) entfernt beim Zurückführen die Info-Spalten. Scheitert die Zeile später im Hauptweg, bekommt sie eine neue `reject_id` ohne `prev_reason`, entgegen [D27](10-design-decisions.md#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg). [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte) sagt, dass spätere Schritte eine gescheiterte Zeile nie sehen, [D25](10-design-decisions.md#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) führt sie aber zurück. Offen ist auch, ob Schwelle und Zählungen je Schritt ([D20](10-design-decisions.md#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen), [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst)) Zeilen mitzählen, die ein Zweig gerettet hat.
 
 ### G36 — Speicherkosten des Rohzustands beim Sortieren und Joinen

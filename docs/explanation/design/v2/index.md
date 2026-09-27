@@ -13,7 +13,7 @@ Erprobung klärt, bevor ein v2.0-Release geplant wird.
 | Dokument | Inhalt | IDs |
 |---|---|---|
 | [Use Cases](05-use-cases.md) | Akteure und Abläufe, und die Fragen, die sie an das Design stellen | [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung) – [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline) |
-| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error) |
+| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D46](10-design-decisions.md#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte) |
 | [Feature-Katalog](20-feature-catalogue.md) | Features, jedes auf seine Decisions gemappt | [F1](20-feature-catalogue.md#f1-blocke-aus-typisierten-spalten-mit-nullwerten) – [F23](20-feature-catalogue.md#f23-auslieferung-als-experimenteller-prototyp-und-als-v2-modul) |
 | [Test-Plan](30-test-plan.md) | T-Fälle, jeder an eine D- oder F-Eigenschaft gebunden | [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) – [T32](30-test-plan.md#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert) |
 | [Scope Prototyp](40-scope-prototype.md) | Selektion, Vereinfachungen und Exit-Kriterien des Prototyps | [P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren) – [P5](40-scope-prototype.md#p5-nur-experimentalv2) |

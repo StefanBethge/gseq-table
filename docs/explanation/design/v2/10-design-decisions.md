@@ -235,7 +235,7 @@ sind. Die ist schwer zu schreiben und nachzuverarbeiten.
 **Entscheidung:** Die Info-Spalten einer aussortierten Zeile tragen ein reserviertes
 Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt diese Spalten:
 `reject_id` (verbindet zusammengehörige Einträge), `run_id`, `record_key` und optional
-`record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
+`error_count` nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler), `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
 [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
 Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
@@ -720,3 +720,65 @@ etwas nicht" von "zu viele schlechte Werte" (`failed_threshold`) und bleibt im M
 Quelle". Sie erfasst keine abgeschnittene Lieferung und vermischt die beiden Fälle.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G21](70-gap-ledger.md#g21-eine-formatanderung-meldet-mit-voreinstellungen-einen-erfolgreichen-lauf) und [G28](70-gap-ledger.md#g28-abgeschnittene-und-unlesbare-lieferungen))
 **Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D43 — Gezählt werden Quellzeilen in vier Kategorien, und der Rohzustand wird bei jedem Verlassen des Plans freigegeben
+
+**Entscheidung:** Zählungen nach [D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) zählen Quellzeilen, nicht Einträge. Es gibt je
+Schritt und für den ganzen Lauf vier Kategorien: gelesen, durchgelaufen (im Ziel
+angekommen), aussortiert und verworfen. Verworfen sind Zeilen, die ein Schritt absichtlich
+weglässt: ein nicht erfüllter Filter, eine Zeile ohne Partner im Inner Join, ein entferntes
+Duplikat, ein Zweig ohne Ziel. Es gilt gelesen = durchgelaufen + aussortiert + verworfen.
+Zusätzlich zeigt jeder Schritt mit Fehlerzweig, wie viele Zeilen der Zweig gerettet hat.
+Der Rohzustand einer Zeile wird freigegeben, sobald sie den Plan auf irgendeinem Weg
+verlässt: Ziel, aussortiert, verworfen oder in einem zusammenfassenden Schritt nach [D12](#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert).
+Eine Zeile, die ein Filter wegen eines Vergleichs mit null nicht erfüllt ([D30](#d30-es-gibt-echte-nullwerte-getrennt-vom-leeren-text)), ist
+verworfen und wird gezählt.
+**Begründung:** Ohne die Kategorie "verworfen" ging die Gleichung nicht auf, sobald ein
+Filter Zeilen weglässt, und deren Rohzustand wäre bis zum Ende des Laufs gehalten worden,
+im Streaming ein Speicherleck. Die Zählung macht auch Zeilen sichtbar, die wegen Nullwerten
+aus einem Filter fallen. Genau dieses stille Verschwinden will [D30](#d30-es-gibt-echte-nullwerte-getrennt-vom-leeren-text) verhindern.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G23](70-gap-ledger.md#g23-absichtlich-verworfene-zeilen-fehlen-in-zahlung-und-freigabe-des-rohzustands))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D44 — Die Tabelle je Quelle hat eine Zeile je Quellzeile, die Übersicht einen Eintrag je Fehler
+
+**Entscheidung:** Die Tabelle aussortierter Zeilen je Quelle nach [D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen) enthält jede
+Quellzeile genau einmal. Ihre Info-Spalten beschreiben den ersten Fehler, und die
+Info-Spalte `error_count` nennt die Zahl der Fehler der Zeile im scheiternden Schritt. Die
+Übersicht enthält einen Eintrag je Fehler, verbunden über `reject_id`. Das präzisiert [D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte).
+**Begründung:** Stünde eine Zeile mit drei fehlerhaften Spalten dreimal in der Tabelle je
+Quelle, würde die Nachverarbeitung nach [D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) sie dreimal verarbeiten. Alle Fehler bleiben
+über die Übersicht sichtbar.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G25](70-gap-ledger.md#g25-ein-eintrag-je-spalte-vervielfacht-rohzeilen-und-macht-zahlungen-mehrdeutig))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D45 — Die Schwelle bezieht Anteile auf bisher gelesene Zeilen, gilt bei einer der Grenzen und bricht erst nach einer Mindestzahl ab
+
+**Entscheidung:** Für die Schwelle nach [D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen) bezieht sich ein Anteil beim ganzen Lauf auf
+die bisher gelesenen Quellzeilen und bei einer Schwelle je Schritt auf die Zeilen, die in
+den Schritt hineingegangen sind. Sind eine absolute Grenze und ein Anteil angegeben, ist die
+Schwelle überschritten, sobald eine der beiden überschritten ist. Mit der Option zum
+sofortigen Abbruch greift ein Anteil erst nach einer einstellbaren Mindestzahl gelesener
+Zeilen, eine absolute Grenze sofort. Eine aggregierte aussortierte Zeile zählt mit der
+Anzahl ihrer Quellzeilen. Ein Abbruch an der Schwelle ergibt den Status `failed_threshold`.
+**Begründung:** Im Streaming ist die Gesamtzahl der Zeilen vorab nicht bekannt. Ohne
+Mindestzahl würde die erste aussortierte Zeile einen Anteil von 100 % ergeben und jeden
+Lauf sofort abbrechen. "Eine der beiden Grenzen" ist die strengere und damit für ein Signal
+die sichere Lesart.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G27](70-gap-ledger.md#g27-schwelle-als-anteil-im-streaming))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D46 — Gerettete Zeilen behalten ihre Geschichte, und die Schwelle zählt nur endgültig aussortierte
+
+**Entscheidung:** Eine Zeile, die ein Fehlerzweig nach [D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) gerettet hat, behält ihre
+`reject_id`, ihren Weg und ihren Grund im Hintergrund, so wie ihren Rohzustand. Die
+Info-Spalten entfallen beim Zurückführen nach [D26](#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler) weiterhin. Scheitert die Zeile später im
+Hauptweg, zeigt der Eintrag die ganze Geschichte nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg). Die Schwelle zählt nur
+endgültig aussortierte Zeilen. Die Zählungen je Schritt zeigen gescheiterte und gerettete
+Zeilen getrennt.
+**Begründung:** Ohne die Geschichte im Hintergrund bekäme eine gerettete und später erneut
+gescheiterte Zeile eine neue Kennung ohne vorigen Grund, entgegen [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg). Gerettete Zeilen
+auf die Schwelle anzurechnen, würde einen Lauf scheitern lassen, dessen Daten vollständig
+angekommen sind.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G35](70-gap-ledger.md#g35-zuruckgefuhrte-zeilen-verlieren-ihre-geschichte))
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
