@@ -184,7 +184,7 @@ Budgets plus einer festgelegten Toleranz.
 
 **Beweist:** [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D17](10-design-decisions.md#d17-die-library-bewahrt-aussortierte-zeilen-nicht-selbst-auf)
 Nach einem erfolgreichen, einem gestoppten und einem über den Kontext abgebrochenen Lauf
-ist das Verzeichnis zum Auslagern leer, und die Library hat keine Dateien außerhalb der
+ist das Verzeichnis zum Auslagern leer, bei im Ergebnis gehaltenen aussortierten Zeilen nach dem Schließen des Ergebnisses ([D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close)), und die Library hat keine Dateien außerhalb der
 angegebenen Ziele angelegt.
 
 ### T25 — Kein Zweig sieht Änderungen eines anderen, in jedem Modus

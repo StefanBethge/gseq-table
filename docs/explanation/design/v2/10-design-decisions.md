@@ -485,7 +485,8 @@ einhält, indem sie auslagert. Es ist je Lauf einstellbar. Voreinstellung ist ei
 des verfügbaren Speichers, wobei die Engine das Limit eines Containers bzw. der cgroup
 berücksichtigt. Das Verzeichnis zum Auslagern ist einstellbar, Standard ist das temporäre
 Verzeichnis des Systems. Ausgelagerte Daten werden am Ende des Laufs gelöscht, auch bei
-einem Abbruch.
+einem Abbruch. Ausgenommen sind ausgelagerte aussortierte Zeilen nach
+[D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), die bis zum Schließen des Ergebnisses leben.
 **Begründung:** Läufe starten per Cron, auch in Containern
 ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)). Ein Budget, das das
 Container-Limit ignoriert, würde dort zum Abbruch durch das System führen statt zum
@@ -831,3 +832,51 @@ Lieferung, trägt nicht, weil die Lieferung nicht mehr vorliegen muss und der Sc
 abgeleiteter Wert sein kann.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G22](70-gap-ledger.md#g22-aussortierte-aggregierte-zeilen-haben-keinen-ort-und-lassen-sich-nicht-nachverarbeiten))
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D49 — Aussortierte Zeilen umfangreicher Läufe werden über Writer im Plan während des Laufs geschrieben, sonst hält sie das Ergebnis bis Close
+
+**Entscheidung:** Eine Pipeline kann im Plan Writer für aussortierte Zeilen angeben, je
+Quelle oder für alle Quellen, und einen Writer für die Übersicht. Diese schreiben während
+des Laufs im Streaming, und das Ergebnis enthält dann nur Übersicht und Zählungen. Ohne
+solche Writer hält das Ergebnis die aussortierten Zeilen. Übersteigen sie das Budget nach
+[D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), lagert die Engine sie aus, und sie bleiben lesbar, bis das Ergebnis geschlossen
+wird. Erst dann wird das Verzeichnis zum Auslagern geleert. Für geplante Läufe empfiehlt die
+Dokumentation Writer im Plan.
+**Begründung:** Bei einer umfangreichen Lieferung, in der viele Zeilen scheitern, ist die
+Tabelle aussortierter Zeilen selbst umfangreich. Im Speicher würde sie
+[UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen) brechen, und ausgelagert würde sie nach [D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) am Ende des Laufs gelöscht.
+Writer im Plan lösen das für große Läufe. Das Ergebnis mit `Close` bleibt für kleine Läufe
+und Tests bequem.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G26](70-gap-ledger.md#g26-wo-die-aussortierten-zeilen-groer-laufe-liegen))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D50 — Eine Tabelle trägt ihre aussortierten Zeilen und einen haftenden Fehler
+
+**Entscheidung:** Eine sofortige `Table` nach [D31](#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan) trägt die aussortierten Zeilen der
+auf sie angewandten Operationen und einen haftenden Fehler mit sich. Datenfehler werden
+nach der Voreinstellung aus [D5](#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen) aussortiert. Planfehler, zum Beispiel eine unbekannte
+Spalte, setzen den haftenden Fehler, und folgende Operationen in der Kette laufen nicht
+mehr. Ein Fehlerverhalten lässt sich für eine Tabelle festlegen. Im Modus "stoppen" setzt
+der erste Datenfehler den haftenden Fehler. Eine im Code gebaute Tabelle hat als Fundstelle
+die Quelle `code` mit dem Zeilenindex und als Rohzustand die Werte beim Erstellen.
+**Begründung:** Ohne eigenen Fehlerweg hätten sofortige Methoden entweder Fehler still
+verschluckt oder keine aussortierten Zeilen geliefert, und
+[T22](30-test-plan.md#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis)
+(gleiche Ergebnisse sofort und im Plan) wäre nicht definiert. Der haftende Fehler hält
+Ketten wie in v1 lesbar.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G31](70-gap-ledger.md#g31-fehlerweg-der-sofortigen-table-methoden))
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D51 — Im Modus stoppen wird der scheiternde Block nicht geschrieben, bereits geschriebene Blöcke bleiben
+
+**Entscheidung:** Stoppt ein Lauf im Modus "stoppen" nach [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen), bleiben Blöcke, die
+schon an ein Ziel gegangen sind, dort. Der Block, in dem der Fehler auftritt, wird nicht
+geschrieben, auch nicht seine Zeilen vor dem Fehler. "Vor" meint die
+Verarbeitungsreihenfolge, auch nach einem Sortieren. Ein gestoppter Lauf kann ein Ziel also
+teilweise befüllt haben. Wer das ausschließen will, verwendet Transaktionen im Ziel oder ein
+Upsert auf `row_key` nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen).
+**Begründung:** Blockweise ganz oder gar nicht passt zur blockweisen Ausführung nach
+[D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen) und ist einfach zu erklären. Ein Zurückrollen bereits geschriebener Blöcke kann die
+Library nicht für alle Ziele leisten.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G40](70-gap-ledger.md#g40-teilweise-geschriebene-blocke-im-modus-stoppen))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)

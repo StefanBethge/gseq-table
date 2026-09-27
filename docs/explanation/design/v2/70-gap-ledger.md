@@ -222,7 +222,7 @@ Nach [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-sch
 
 ### G26 — Wo die aussortierten Zeilen großer Läufe liegen
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close)
 Bei einer umfangreichen Lieferung, in der alle Zeilen scheitern, ist die Tabelle aussortierter Zeilen so groß wie die Lieferung. Liegt sie nach dem Lauf im Ergebnis, muss sie im Speicher liegen (widerspricht [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)) oder in ausgelagerten Dateien, die [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) und [T24](30-test-plan.md#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) am Ende löschen. [D2](10-design-decisions.md#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse) sagt nicht, ob der Writer für aussortierte Zeilen vor dem Lauf im Plan hängt und während des Laufs schreibt, oder ob er danach aus dem Ergebnis schreibt. Optionen: Writer für aussortierte Zeilen stehen im Plan und schreiben im Streaming, das Ergebnis hält nur Übersicht und Zählungen; oder das Ergebnis liest aussortierte Zeilen verzögert, und die ausgelagerten Dateien leben bis zu einem `Close`.
 
 ### G27 — Schwelle als Anteil im Streaming
@@ -247,7 +247,7 @@ Nach einem Join-Fehler braucht die Nachverarbeitung der linken aussortierten Zei
 
 ### G31 — Fehlerweg der sofortigen Table-Methoden
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D50](10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler)
 Eine sofortige `Table`-Methode nach [D31](10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan) trifft auf einen fehlerhaften Wert. Fehlerverhalten, Schwelle, Status und Tabellen aussortierter Zeilen hängen aber an der Pipeline ([D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen), [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen), [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst)). Eine im Code gebaute Tabelle hat keinen Rohzustand und keine Fundstelle nach [D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle). [T22](30-test-plan.md#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) verlangt gleiche aussortierte Zeilen bei Table-Methoden und Pipeline, was ohne diese Klärung nicht definiert ist. Optionen: Rückgabe von Tabelle, aussortierten Zeilen und Fehler; Table-Methoden stoppen immer; eine Tabelle trägt eine Fehlerkonfiguration.
 
 ### G32 — Rohzustand und Fundstelle bei Excel
@@ -303,7 +303,7 @@ Decisions über das Design-Set selbst.
 
 ### G40 — Teilweise geschriebene Blöcke im Modus "stoppen"
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D51](10-design-decisions.md#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben)
 Offen ist, ob im Modus "stoppen" nach
 [D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
 Zeilen vor dem fehlerhaften Wert im selben Block noch geschrieben werden, und was "vor"
