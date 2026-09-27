@@ -1,0 +1,11 @@
+# Task runner (design decision D68). CI calls go directly, see .github/workflows/ci.yml.
+
+[tasks.test]
+description = "All tests of all modules, including the docs gates in experimental/v2"
+run = [
+  "go test ./...",
+  "go test -tags strict ./...",
+  "cd excel && go test ./... && go test -tags strict ./...",
+  "cd examples && go test ./... && go test -tags strict ./...",
+  "cd experimental/v2 && go test ./...",
+]
