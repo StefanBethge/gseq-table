@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/stefanbethge/gseq v1.0.0
-	github.com/stefanbethge/gseq-table v1.0.0
+	github.com/stefanbethge/gseq-table v1.2.0
 	github.com/xuri/excelize/v2 v2.9.0
 )
 
