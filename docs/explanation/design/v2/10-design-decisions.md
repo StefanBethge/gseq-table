@@ -600,3 +600,60 @@ wandelt und zurück. Er ist Teil von v2.0.0, nicht des Prototyps.
 indem ein neuer v2-Teil auf dem Ergebnis eines unveränderten v1-Teils arbeitet.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D37 — Die Docs-Gates werden in diesem Repo selbst gebaut
+
+**Entscheidung:** Die Prüfungen des Design-Sets (Eindeutigkeit und Lückenlosigkeit der IDs,
+Mindestzahl je ID-Familie, keine nackten IDs, kanonische Links mit nachgerechneten Ankern,
+aktuelle Bereichsangaben, Abgleich der Tabelle "welcher Test beweist welchen Fall" mit
+`Proves(t, "T<n>")`) werden als normale Go-Tests in diesem Repo selbst geschrieben. Sie
+decken auch die Familie UC ab und prüfen, dass jeder Use Case von mindestens einer Decision
+genannt wird und jede Decision mindestens einen Use Case nennt.
+**Begründung:** Die Referenzfassung liegt im Archivar-Repo, auf das beim Entwurf kein
+Zugriff bestand. Der Maintainer hat sich ausdrücklich für einen eigenen Bau entschieden.
+Er folgt der Spezifikation der Methode und kann die dort noch fehlende UC-Familie gleich
+mit abdecken.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen))
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D38 — Ein späterer Lauf entfernt verwaiste ausgelagerte Daten
+
+**Entscheidung:** Jeder Lauf lagert in ein eigenes Unterverzeichnis aus, das als in
+Benutzung markiert ist, solange der Lauf lebt. Beim Start entfernt ein Lauf die
+Unterverzeichnisse, deren Lauf nicht mehr lebt. Das deckt auch Läufe ab, die vom System
+beendet wurden.
+**Begründung:** Ein vom System beendeter Lauf kann nicht selbst aufräumen
+([Failure Modes](50-failure-modes.md), Zeile "Speicher reicht trotz Budget nicht"). Ohne
+Aufräumen beim nächsten Lauf würden ausgelagerte Lieferungsinhalte liegen bleiben. Das
+betrifft Platz und die [Security Boundaries](60-security-boundaries.md).
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G17](70-gap-ledger.md#g17-aufraumen-nach-einem-vom-system-beendeten-lauf))
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D39 — Eine Panik in einer Closure wird wie ein zurückgegebener Fehler behandelt
+
+**Entscheidung:** Gerät eine Closure nach
+[D32](#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg) in Panik,
+fängt die Engine sie ab und sortiert die Zeile aus wie bei einem zurückgegebenen Fehler
+(`code=custom`). Der Grund enthält die Panik-Meldung.
+**Begründung:** Eigene Logik einzelner Kunden soll einen Lauf nicht abbrechen. Das
+Fehlermodell bleibt einheitlich. Das Risiko, dass ein echter Programmierfehler so als
+Datenfehler erscheint, ist in Kauf genommen: Die Panik-Meldung im Grund und die Schwelle
+aus [D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen)
+machen ihn sichtbar.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G18](70-gap-ledger.md#g18-verhalten-bei-panik-in-einer-closure))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D40 — Ein Fehler beim Schreiben in ein Ziel beendet den Lauf mit einer Panik
+
+**Entscheidung:** Lehnt ein Ziel einen Block ab oder scheitert das Schreiben, gilt das
+nicht als Daten-, Liefer- oder Planfehler. Der Lauf wird sofort beendet, und zwar mit einer
+Panik. Das gilt für Ergebnisse und für aussortierte Zeilen.
+**Begründung:** Ein stiller Schreibfehler würde genau die Daten verlieren, die das
+Fehlermodell bewahren soll
+([D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten)). Ein harter
+Abbruch hält die Daten in der Quelle vorhanden, und der Lauf lässt sich nach Behebung des
+Ziels wiederholen. Ob es beim wörtlichen Go-`panic` bleibt oder ein Rückgabewert mit
+eigenem Status gewählt wird, ist offen
+([G38](70-gap-ledger.md#g38-panik-oder-ruckgabe-bei-schreibfehlern)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G19](70-gap-ledger.md#g19-fehler-beim-schreiben-ins-ziel))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
