@@ -481,6 +481,7 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 
 - CSV read/write
 - chunked CSV streaming for large files
+- row-by-row streaming for CSV and JSON/NDJSON (`Stream` → `iter.Seq2[table.Row, error]`), plus chunked JSON streaming (`ReadStream`)
 - JSON read/write with three modes: flat (default), recursive flatten, and field mapping
 - NDJSON (newline-delimited JSON) support
 - optional Excel reading and writing in a separate module, including multi-sheet workbooks (`excel.NewWriter().WriteFileSheets(path, excel.Sheet{Name: "Sales", Table: t}, …)`) and optional native number cells (`excel.WithTypedCells()`)

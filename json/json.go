@@ -14,6 +14,9 @@
 //	    log.Fatal(res.UnwrapErr())
 //	}
 //	t := res.Unwrap()
+//
+// Large inputs can be processed without loading them fully: Stream yields
+// one table.Row at a time, ReadStream yields Tables of a fixed chunk size.
 package json
 
 import (
@@ -154,16 +157,8 @@ func (r *Reader) buildTable(records []record) result.Result[table.Table, error] 
 		return result.Ok[table.Table, error](table.New(slice.Slice[string]{}, nil))
 	}
 
-	// Validate mutually exclusive options.
-	if r.config.Flatten && len(r.config.FieldMapping) > 0 {
-		return result.Err[table.Table, error](
-			errors.New("json: WithFlatten and WithFieldMapping are mutually exclusive"),
-		)
-	}
-	if r.config.MaxDepth < 0 {
-		return result.Err[table.Table, error](
-			fmt.Errorf("json: WithMaxDepth must be >= 0, got %d", r.config.MaxDepth),
-		)
+	if err := r.validate(); err != nil {
+		return result.Err[table.Table, error](err)
 	}
 
 	// Extract flat key-value pairs and collect headers in first-seen order.
@@ -212,6 +207,17 @@ func (r *Reader) buildTable(records []record) result.Result[table.Table, error] 
 	return result.Ok[table.Table, error](
 		table.New(slice.Slice[string](headers), tableRecords),
 	)
+}
+
+// validate rejects option combinations that cannot be applied.
+func (r *Reader) validate() error {
+	if r.config.Flatten && len(r.config.FieldMapping) > 0 {
+		return errors.New("json: WithFlatten and WithFieldMapping are mutually exclusive")
+	}
+	if r.config.MaxDepth < 0 {
+		return fmt.Errorf("json: WithMaxDepth must be >= 0, got %d", r.config.MaxDepth)
+	}
+	return nil
 }
 
 // ToString serialises t as a JSON string using the default writer settings
