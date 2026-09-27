@@ -102,6 +102,7 @@ Core dependency footprint:
 | `etl` | composable pipelines with short-circuiting error propagation |
 | `schema` | type inference, normalization, validation, typed accessors, stats |
 | `excel` | optional Excel reader in a separate module |
+| `experimental/simd` | **experimental**: SIMD kernels for `[]float64` / `[]int64` (not covered by the v1 guarantee) |
 
 ## Quick example
 
@@ -170,6 +171,72 @@ When you need types, use the `schema` package:
 - access typed row values where needed
 
 This keeps the core pipeline simple without pulling in a large type system or analytics stack.
+
+### Typed access with generic methods (Go 1.27+)
+
+When you build with Go 1.27 or newer, `Row`, `Table`, and `MutableTable` gain typed methods that use Go 1.27 generic methods.
+Cells are still stored as strings. The methods parse on read and format on write.
+
+```go
+// Row: option.Option[T]
+qty := row.GetAs[int]("qty").UnwrapOr(0)
+price := row.GetAs[float64]("price")          // option.Option[float64]
+born := row.GetAs[time.Time]("birthday")
+ttl := row.GetWith("ttl", time.ParseDuration) // any type, T inferred from the parser
+
+// Columns
+ages, err := t.ColAs[int]("age")        // error on unknown column or any bad cell
+prices := t.ColOptAs[float64]("price")  // []option.Option[float64], aligned with rows
+ids, err := t.ColWith("id", uuid.Parse) // custom parser
+
+// Typed transforms (types inferred from fn)
+t = t.MapAs("price", func(p float64) float64 { return p * 1.19 })
+t = t.AddColAs("total", func(r table.Row) float64 {
+    return r.GetAs[float64]("price").UnwrapOr(0) * float64(r.GetAs[int]("qty").UnwrapOr(0))
+})
+
+// Typed aggregations (empty and unparseable cells are skipped)
+units := t.SumAs[int64]("qty")
+cheapest := t.MinAs[float64]("price") // option.Option[float64]
+latest := t.MaxAs[string]("sku")
+active := t.ReduceAs("active", 0, func(n int, b bool) int {
+    if b { n++ }
+    return n
+})
+
+// MutableTable: same methods, in place, plus SetAs
+m := t.Mutable()
+m.MapAs("qty", func(n int) int { return n + 1 }).SetAs(0, "active", true)
+```
+
+| Method | Row | Table | MutableTable |
+| --- | :-: | :-: | :-: |
+| `GetAs[T]`, `AtAs[T]`, `GetWith` | ✓ | | |
+| `ColAs[T]`, `ColWith`, `ColOptAs[T]` | | ✓ | ✓ |
+| `MapAs`, `AddColAs` | | ✓ | ✓ (in place) |
+| `SumAs[T]`, `MinAs[T]`, `MaxAs[T]`, `ReduceAs` | | ✓ | ✓ |
+| `SetAs` | | | ✓ |
+
+Supported types (`table.Value`): all built-in integer and float types, `string`, `bool`, and `time.Time`.
+For anything else, use `GetWith` or `ColWith` with your own parser.
+
+Parsing follows the same rules as the `schema` row accessors:
+
+- surrounding whitespace is trimmed
+- empty cells count as missing for every type except `string`
+- booleans accept `true`/`false`, `1`/`0`, `yes`/`no` (case-insensitive)
+- dates use the same layouts as `schema.Time`
+- the zero date (`0001-01-01`) counts as not parsed, the same as in `schema.Time`
+
+Formatting writes integers in base 10, floats in their shortest round-trip form, and booleans as `true`/`false`.
+A date at midnight UTC is written as `2006-01-02`. Any other time is written as RFC 3339.
+
+`MapAs` leaves empty and unparseable cells unchanged. If the column does not exist, it records a table error like `Map` does.
+
+Compatibility notes:
+
+- The module still declares `go 1.23`. The typed methods live in files with a `//go:build go1.27` constraint, so older toolchains build the module without them.
+- Generic methods cannot satisfy interfaces, so no existing interface changed. The existing package-level helpers (`table.ColAs`, `table.MapColTo`, `table.AddColOf`) are still there.
 
 ## Two APIs: immutable and mutable
 
@@ -366,6 +433,7 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - select, drop, rename, transpose
 - filtering, partitioning, sampling
 - map and transform by column or row
+- typed access, transforms, and aggregations via generic methods (Go 1.27+)
 - joins: inner, left, right, outer, anti
 - stable sorting and multi-column sorting
 - distinct, union, intersect
@@ -450,6 +518,54 @@ The main tradeoff is deliberate:
 - you give up some type safety until validation time
 
 That is usually the right trade for messy external data, and the wrong trade for already-clean domain objects.
+
+## Experimental: SIMD kernels
+
+> **Experimental.** `experimental/simd` is outside the v1 stability guarantee.
+> Its API may change or be removed in any release.
+
+`github.com/stefanbethge/gseq-table/experimental/simd` provides numeric kernels on plain slices:
+
+- `SumFloat64`, `SumInt64`, `MeanFloat64`, `MeanInt64`
+- `MinFloat64`, `MaxFloat64`, `MinInt64`, `MaxInt64`
+- `DotFloat64`, `DotInt64`
+- elementwise `AddFloat64`, `AddInt64`, `MulFloat64`, `MulInt64`
+- filters: `CompareFloat64` / `CompareInt64` (to a `[]bool` mask) and `IndicesFloat64` / `IndicesInt64` (to matching row indices), with `Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`
+
+```go
+import "github.com/stefanbethge/gseq-table/experimental/simd"
+
+total := simd.SumFloat64(prices)
+rows := simd.IndicesFloat64(nil, prices, simd.Gt, 100)
+```
+
+The package always builds. By default it uses a plain-Go scalar implementation.
+To enable the vector kernels, build with Go 1.27+ and the `simd` experiment, which uses the standard library's experimental `simd/archsimd` package:
+
+```bash
+GOEXPERIMENT=simd go build ./...
+GOEXPERIMENT=simd go test ./experimental/simd
+```
+
+`simd.Accelerated()` reports whether the vector kernels are active.
+
+| Target | With `GOEXPERIMENT=simd` |
+|---|---|
+| amd64 | AVX2 (256-bit), detected at runtime; scalar on CPUs without AVX2 |
+| arm64 | NEON (128-bit) |
+| other | scalar fallback |
+
+Some kernels always use the scalar code:
+
+- `MulInt64` and `DotInt64`: NEON has no 64-bit integer multiply, and on amd64 it needs AVX-512.
+- `Compare*` and `Indices*` on arm64: NEON has no movemask, and extracting mask lanes costs more than Go's scalar compare.
+
+Results are bit-identical across builds and CPUs.
+Float `Sum`, `Mean` and `Dot` accumulate in eight fixed lanes, and the scalar fallback uses the same order.
+The last bits can therefore differ from a naive left-to-right loop.
+`Min` and `Max` behave like Go's builtin `min` and `max`: NaN propagates, and `-0 < +0`.
+
+Integration with typed table columns is planned separately.
 
 ## License
 
