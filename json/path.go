@@ -10,7 +10,7 @@ import (
 // pathSegment represents one step in a JSON path traversal.
 type pathSegment struct {
 	key   string
-	index int  // -1 means no index
+	index int // -1 means no index
 }
 
 // parsePath parses a JSON path like ".user.addr[0].city" into segments.

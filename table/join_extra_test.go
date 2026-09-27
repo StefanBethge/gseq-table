@@ -100,4 +100,3 @@ func TestAntiJoin_AllUnmatched(t *testing.T) {
 	result := left.AntiJoin(right, "id", "id")
 	assertEqual(t, len(result.Rows), 2)
 }
-
