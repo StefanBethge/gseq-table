@@ -108,13 +108,13 @@ Quelle unterschiedlich belegt sind. Hängt mit
 
 **Type:** Assumption · **Kind:** verify · **Status:** offen
 [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix) und [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte) legen die Form der aussortierten Zeilen fest. Der Maintainer will
-sie nach dem Prototyp noch einmal validieren, anhand echter Lieferungen: ob die
+sie nach dem Prototyp noch einmal validieren, anhand eigener Beispiel-Lieferungen nach [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt): ob die
 Info-Spalten reichen, ob "je Quelle plus Übersicht" im Alltag handlich ist, und ob ein
 Eintrag je Spalte beim Lesen hilft oder stört.
 
 ### G12 — Ab wann eine Häufung von Fehlern als Formatänderung gilt
 
-**Type:** Gap · **Kind:** verify · **Status:** offen
+**Type:** Gap · **Kind:** verify · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D59](10-design-decisions.md#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt)
 [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht) meldet `format_change`, wenn ein erheblicher Teil der Werte einer Spalte mit
 demselben Fehlercode scheitert. Offen ist die Grenze: fester Anteil, konfigurierbar, oder
 relativ zum Profil eines früheren Laufs ([D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)). Soll an echten Lieferungen im Prototyp
@@ -156,7 +156,7 @@ zur Deduplizierung beim Empfänger mitschickt, oder ob er gar nicht wiederholt
 
 ### G16 — Konkrete Werte für die Exit-Kriterien des Prototyps
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt)
 Der [Scope des Prototyps](40-scope-prototype.md) verlangt einen Lauf über eine Lieferung,
 die ein Vielfaches des Budgets groß ist. Größe der Lieferung und Budget legt der
 Maintainer vor Beginn des Prototyps fest.
@@ -323,3 +323,103 @@ prüft nur den Weg von v1 aus.
 [D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)
 legt nicht fest, was eine auffällige Abweichung ist
 ([T18](30-test-plan.md#t18-der-profilvergleich-meldet-eine-abweichung-ohne-dass-eine-zeile-scheitert)).
+
+### G42 — Volle Herkunft liefert nach einer Gruppierung keinen Rohzustand
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+[D48](10-design-decisions.md#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle) verspricht mit voller Herkunft nachverarbeitbare Quellzeilen in den Tabellen je Quelle. [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert) führt über die Gruppierung aber nur Kennungen mit, und [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) gibt den Rohzustand dort frei. Optionen: volle Herkunft hält den Rohzustand (ausgelagert) bis zum Laufende; oder [D48](10-design-decisions.md#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle) liefert nur Kennungen und Fundstellen ohne Nachverarbeitung.
+
+### G43 — Das Zählmodell deckt Teilausfälle, Einheiten und Abbrüche nicht ab
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+Nach [D47](10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) zählt eine linke Zeile mit einer gescheiterten von fünf Ergebniszeilen als durchgelaufen; fehlt so ein Fünftel der Daten, bleibt aussortiert bei 0 und die Schwelle schlägt nicht an. [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert) und [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) definieren "durchgekommen" unterschiedlich. Aggregierte aussortierte Zeilen zählen nach [D45](10-design-decisions.md#d45-die-schwelle-bezieht-anteile-auf-bisher-gelesene-zeilen-gilt-bei-einer-der-grenzen-und-bricht-erst-nach-einer-mindestzahl-ab) mit ihren Quellzeilen, was nach 1:n-Joins mehr als gelesen ergeben kann, und der Nenner je Schritt nach einer Gruppierung mischt Einheiten. Bei Abbrüchen ([D51](10-design-decisions.md#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben), [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab), Kontext) fallen Zeilen in keine Kategorie, [T16](30-test-plan.md#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) verlangt die Gleichung aber immer. Offen ist auch, ob Zählungen je Code Einträge oder Zeilen zählen. Optionen: Kategorie "teilweise aussortiert" oder Zählung von Ergebniszeilen, Kategorie "nicht verarbeitet" bei Abbruch, Zählungen je Code als Einträge.
+
+### G44 — Ein Hash über die ganze Lieferung ist im Streaming erst am Ende bekannt
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+[D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash) bildet `record_key` standardmäßig mit einem Hash über den Inhalt der Lieferung. Nach [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen) werden Zeilen aber schon während des Lesens mit Schlüssel geschrieben ([D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), [D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit)). Optionen: Hash über Kopf, ersten Block und Größe; eine von der Pipeline gelieferte Kennung als Standard; zwei Lesedurchgänge.
+
+### G45 — Excel hält zwei Werte je Zelle
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+Nach [D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert) ist der Rohzustand der angezeigte Text, umgewandelt wird aber der gespeicherte Wert. Unklar ist, welchen Wert die Arbeitsspalte vor dem Umwandeln trägt. Dann stimmt [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) für Excel nicht, und eine Nachverarbeitung nach [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) wandelt den angezeigten Text um und scheitert genau an den Ländereinstellungen, die [D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert) vermeiden wollte. Option: Arbeitsspalte trägt den gespeicherten Wert, der Rohzustand beide.
+
+### G46 — Vorrang der Status und Umfang von aborted
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+[D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) legt nicht fest, welcher Status gilt, wenn mehrere zutreffen (Lieferfehler und Schwelle; Lieferfehler und Schreibfehler; Lieferfehler im Modus "stoppen"). `aborted` ist nur für Stopp und Kontext definiert, wird aber auch für einen zu großen Join ([D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget)) und "Platte voll" (Failure Modes) verwendet. Option: feste Rangfolge, z. B. `plan_error` > `sink_error` > `delivery_error` > `aborted` > `failed_threshold` > `ok`.
+
+### G47 — Aufräumen verwaister Läufe gegen offene Ergebnisse
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+Nach [D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) leben ausgelagerte aussortierte Zeilen bis zum Schließen des Ergebnisses, nach [D38](10-design-decisions.md#d38-ein-spaterer-lauf-entfernt-verwaiste-ausgelagerte-daten) entfernt ein späterer Lauf aber alle Verzeichnisse, deren Lauf nicht mehr lebt, auch die eines fertigen, nicht geschlossenen Ergebnisses. Wie ein Lauf als lebend markiert ist (Prozess-ID, Dateisperre), ist offen, ebenso geteilte Volumes mehrerer Container. [D17](10-design-decisions.md#d17-die-library-bewahrt-aussortierte-zeilen-nicht-selbst-auf) sagt noch, aussortierte Zeilen würden nicht über das Ende eines Laufs hinaus gehalten.
+
+### G48 — row_key über Joins hinaus
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+[D47](10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) bildet `row_key` aus den Quellzeilen eines Joins. Explode und Unpivot erzeugen mehrere Zeilen mit gleichem Schlüssel, aggregierte Zeilen hätten Millionen Quellschlüssel, und bei einem Left Join ändert sich der Schlüssel, wenn bei der Nachverarbeitung ein Partner da ist. [D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit) leitet den Idempotenzschlüssel noch aus `record_key` ab, [F20](20-feature-catalogue.md#f20-writer-fur-datenbank-und-http) upsertet noch auf `record_key`. Option: `row_key` aus Quellschlüsseln plus Ordnungszahl je erzeugendem Schritt, Gruppenschlüssel bei Aggregaten.
+
+### G49 — Nachverarbeitung übernimmt Schlüssel nicht und braucht die Original-Lieferung
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+[D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) lässt die Info-Spalten weg, damit würden `record_key`, `record_hash` und `row_key` neu gebildet, entgegen [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash). Die übrigen Quellen "normal lesen" setzt voraus, dass die Original-Lieferung der anderen Seite noch vorliegt, was [D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) für HTTP- und Streaming-Quellen ausschließt. Eine linke Zeile mit vier angekommenen und einer gescheiterten Ergebniszeile erzeugt bei der Nachverarbeitung alle fünf erneut, was bei Zielen ohne Upsert Duplikate gibt.
+
+### G50 — field_too_large hat keinen brauchbaren Rohzustand
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+[D56](10-design-decisions.md#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch) kürzt `raw_line`, das es nach [D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) nur für unzerlegbare Zeilen gibt. Eine gekürzte Zeile kann bei der Nachverarbeitung nach [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) als gültige kürzere Zeile gelesen werden. Ein nicht geschlossenes Anführungszeichen in CSV macht das Feld bis zum Dateiende lang, und es gibt keine Regel zum Wiederaufsetzen. Bei Excel gibt es kein `raw_line` ([D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)).
+
+### G51 — Spalten, die erst im Lauf auftauchen, und optionale Felder
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+Neue JSON-Felder, die erst spät auftauchen und nach [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird) durchgereicht werden, ändern den Aufbau der Blöcke mitten im Lauf, während [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) und [D26](10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler) feste, vorab geprüfte Typen annehmen. `missing_field` nach [D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle) sortiert jeden Datensatz aus, dem ein optionales Feld fehlt; [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird) kennt kein Pflicht- oder Optional-Merkmal. Ohne erwarteten Aufbau kann die Engine eine unbekannte Spalte erst nach dem Kopf erkennen, [T15](30-test-plan.md#t15-planfehler-verhindern-den-lauf-liefer-und-datenfehler-folgen-der-konfiguration-je-code) verlangt es vor dem Lesen. Für Gruppen fehlt die Angabe der erwarteten Teile, und die Schwelle je Quelle aus [G33](#g33-lieferungen-ohne-kopf-und-aus-mehreren-dateien-oder-sheets) ist nicht beantwortet.
+
+### G52 — Geteilte Rohspalten gegen den Modus "immer ändern"
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+Ändert ein Schritt im Modus "immer an Ort und Stelle ändern" ([D8](10-design-decisions.md#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert)) eine Spalte, die er sich nach [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) mit dem Rohzustand teilt, würde er den Rohzustand ändern, was [D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert) verbietet. Der Modus müsste also bei jeder ersten Änderung einer Rohspalte kopieren. Das nimmt ihm viel von seinem Nutzen und verzerrt den Vergleich nach [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget).
+
+### G53 — GOMEMLIMIT wirkt auf den ganzen Prozess
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+[D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) setzt `GOMEMLIMIT`, eine Einstellung für den ganzen Prozess. Laufen mehrere Läufe in einem Prozess, überschreibt der letzte die Einstellung der anderen, und die Budgets als Anteil des verfügbaren Speichers ergeben zusammen mehr als das Limit. [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab) verwirft eine Panik gerade, weil sie andere Läufe im selben Prozess trifft. Optionen: nur auf ausdrücklichen Wunsch setzen, ein gemeinsames Budget je Prozess, einen gesetzten Wert nie überschreiben.
+
+### G54 — Lücken bei Writern für aussortierte Zeilen im Plan
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+Ein Writer "für alle Quellen" nach [D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) bekommt Tabellen mit verschiedenen Spalten, was [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen) verworfen hatte. Die Übersicht mit einem Eintrag je Fehler ([D44](10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler)) bleibt im Speicher, wenn nur Writer je Quelle gesetzt sind. Der Änderungsbericht nach [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht) beruht auf aussortierten Zeilen, die weggeschrieben wurden. Offen ist, ob im Modus "stoppen" die aussortierten Zeilen des nicht geschriebenen Blocks nach [D51](10-design-decisions.md#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben) noch in die Writer gehen, und was bei `sink_error` nach [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab) mit Ergebnis- und Fehler-Writer geschieht, die unterschiedlich weit geschrieben haben.
+
+### G55 — T22 ist nicht in jedem Modus deterministisch, und der erste Fehler hat keine Reihenfolge
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+Im Modus "stoppen" hängt nach [D51](10-design-decisions.md#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben) von den Blockgrenzen ab, was geschrieben wird, und ein vorzeitiger Abbruch an der Schwelle nach [D45](10-design-decisions.md#d45-die-schwelle-bezieht-anteile-auf-bisher-gelesene-zeilen-gilt-bei-einer-der-grenzen-und-bricht-erst-nach-einer-mindestzahl-ab) vom zeitlichen Ablauf. [T22](30-test-plan.md#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) gilt deshalb nur für "aussortieren" ohne vorzeitigen Abbruch. [D44](10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler) beschreibt in der Tabelle je Quelle den ersten Fehler, ohne Reihenfolge der Spalten festzulegen.
+
+### G56 — Features und Scope für die Decisions ab D37
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+Keine der Decisions [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) bis [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt) ist einem Feature zugeordnet. Damit wählt der [Scope](40-scope-prototype.md) sie nicht aus, obwohl etwa `delivery_error`, Writer für aussortierte Zeilen, Tabellen mit haftendem Fehler, Quellen je Datei und Sheet und die Grenzen nach [D56](10-design-decisions.md#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch) für den Prototyp wichtig sind. Die [Security Boundaries](60-security-boundaries.md) nennen die Grenzen "enforced", ohne Feature und T-Fall. Zu entscheiden ist, welche davon in den Prototyp kommen.
+
+### G57 — Erkennen einer abgeschnittenen CSV-Lieferung
+
+**Type:** Assumption · **Kind:** verify · **Status:** offen
+Eine unvollständige letzte Zeile lässt sich nicht sicher von einer gültigen Datei ohne Zeilenumbruch am Ende unterscheiden, und ein Abbruch genau an einer Zeilengrenze fällt gar nicht auf. `truncated` nach [D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error) kann so fälschlich melden oder nichts erkennen. Denkbar: erwartete Zeilenzahl oder Größe als Angabe der Quelle.
+
+### G58 — Lücken bei sofortigen Tabellen
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+[D50](10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler) sagt nicht, wie eine aus einem Reader gebaute `Table` Lieferfehler meldet, wann ihr Rohzustand freigegeben wird (sie verlässt keinen Plan, [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)), welchen Rohzustand eine Tabelle aus einem Laufergebnis trägt, und wie sich aussortierte Zeilen und haftende Fehler zweier Tabellen bei einem Join verbinden. Der Rohzustand einer im Code gebauten Tabelle sind typisierte Werte, [D29](10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) sieht Text vor.
+
+### G59 — Vergleichbarkeit der Bestehkriterien
+
+**Type:** Assumption · **Kind:** verify · **Status:** offen
+v2 führt Rohzustand und aussortierte Zeilen mit ([D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert), [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert)), v1 `MutableTable` nicht. [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) muss festlegen, ob beim Vergleich der Rohzustand mitgeführt wird, und was eine zahlenlastige Lieferung ist. Ob sich "höchstens 10 % über dem Budget" auf den Speicher des Prozesses oder nur auf die Blöcke der Engine bezieht, ist ebenfalls offen ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)).
+
+### G60 — Formel-Maskierung bricht die Nachverarbeitung
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+Die Maskierung nach [D56](10-design-decisions.md#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch) erfasst auch ein führendes `-` und verfälscht negative Zahlen. In einem Writer für aussortierte Zeilen verändert sie die Rohspalten, und die Nachverarbeitung nach [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) liest `'-5`. Optionen: auf Writern für aussortierte Zeilen nicht erlaubt; die Nachverarbeitung entfernt die Maskierung; Zahlen ausnehmen.
+
+### G61 — UC8 fachlich prüfen
+
+**Type:** Gap · **Kind:** verify · **Status:** offen
+[UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets) entstand zusammen mit [D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle) und enthält Fragen, die nicht mehrteilige Lieferungen betreffen (Fundstelle in Excel, CSV ohne Kopf), sowie ein Akzeptanzkriterium im Ablauf. Es fehlen die eigentlichen Fragen mehrteiliger Lieferungen: Wann ist eine Lieferung vollständig, wenn Teile zu verschiedenen Zeiten kommen? Was, wenn ein Teil anders aufgebaut ist oder doppelt kommt? Braucht einen Blick des Maintainers auf echte Abläufe.

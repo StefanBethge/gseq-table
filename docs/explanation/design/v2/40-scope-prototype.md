@@ -93,12 +93,10 @@ v2.0.0 als eigenes `/v2`-Modul mit SemVer
   Spitzenspeicher für Filter, abgeleitete Spalten, Umwandeln, Sortieren, Gruppieren und
   Join auf generierten Lieferungen verschiedener Größe. Die Ergebnisse stehen im Repo, und
   die Gaps sind geschlossen oder mit neuer Decision aufgelöst.
-- Eine generierte CSV-Lieferung, die ein Vielfaches des Budgets groß ist, läuft mit
-  Sortieren und Gruppieren durch ([T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein)).
-  Größe, Budget und Laufzeit sind festgehalten. Die konkreten Werte legt der Maintainer
-  vor Beginn fest ([G16](70-gap-ledger.md#g16-konkrete-werte-fur-die-exit-kriterien-des-prototyps)).
-- Mindestens zwei echte Lieferungen von Anbietern (Excel) sind mit einer realen Pipeline
+- Die 1BRC-Datei (13,8 GB) läuft mit Gruppieren und Sortieren in Docker mit mehreren
+  Speicher-Limits durch ([T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein), [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt)). Budgets, Limits und
+  Laufzeiten sind festgehalten.
+- Die Beispiel-Lieferungen nach [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt) sind mit einer Pipeline
   verarbeitet. Der Maintainer hat die aussortierten Zeilen und den Änderungsbericht geprüft,
-  und [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren) sowie
-  [G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt) sind
-  geschlossen oder mit neuer Decision aufgelöst.
+  und [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren) ist geschlossen oder mit neuer Decision aufgelöst.
+  Die Voreinstellung nach [D59](10-design-decisions.md#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt) ist festgelegt.

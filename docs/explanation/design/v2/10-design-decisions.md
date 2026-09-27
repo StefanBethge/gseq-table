@@ -997,3 +997,35 @@ endet der Lauf mit `aborted` und einem Grund, der die Einschränkung nennt.
 könnte seine Fragen nicht wirklich beantworten.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G37](70-gap-ledger.md#g37-bestehkriterien-und-fehlende-festlegungen-im-scope-des-prototyps))
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D59 — Die Grenze für einen Formatänderungs-Befund ist einstellbar, die Voreinstellung wird im Prototyp festgelegt
+
+**Entscheidung:** Ab welchem Anteil gleichartig scheiternder Werte einer Spalte der
+Änderungsbericht nach [D23](#d23-das-laufergebnis-enthalt-einen-anderungsbericht) eine Formatänderung meldet, legt der Pipeline-Entwickler
+fest, je Pipeline und bei Bedarf je Spalte. Die Library bringt eine Voreinstellung mit, die
+im Prototyp an den Beispiel-Lieferungen nach
+[D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt) festgelegt wird.
+**Begründung:** Der Entwickler kennt seine Daten besser als eine feste Grenze. Eine
+Voreinstellung braucht es trotzdem, damit der Bericht ohne Konfiguration etwas meldet.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt))
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D60 — Der Prototyp wird mit eigenen Beispiel-Lieferungen, der 1BRC-Datei und in Docker mit verschiedenen Speicher-Limits erprobt
+
+**Entscheidung:** Die Form der aussortierten Zeilen und der Änderungsbericht werden an
+eigens gebauten Beispiel-Lieferungen erprobt, die typische Probleme von Anbieter-Dateien
+nachbilden (Excel und CSV mit falschen Formaten, fehlenden und umbenannten Spalten,
+Platzhaltern, kaputten Zeilen). Echte Kundenlieferungen sind dafür nicht nötig. Für den
+Großlauf dient die vorhandene 1BRC-Datei (`~/1brc/golang/measurements.txt`, 13,8 GB,
+Semikolon-getrennt, ohne Kopfzeile, Station und Messwert); bei Bedarf wird zusätzlich eine
+breitere Lieferung erzeugt. Der Großlauf läuft in Docker mit mehreren Speicher-Limits,
+damit das Budget nach [D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) gegen echte Container-Limits geprüft wird. Die Testdaten
+für [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) sind generierte Lieferungen mit 1 und 10 Millionen Zeilen, jeweils
+zahlenlastig und textlastig, dazu eine Excel-Lieferung.
+**Begründung:** Eigene Beispiele lassen sich gezielt auf die Fehlerarten zuschneiden und
+ohne Datenschutzfragen ins Repo legen. Die 1BRC-Datei liegt schon vor, ist groß genug für
+den zweistelligen GB-Bereich und passt zu Gruppieren und Sortieren aus
+[P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren). Docker mit Limits bildet den Betrieb per Cron in
+Containern ab ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G16](70-gap-ledger.md#g16-konkrete-werte-fur-die-exit-kriterien-des-prototyps); ändert das Exit-Kriterium zu [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
