@@ -13,7 +13,7 @@ Eine Pipeline verändert eine Spalte in einem frühen Schritt und lässt die Zei
 späteren Schritt scheitern. Die aussortierte Zeile enthält den Wert aus der Lieferung,
 nicht den veränderten.
 
-### T2 — Aussortierte Zeilen lassen sich mit jedem Writer schreiben und wieder lesen
+### T2 — Aussortierte Zeilen lassen sich mit den Datei-Writern schreiben und mit dem passenden Reader wieder lesen
 
 **Beweist:** [D2](10-design-decisions.md#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse), [F19](20-feature-catalogue.md#f19-sink-schnittstelle-und-datei-writer)
 Die Tabelle aussortierter Zeilen wird mit jedem Datei-Writer geschrieben, zu dem es einen
@@ -63,7 +63,7 @@ aussortierter Zeilen beider Quellen enthalten je die beteiligte Quellzeile mit e
 Rohzustand und eigener Fundstelle, und beide Einträge tragen dieselbe `reject_id`.
 1:n-Fälle siehe [G24](70-gap-ledger.md#g24-1n-joins-identitat-der-ergebniszeilen-und-teilweiser-erfolg).
 
-### T9 — Nach einer Gruppierung werden aggregierte Zeilen aussortiert, und der Rohzustand ist freigegeben
+### T9 — Nach einer Gruppierung werden aggregierte Zeilen aussortiert, und der Speicher bleibt im Budget
 
 **Beweist:** [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)
 Eine nach der Gruppierung scheiternde Zeile wird mit Gruppenschlüssel und Anzahl der
@@ -233,7 +233,7 @@ Welche Zusage bei Wiederholung nach einer unklaren Antwort gilt, ist offen
 Eine Prüfung über die exportierten Signaturen aller öffentlichen Pakete findet keinen Typ
 aus gseq.
 
-### T32 — Der v1-Adapter wandelt verlustfrei hin und zurück
+### T32 — Eine v1-Tabelle übersteht den Weg über v2 zurück nach v1 unverändert
 
 **Beweist:** [D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen)
 Eine v1-Tabelle, in eine v2-Tabelle gewandelt und zurück, ist gleich der ursprünglichen.

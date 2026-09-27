@@ -290,3 +290,33 @@ Dienst nur mit `recover` abfangen. Die Alternative ist ein sofortiger Abbruch mi
 Status (z. B. `sink_error` nach [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst))
 und dem Fehler als Rückgabewert. Auch dann bleiben die Daten vorhanden, und nichts geht
 still verloren. Mit dem Maintainer zu klären.
+
+### G39 — D37 nennt keinen Use Case
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+[D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) verlangt,
+dass jede Decision mindestens einen Use Case nennt, nennt aber selbst keinen, weil die
+Docs-Gates die Pflege des Design-Sets betreffen und keinen Ablauf der Library. Optionen:
+ein Use Case für den Maintainer, der das Design-Set pflegt, oder eine Ausnahme in
+[D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) für
+Decisions über das Design-Set selbst.
+
+### G40 — Teilweise geschriebene Blöcke im Modus "stoppen"
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+Offen ist, ob im Modus "stoppen" nach
+[D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
+Zeilen vor dem fehlerhaften Wert im selben Block noch geschrieben werden, und was "vor"
+nach einem Sortieren bedeutet. [T3](30-test-plan.md#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht)
+prüft deshalb nur den Status.
+
+### G41 — Umfang des v1-Adapters und Maß für auffällige Abweichungen
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+[D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen) sagt nicht,
+ob der Weg von v2 über v1 zurück verlustfrei sein muss. v1 kennt weder Nullwerte noch
+Typen. [T32](30-test-plan.md#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert)
+prüft nur den Weg von v1 aus.
+[D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)
+legt nicht fest, was eine auffällige Abweichung ist
+([T18](30-test-plan.md#t18-der-profilvergleich-meldet-eine-abweichung-ohne-dass-eine-zeile-scheitert)).
