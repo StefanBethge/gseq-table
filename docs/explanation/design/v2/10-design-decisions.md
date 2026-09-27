@@ -222,7 +222,8 @@ sind. Die ist schwer zu schreiben und nachzuverarbeiten.
 
 **Entscheidung:** Die Info-Spalten einer aussortierten Zeile tragen ein reserviertes
 Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt diese Spalten:
-`reject_id` (verbindet zusammengehörige Einträge), `run_id`, die Fundstelle nach
+`reject_id` (verbindet zusammengehörige Einträge), `run_id`, `record_key` und optional
+`record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
 [D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
 Fehlers), `reason` (Text), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
@@ -246,3 +247,51 @@ gescheiterten Zeile laufen zu lassen, wurde verworfen. Deren Ergebnisse wären F
 und kaum aussagekräftig.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Validierung im Prototyp: [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D16 — Aussortierte Zeilen können Quelle eines Laufs sein und behalten ihre ursprüngliche Fundstelle
+
+**Entscheidung:** Eine eigene Quelle liest eine Tabelle aussortierter Zeilen
+([D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen))
+als Eingabe eines Laufs. Sie übernimmt die Rohspalten, lässt die Info-Spalten weg und
+setzt die ursprüngliche Fundstelle aus
+[D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
+als Fundstelle jeder Zeile. Zeilen mit `raw_line` gehen erneut durch den Reader der
+ursprünglichen Quelle, mit dessen aktueller Konfiguration.
+**Begründung:** So verarbeitet dieselbe, angepasste Pipeline die fehlenden Daten nach,
+ohne Sonderweg. Scheitert eine Zeile erneut, zeigt der neue Eintrag weiterhin auf die
+Original-Lieferung und nicht auf die Datei mit den aussortierten Zeilen. Wurde der Reader
+angepasst (z. B. CSV-Einstellungen), werden bisher unzerlegbare Zeilen jetzt vielleicht
+lesbar.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D17 — Die Library bewahrt aussortierte Zeilen nicht selbst auf
+
+**Entscheidung:** Die Library speichert aussortierte Zeilen nicht über das Ende eines
+Laufs hinaus. Die Pipeline schreibt sie nach
+[D2](#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse)
+in ein Ziel ihrer Wahl und liest sie für eine Nachverarbeitung mit dem passenden Reader
+wieder ein. Wie lange sie aufbewahrt werden, entscheiden Pipeline und Ziel.
+**Begründung:** Eine eigene Ablage in der Library würde mit dem Writer-Weg aus
+[D2](#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse)
+konkurrieren und Speicherort, Format und Aufbewahrung vorgeben, die je Kunde verschieden
+sind.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D18 — Jede Quellzeile trägt einen stabilen Schlüssel, optional einen Inhalts-Hash
+
+**Entscheidung:** Jede Quellzeile trägt einen Schlüssel `record_key`, gebildet aus Quelle
+und Fundstelle. Er ist bei einer Nachverarbeitung nach
+[D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle)
+derselbe wie im ursprünglichen Lauf, steht in Ergebnissen zur Verfügung und ist eine
+Info-Spalte der aussortierten Zeilen
+([D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix)). Optional kommt
+ein Hash über den Rohinhalt dazu (`record_hash`). Doppelte Einträge im Ziel verhindert
+die Pipeline selbst, zum Beispiel per Upsert auf diesem Schlüssel.
+**Begründung:** Ob und wie ein Ziel dedupliziert, hängt vom Ziel ab (Datenbank, Datei,
+HTTP). Die Library kann das nicht für alle Ziele lösen, aber sie kann den Schlüssel
+liefern. Der Inhalts-Hash deckt den Fall ab, dass dieselbe Lieferung unter anderem Namen
+erneut kommt und der Fundstellen-Schlüssel dann ein anderer wäre.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)

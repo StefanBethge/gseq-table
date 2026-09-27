@@ -90,9 +90,9 @@ Laufs statt auf einer neuen Lieferung. Die jetzt verarbeitbaren Zeilen kommen im
 was weiterhin scheitert, wird wieder aussortiert.
 
 **Erzwingt Entscheidungen:**
-- Können aussortierte Zeilen direkt als Quelle einer Pipeline dienen, mit ihrem Originalzustand statt ihrem Zustand zum Zeitpunkt des Fehlers?
-- Wie und wie lange werden aussortierte Zeilen zwischen Läufen aufbewahrt?
-- Wie werden doppelte Einträge im Ziel vermieden, wenn Zeilen nachgeliefert werden?
+- Können aussortierte Zeilen direkt als Quelle einer Pipeline dienen, mit ihrem Originalzustand statt ihrem Zustand zum Zeitpunkt des Fehlers? → [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle)
+- Wie und wie lange werden aussortierte Zeilen zwischen Läufen aufbewahrt? → [D17](10-design-decisions.md#d17-die-library-bewahrt-aussortierte-zeilen-nicht-selbst-auf)
+- Wie werden doppelte Einträge im Ziel vermieden, wenn Zeilen nachgeliefert werden? → [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)
 
 ### UC5 — Nicht verarbeitbare Zeilen laufen im selben Lauf durch einen eigenen Zweig
 
