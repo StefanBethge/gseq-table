@@ -167,3 +167,36 @@ HTTP- und Streaming-Quellen nicht. Die Fundstelle kommt trotzdem immer mit, dami
 Pipeline-Entwickler die Zeile in der Originaldatei findet.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst))
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D11 — Scheitert eine Zeile nach einem Join, wird jede beteiligte Quellzeile aussortiert
+
+**Entscheidung:** Scheitert eine Zeile, die aus einem Join entstanden ist, landet jede
+beteiligte Quellzeile mit ihrem eigenen Rohzustand und ihrer eigenen Fundstelle nach
+[D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
+in den aussortierten Zeilen. Eine gemeinsame Kennung (`reject_id`) verbindet die Einträge,
+die zu demselben Fehler gehören. Wie die aussortierten Zeilen verschiedener Quellen
+zusammen dargestellt werden, ist offen ([G10](70-gap-ledger.md#g10-aussortierte-zeilen-mehrerer-quellen-eine-tabelle-oder-je-quelle)).
+**Begründung:** Jede aussortierte Zeile behält die Spalten ihrer eigenen Lieferung und
+lässt sich dort wiederfinden und nachverarbeiten
+([UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)).
+Eine zusammengeführte Rohzeile beider Seiten gäbe es in keiner Quelle.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Teil der Auflösung von [G9](70-gap-ledger.md#g9-rohzustand-und-fundstelle-nach-aggregation-und-join))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D12 — Der Rohzustand reicht bis zum ersten Schritt über alle Zeilen, danach wird die aggregierte Zeile aussortiert
+
+**Entscheidung:** Rohzustand und Fundstelle der Quellzeilen werden bis zum ersten Schritt
+mitgeführt, der alle Zeilen braucht und sie zusammenfasst (Gruppieren, Pivot und
+Ähnliches). Scheitert eine Zeile nach diesem Schritt, wird sie als aggregierte Zeile
+aussortiert: mit ihren Werten, dem Gruppenschlüssel, der Anzahl der eingegangenen
+Quellzeilen und dem Grund. Eine Option "volle Herkunft" führt zusätzlich die Kennungen der
+Quellzeilen über die Zusammenfassung hinaus mit. Eine Quellzeile gilt als durchgekommen,
+sobald sie einen zusammenfassenden Schritt erreicht hat oder alle aus ihr entstandenen
+Zeilen im Ziel angekommen sind. Danach wird ihr Rohzustand freigegeben.
+**Begründung:** In eine aggregierte Zeile gehen bei großen Lieferungen bis zu Millionen
+Quellzeilen ein. Deren Rohzustand mitzuführen, würde den Speicherrahmen aus
+[UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+sprengen. Über den Gruppenschlüssel lassen sich die Quellzeilen bei Bedarf in der Lieferung
+finden. Die Option "volle Herkunft" deckt kleine Läufe und das Debuggen ab.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G9](70-gap-ledger.md#g9-rohzustand-und-fundstelle-nach-aggregation-und-join), zusammen mit [D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

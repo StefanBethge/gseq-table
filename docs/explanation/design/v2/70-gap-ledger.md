@@ -86,10 +86,19 @@ kopiert die Engine auch in diesem Modus, oder sie lehnt den Plan vor dem Lauf ab
 
 ### G9 — Rohzustand und Fundstelle nach Aggregation und Join
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D11](10-design-decisions.md#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert) und [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)
 [D10](10-design-decisions.md#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) ordnet jeder Zeile einen Rohzustand und eine Fundstelle zu. Nach einem Join besteht
 eine Ergebniszeile aus zwei Quellzeilen, nach einer Gruppierung aus vielen. Offen ist,
 welchen Rohzustand und welche Fundstelle eine solche Zeile trägt, wenn sie in einem
 späteren Schritt scheitert, und was nach "durchgekommen" bedeutet, wenn eine Quellzeile in
 mehrere Ergebniszeilen eingeht
 ([UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)).
+
+### G10 — Aussortierte Zeilen mehrerer Quellen: eine Tabelle oder je Quelle
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+Nach [D11](10-design-decisions.md#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert) können aussortierte Zeilen aus verschiedenen Quellen mit verschiedenen Spalten
+stammen. Offen ist, ob es je Quelle eine eigene Tabelle aussortierter Zeilen gibt oder
+eine gemeinsame Tabelle mit einer Spalte für die Quelle, in der die Rohspalten je nach
+Quelle unterschiedlich belegt sind. Hängt mit
+[G2](#g2-welche-info-spalten-eine-aussortierte-zeile-tragt) zusammen.
