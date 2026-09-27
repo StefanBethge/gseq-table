@@ -1,0 +1,5 @@
+| name  | city    | age | score |
+| ----- | ------- | --- | ----- |
+| Alice | Berlin  | 30  | 1.5   |
+| Bob   | München | 25  |       |
+| Chen  | 北京    | 41  | -2e3  |

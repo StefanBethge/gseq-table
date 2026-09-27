@@ -1,0 +1,5 @@
+| a\|b        | text           |
+| ----------- | -------------- |
+| x\|y        | line1<br>line2 |
+| crlf        | a<br>b         |
+| back\\slash | tab\there      |
