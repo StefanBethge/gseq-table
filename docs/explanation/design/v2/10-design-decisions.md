@@ -226,7 +226,7 @@ Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt die
 `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
 [D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
-Fehlers), `reason` (Text), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
+Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
 `validation`, `unparseable_line`) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
 ließen).
 **Begründung:** Das Präfix verhindert Kollisionen mit Datenspalten. Der feste Code erlaubt
@@ -402,3 +402,50 @@ plötzlich ein Drittel der Kundennummern leer ist. Die fallen nur im Vergleich m
 Läufen auf.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D25 — Gescheiterte Zeilen eines Schritts können in einen Zweig gegeben werden und fließen danach zurück
+
+**Entscheidung:** Ein Schritt kann einen Zweig für seine gescheiterten Zeilen haben. Die
+Zeilen kommen in dem Zustand in den Zweig, in dem sie in den gescheiterten Schritt
+hineingegangen sind, zusammen mit den Info-Spalten aus
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix). Ihr Rohzustand
+bleibt nach [D9](#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert)
+im Hintergrund erhalten. Was der Zweig verarbeiten kann, fließt nach dem Schritt in den
+Hauptweg zurück. Was auch im Zweig scheitert, wird aussortiert. Unabhängig davon gibt es
+Zweige nach einer Bedingung (`Split`) und das Zusammenführen beliebiger Zweige (`Merge`).
+**Begründung:** Der Zweig soll nachholen, was der Schritt nicht geschafft hat. Dafür
+braucht er die Zeile mit allen vorherigen Schritten, nicht den Rohzustand. Die
+Info-Spalten erlauben es, im Zweig nach Fehlerart zu filtern. Der allgemeine Zweig nach
+Bedingung deckt das Umleiten von Zeilen ab, das nichts mit Fehlern zu tun hat.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D26 — Zweige werden nach Spaltennamen zusammengeführt, Typkonflikte sind Planfehler
+
+**Entscheidung:** Beim Zusammenführen von Zweigen werden Spalten nach Namen zugeordnet.
+Fehlt eine Spalte in einem Zweig, wird sie mit Nullwerten aufgefüllt. Info-Spalten fallen
+beim Zurückführen in den Hauptweg weg. Haben gleichnamige Spalten verschiedene Typen, ist
+das ein Planfehler nach [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)
+und fällt vor dem Lauf auf.
+**Begründung:** Der Plan kennt die Typen jeder Spalte in jedem Zweig
+([D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)).
+Ein Typkonflikt ist deshalb vorher erkennbar und ein Fehler der Pipeline, nicht der
+Lieferung. Stilles Umwandeln in einen gemeinsamen Typ würde Fehler verdecken.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D27 — Eine im Zweig erneut gescheiterte Zeile behält ihre Kennung und zeigt ihren Weg
+
+**Entscheidung:** Scheitert eine Zeile, die schon in einem Zweig nach
+[D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-fliessen-danach-zuruck)
+ist, erneut, behält sie ihre `reject_id`. Die Info-Spalte `step` enthält den ganzen Weg
+(z. B. `cast › cast_alt`). Eine zusätzliche Info-Spalte `prev_reason` enthält den Grund aus
+dem Hauptweg. Jede Quellzeile wird in den Zählungen nach
+[D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst)
+nur einmal gezählt.
+**Begründung:** Der Pipeline-Entwickler sieht so, dass die Zeile im Hauptweg und im Zweig
+gescheitert ist und warum. Mehrfach zu zählen würde die Schwelle aus
+[D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-standardmassig-zu-ende-laufen)
+verfälschen.
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)

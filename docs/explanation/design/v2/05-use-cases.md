@@ -104,9 +104,9 @@ verarbeitet sie mit anderen Regeln weiter und führt sie danach wieder mit den �
 zusammen. Was auch im Zweig scheitert, wird aussortiert.
 
 **Erzwingt Entscheidungen:**
-- Wie werden die gescheiterten Zeilen eines Schritts innerhalb des Laufs abgezweigt, und in welchem Zustand (Original oder Stand vor dem Schritt)?
-- Wie werden Zweige wieder zusammengeführt, wenn sie unterschiedliche Spalten oder Typen haben?
-- Wie bleibt bei einer Zeile, die im Zweig scheitert, nachvollziehbar, dass sie zuvor schon im Hauptweg gescheitert war?
+- Wie werden die gescheiterten Zeilen eines Schritts innerhalb des Laufs abgezweigt, und in welchem Zustand (Original oder Stand vor dem Schritt)? → [D25](10-design-decisions.md#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-fliessen-danach-zuruck)
+- Wie werden Zweige wieder zusammengeführt, wenn sie unterschiedliche Spalten oder Typen haben? → [D26](10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler)
+- Wie bleibt bei einer Zeile, die im Zweig scheitert, nachvollziehbar, dass sie zuvor schon im Hauptweg gescheitert war? → [D27](10-design-decisions.md#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)
 
 ### UC6 — Eine große Lieferung wird verarbeitet, ohne vollständig im RAM zu liegen
 
