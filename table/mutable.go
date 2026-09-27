@@ -1,6 +1,10 @@
 package table
 
-import "github.com/stefanbethge/gseq/slice"
+import (
+	"slices"
+
+	"github.com/stefanbethge/gseq/slice"
+)
 
 // MutableTable is an opt-in, in-place variant of Table.
 //
@@ -137,6 +141,34 @@ func (m *MutableTable) Set(row int, col, val string) *MutableTable {
 func (m *MutableTable) AppendRow(values []string) *MutableTable {
 	row := append([]string(nil), values...)
 	m.rows = append(m.rows, clampRecordValues(row, len(m.headers)))
+	return m
+}
+
+// AppendMap appends a new row built from a column-to-value map.
+// Columns missing from values become "". Keys that are not a column are
+// recorded as table errors (one per key, in sorted order); the row is still
+// appended with the known values. With normalized duplicate headers, use the
+// normalized name (e.g. "a_2") to address the second "a" column.
+//
+//	m := table.NewMutable([]string{"id", "name", "city"}, nil)
+//	m.AppendMap(map[string]string{"id": "1", "name": "Alice"})
+//	// row: id=1, name=Alice, city=""
+func (m *MutableTable) AppendMap(values map[string]string) *MutableTable {
+	row := make([]string, len(m.headers))
+	var unknown []string
+	for col, val := range values {
+		idx, ok := m.headerIdx[col]
+		if !ok {
+			unknown = append(unknown, col)
+			continue
+		}
+		row[idx] = val
+	}
+	m.rows = append(m.rows, row)
+	slices.Sort(unknown)
+	for _, col := range unknown {
+		m.addErrf("AppendMap: unknown column %q", col)
+	}
 	return m
 }
 

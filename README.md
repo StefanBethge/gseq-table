@@ -273,6 +273,15 @@ m.FillForward("region").Map("status", normalizeStatus)
 out := m.Freeze()
 ```
 
+Rows can also be appended from a map with `AppendMap`. Columns missing from
+the map become `""`; keys that are not a column are recorded as table errors
+(like `Set` or `Map` on an unknown column) while the row is still appended:
+
+```go
+m := table.NewMutable([]string{"id", "name", "city"}, nil)
+m.AppendMap(map[string]string{"id": "1", "name": "Alice"}) // city = ""
+```
+
 ## Error model
 
 `gseq-table` has two distinct error-handling layers.
@@ -453,7 +462,17 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - inference for common scalar types
 - normalization and validation
 - typed row accessors
+- custom date layouts per column (`CastDate`) and for single values (`ParseDate`)
 - summary statistics and helper arithmetic
+
+```go
+s := schema.Infer(t).CastDate("booked", "2.1.2006")
+res := s.Apply(t) // "5.3.2024" → "2024-03-05"
+
+d, err := schema.ParseDate("05.03.2024 14:30", "02.01.2006 15:04")
+```
+
+A custom layout replaces the built-in layouts for that column, and the zero date still counts as not parsed.
 
 ### ETL pipelines
 

@@ -457,3 +457,62 @@ func benchmarkMutableJoinTable(n int) Table {
 	}
 	return New([]string{"id", "group"}, records)
 }
+
+func TestMutableTable_AppendMap(t *testing.T) {
+	m := NewMutable([]string{"id", "name", "city"}, [][]string{{"1", "Alice", "Berlin"}})
+
+	m.AppendMap(map[string]string{"id": "2", "city": "Hamburg"})
+	if m.HasErrs() {
+		t.Fatal(m.Errs())
+	}
+
+	assertEqual(t, m.Len(), 2)
+	frozen := m.Freeze()
+	assertEqual(t, frozen.Rows[1].Get("id").UnwrapOr("?"), "2")
+	assertEqual(t, frozen.Rows[1].Get("name").UnwrapOr("?"), "")
+	assertEqual(t, frozen.Rows[1].Get("city").UnwrapOr("?"), "Hamburg")
+}
+
+func TestMutableTable_AppendMapEmpty(t *testing.T) {
+	m := NewMutable([]string{"id", "name"}, nil)
+
+	m.AppendMap(nil).AppendMap(map[string]string{})
+	if m.HasErrs() {
+		t.Fatal(m.Errs())
+	}
+
+	assertEqual(t, m.Len(), 2)
+	for i := range 2 {
+		row, _ := m.Row(i)
+		assertEqual(t, row.Get("id").UnwrapOr("?"), "")
+		assertEqual(t, row.Get("name").UnwrapOr("?"), "")
+	}
+}
+
+func TestMutableTable_AppendMapDuplicateHeaders(t *testing.T) {
+	m := NewMutable([]string{"a", "a", "b"}, nil)
+
+	m.AppendMap(map[string]string{"a": "1", "a_2": "2", "b": "3"})
+	if m.HasErrs() {
+		t.Fatal(m.Errs())
+	}
+
+	row, _ := m.Row(0)
+	assertEqual(t, row.Get("a").UnwrapOr("?"), "1")
+	assertEqual(t, row.Get("a_2").UnwrapOr("?"), "2")
+	assertEqual(t, row.Get("b").UnwrapOr("?"), "3")
+}
+
+func TestMutableTable_AppendMapAfterAddCol(t *testing.T) {
+	m := NewMutable([]string{"id"}, nil)
+	m.AddCol("id", func(Row) string { return "" })
+
+	m.AppendMap(map[string]string{"id_2": "x"})
+	if m.HasErrs() {
+		t.Fatal(m.Errs())
+	}
+
+	row, _ := m.Row(0)
+	assertEqual(t, row.Get("id").UnwrapOr("?"), "")
+	assertEqual(t, row.Get("id_2").UnwrapOr("?"), "x")
+}

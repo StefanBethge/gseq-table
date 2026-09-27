@@ -114,6 +114,9 @@ func TestParseDateLayout(t *testing.T) {
 	if _, err := ParseDateLayout("2006/01/02", "2024-01-15"); err == nil {
 		t.Error("expected layout mismatch error")
 	}
+	if _, err := ParseDateLayout("2.1.2006", "1.1.0001"); err == nil {
+		t.Error("expected zero date error")
+	}
 }
 
 func TestFormat(t *testing.T) {

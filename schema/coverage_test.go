@@ -67,23 +67,23 @@ func TestInferCol_SkipsEmpty(t *testing.T) {
 // --- normalize (internal) ---
 
 func TestNormalize_TypeString_ReturnsAsIs(t *testing.T) {
-	got, err := normalize("hello world", TypeString)
+	got, err := normalize("hello world", TypeString, "")
 	assertEqual(t, err, nil)
 	assertEqual(t, got, "hello world")
 }
 
 func TestNormalize_TypeFloat_InvalidValue(t *testing.T) {
-	_, err := normalize("not-a-float", TypeFloat)
+	_, err := normalize("not-a-float", TypeFloat, "")
 	assertEqual(t, err != nil, true)
 }
 
 func TestNormalize_TypeBool_InvalidValue(t *testing.T) {
-	_, err := normalize("maybe", TypeBool)
+	_, err := normalize("maybe", TypeBool, "")
 	assertEqual(t, err != nil, true)
 }
 
 func TestNormalize_TypeDate_InvalidValue(t *testing.T) {
-	_, err := normalize("not-a-date", TypeDate)
+	_, err := normalize("not-a-date", TypeDate, "")
 	assertEqual(t, err != nil, true)
 }
 

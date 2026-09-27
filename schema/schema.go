@@ -16,6 +16,9 @@
 //
 //	s = s.Cast("created_at", schema.TypeDate)
 //
+//	// Date column with a custom layout instead of the built-in ones.
+//	s = s.CastDate("booked", "2.1.2006")
+//
 // # Applying the schema
 //
 //	// Lenient: empty cells are left unchanged, invalid values return an error.
@@ -58,10 +61,11 @@ const (
 	TypeDate   ColType = "date"
 )
 
-// Schema maps column names to their ColType. It is immutable; Cast returns a
-// new Schema.
+// Schema maps column names to their ColType. It is immutable; Cast and
+// CastDate return a new Schema.
 type Schema struct {
-	types map[string]ColType
+	types   map[string]ColType
+	layouts map[string]string // custom date layouts set by CastDate
 }
 
 // Col returns the ColType for name, or TypeString if the column is not in the
@@ -74,15 +78,52 @@ func (s Schema) Col(name string) ColType {
 }
 
 // Cast returns a new Schema with col set to typ. All other mappings are
-// preserved.
+// preserved. A custom date layout previously set for col by CastDate is
+// dropped.
 //
 //	s = s.Cast("price", schema.TypeFloat).Cast("created_at", schema.TypeDate)
 func (s Schema) Cast(col string, typ ColType) Schema {
+	return s.with(col, typ, "")
+}
+
+// CastDate returns a new Schema with col set to TypeDate, parsed with the Go
+// time layout instead of the built-in date layouts. An empty layout restores
+// the built-in layouts. All other mappings are preserved.
+//
+//	s = s.CastDate("booked", "2.1.2006").CastDate("ts", "02.01.2006 15:04")
+func (s Schema) CastDate(col, layout string) Schema {
+	return s.with(col, TypeDate, layout)
+}
+
+// DateLayout returns the custom date layout set for col by CastDate, or "" if
+// col uses the built-in date layouts.
+func (s Schema) DateLayout(col string) string {
+	return s.layouts[col]
+}
+
+// with returns a copy of s with col set to typ and its date layout set to
+// layout ("" removes it).
+func (s Schema) with(col string, typ ColType, layout string) Schema {
 	next := Schema{types: make(map[string]ColType, len(s.types)+1)}
 	for k, v := range s.types {
 		next.types[k] = v
 	}
 	next.types[col] = typ
+	for k, v := range s.layouts {
+		if k == col {
+			continue
+		}
+		if next.layouts == nil {
+			next.layouts = make(map[string]string, len(s.layouts)+1)
+		}
+		next.layouts[k] = v
+	}
+	if layout != "" {
+		if next.layouts == nil {
+			next.layouts = make(map[string]string, 1)
+		}
+		next.layouts[col] = layout
+	}
 	return next
 }
 
@@ -107,7 +148,9 @@ func Infer(t table.Table) Schema {
 }
 
 // Apply normalises every non-empty cell in t according to the schema and
-// returns a new Table. Empty cells are left unchanged.
+// returns a new Table. Empty cells are left unchanged. Date columns are parsed
+// with their CastDate layout, if any, and written in cell.DateFormat
+// (2006-01-02).
 // Returns Err if a non-empty value cannot be parsed as its declared type.
 func (s Schema) Apply(t table.Table) result.Result[table.Table, error] {
 	return s.apply(t, false)
@@ -127,6 +170,7 @@ func (s Schema) apply(t table.Table, strict bool) result.Result[table.Table, err
 		if typ == TypeString {
 			continue
 		}
+		layout := s.DateLayout(col)
 		idx := colIndex(out, col)
 		if idx < 0 {
 			continue
@@ -147,7 +191,7 @@ func (s Schema) apply(t table.Table, strict bool) result.Result[table.Table, err
 				rows[ri] = row
 				continue
 			}
-			normalized, err := normalize(raw, typ)
+			normalized, err := normalize(raw, typ, layout)
 			if err != nil {
 				return result.Err[table.Table, error](
 					fmt.Errorf("column %q row %d: cannot parse %q as %s: %w", col, ri, raw, typ, err),
@@ -210,24 +254,33 @@ func Bool(r table.Row, col string) option.Option[bool] {
 
 // Time parses the value of col in r as time.Time using layout.
 // If layout is empty, all common formats are tried automatically.
-// Returns None if the column is missing or no layout matches.
+// Returns None if the column is missing, no layout matches or the value is the
+// zero time.
+//
+//	schema.Time(row, "booked", s.DateLayout("booked"))
 func Time(r table.Row, col string, layout string) option.Option[time.Time] {
 	v, ok := r.Get(col).Get()
 	if !ok {
 		return option.None[time.Time]()
 	}
-	if layout != "" {
-		t, err := cell.ParseDateLayout(layout, v)
-		if err != nil {
-			return option.None[time.Time]()
-		}
-		return option.Some(t)
-	}
-	t := tryParseDate(v)
-	if t.IsZero() {
+	t, err := ParseDate(v, layout)
+	if err != nil {
 		return option.None[time.Time]()
 	}
 	return option.Some(t)
+}
+
+// ParseDate parses a single value v as a date using the Go time layout.
+// If layout is empty, the built-in date layouts are tried in order.
+// Surrounding whitespace is trimmed. A value that parses to the zero time
+// ("0001-01-01") is rejected with an error.
+//
+//	schema.ParseDate("5.3.2024", "2.1.2006") // 2024-03-05
+func ParseDate(v, layout string) (time.Time, error) {
+	if layout == "" {
+		return cell.ParseDate(v)
+	}
+	return cell.ParseDateLayout(layout, v)
 }
 
 // --- internal helpers ---
@@ -317,8 +370,9 @@ func parseGroupedFloat(v string) (float64, error) {
 	return cell.ParseFloat(strings.ReplaceAll(v, ",", ""), 64)
 }
 
-// normalize parses v as typ and returns it in canonical string form.
-func normalize(v string, typ ColType) (string, error) {
+// normalize parses v as typ and returns it in canonical string form. layout is
+// the custom date layout for TypeDate ("" for the built-in layouts).
+func normalize(v string, typ ColType, layout string) (string, error) {
 	v = strings.TrimSpace(v)
 	switch typ {
 	case TypeInt:
@@ -340,8 +394,8 @@ func normalize(v string, typ ColType) (string, error) {
 		}
 		return cell.FormatBool(b), nil
 	case TypeDate:
-		t := tryParseDate(v)
-		if t.IsZero() {
+		t, err := ParseDate(v, layout)
+		if err != nil {
 			return "", fmt.Errorf("unrecognised date value %q", v)
 		}
 		return cell.FormatDate(t), nil

@@ -253,3 +253,20 @@ func TestMutableTable_SetErrors(t *testing.T) {
 		t.Fatal("expected column error")
 	}
 }
+
+func TestMutableTable_AppendMapUnknownKeys(t *testing.T) {
+	m := NewMutable([]string{"id", "name"}, nil)
+
+	m.AppendMap(map[string]string{"id": "1", "zeta": "z", "alpha": "a"})
+
+	errs := m.Errs()
+	assertEqual(t, len(errs), 2)
+	assertEqual(t, errs[0].Error(), `AppendMap: unknown column "alpha"`)
+	assertEqual(t, errs[1].Error(), `AppendMap: unknown column "zeta"`)
+
+	// the row is still appended with the known values
+	assertEqual(t, m.Len(), 1)
+	row, _ := m.Row(0)
+	assertEqual(t, row.Get("id").UnwrapOr("?"), "1")
+	assertEqual(t, row.Get("name").UnwrapOr("?"), "")
+}

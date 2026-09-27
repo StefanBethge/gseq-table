@@ -84,9 +84,17 @@ func ParseDate(s string) (time.Time, error) {
 	return time.Time{}, errNoDateLayout
 }
 
-// ParseDateLayout parses s with an explicit layout.
+// ParseDateLayout parses s with an explicit layout. Like ParseDate, it rejects
+// a value that parses to the zero time.
 func ParseDateLayout(layout, s string) (time.Time, error) {
-	return time.Parse(layout, strings.TrimSpace(s))
+	t, err := time.Parse(layout, strings.TrimSpace(s))
+	if err != nil {
+		return time.Time{}, err
+	}
+	if t.IsZero() {
+		return time.Time{}, errZeroDate
+	}
+	return t, nil
 }
 
 // FormatInt formats n in base 10.
