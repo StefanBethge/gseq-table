@@ -452,7 +452,17 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - inference for common scalar types
 - normalization and validation
 - typed row accessors
+- custom date layouts per column (`CastDate`) and for single values (`ParseDate`)
 - summary statistics and helper arithmetic
+
+```go
+s := schema.Infer(t).CastDate("booked", "2.1.2006")
+res := s.Apply(t) // "5.3.2024" → "2024-03-05"
+
+d, err := schema.ParseDate("05.03.2024 14:30", "02.01.2006 15:04")
+```
+
+A custom layout replaces the built-in layouts for that column, and the zero date still counts as not parsed.
 
 ### ETL pipelines
 
