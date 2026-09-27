@@ -464,12 +464,17 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - typed row accessors
 - custom date layouts per column (`CastDate`) and for single values (`ParseDate`)
 - summary statistics and helper arithmetic
+- string helpers for derived columns (`Trim`, `Lower`, `Title`, `Replace`, `RegexExtract`, `SplitPart`, `PadLeft`, `Substr`, `Concat`, …)
 
 ```go
 s := schema.Infer(t).CastDate("booked", "2.1.2006")
 res := s.Apply(t) // "5.3.2024" → "2024-03-05"
 
 d, err := schema.ParseDate("05.03.2024 14:30", "02.01.2006 15:04")
+
+t = t.AddCol("domain", schema.RegexExtract("email", `@(.+)$`, 1)).
+	AddCol("zip", schema.PadLeft("zip", 5, '0')).
+	AddCol("full_name", schema.Concat(" ", "first", "last"))
 ```
 
 A custom layout replaces the built-in layouts for that column, and the zero date still counts as not parsed.

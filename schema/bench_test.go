@@ -316,3 +316,57 @@ func BenchmarkPct(b *testing.B) {
 		})
 	}
 }
+
+// ── String helpers ────────────────────────────────────────────────────────────
+
+func BenchmarkTitle(b *testing.B) {
+	for _, sz := range schemaBenchSizes {
+		tb := schemaNumTable(sz.n)
+		fn := Title("name")
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = tb.AddCol("title", fn)
+			}
+		})
+	}
+}
+
+func BenchmarkRegexExtract(b *testing.B) {
+	for _, sz := range schemaBenchSizes {
+		tb := schemaNumTable(sz.n)
+		fn := RegexExtract("name", `_(\d+)$`, 1)
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = tb.AddCol("id", fn)
+			}
+		})
+	}
+}
+
+func BenchmarkPadLeft(b *testing.B) {
+	for _, sz := range schemaBenchSizes {
+		tb := schemaNumTable(sz.n)
+		fn := PadLeft("age", 5, '0')
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = tb.AddCol("age5", fn)
+			}
+		})
+	}
+}
+
+func BenchmarkConcat(b *testing.B) {
+	for _, sz := range schemaBenchSizes {
+		tb := schemaNumTable(sz.n)
+		fn := Concat(" ", "name", "age", "created_at")
+		b.Run(sz.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				_ = tb.AddCol("label", fn)
+			}
+		})
+	}
+}
