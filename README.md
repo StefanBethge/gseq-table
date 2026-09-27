@@ -84,7 +84,7 @@ Optional Excel support:
 go get github.com/stefanbethge/gseq-table/excel@latest
 ```
 
-Requires Go 1.23+.
+Requires Go 1.27+.
 
 Core dependency footprint:
 
@@ -172,9 +172,9 @@ When you need types, use the `schema` package:
 
 This keeps the core pipeline simple without pulling in a large type system or analytics stack.
 
-### Typed access with generic methods (Go 1.27+)
+### Typed access with generic methods
 
-When you build with Go 1.27 or newer, `Row`, `Table`, and `MutableTable` gain typed methods that use Go 1.27 generic methods.
+`Row`, `Table`, and `MutableTable` have typed methods built on Go 1.27 generic methods.
 Cells are still stored as strings. The methods parse on read and format on write.
 
 ```go
@@ -235,7 +235,6 @@ A date at midnight UTC is written as `2006-01-02`. Any other time is written as 
 
 Compatibility notes:
 
-- The module still declares `go 1.23`. The typed methods live in files with a `//go:build go1.27` constraint, so older toolchains build the module without them.
 - Generic methods cannot satisfy interfaces, so no existing interface changed. The existing package-level helpers (`table.ColAs`, `table.MapColTo`, `table.AddColOf`) are still there.
 
 ## Two APIs: immutable and mutable
@@ -433,7 +432,7 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - select, drop, rename, transpose
 - filtering, partitioning, sampling
 - map and transform by column or row
-- typed access, transforms, and aggregations via generic methods (Go 1.27+)
+- typed access, transforms, and aggregations via generic methods
 - joins: inner, left, right, outer, anti
 - stable sorting and multi-column sorting
 - distinct, union, intersect
@@ -540,7 +539,7 @@ rows := simd.IndicesFloat64(nil, prices, simd.Gt, 100)
 ```
 
 The package always builds. By default it uses a plain-Go scalar implementation.
-To enable the vector kernels, build with Go 1.27+ and the `simd` experiment, which uses the standard library's experimental `simd/archsimd` package:
+To enable the vector kernels, build with the `simd` experiment, which uses the standard library's experimental `simd/archsimd` package:
 
 ```bash
 GOEXPERIMENT=simd go build ./...
