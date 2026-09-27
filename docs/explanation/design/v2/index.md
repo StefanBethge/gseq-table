@@ -14,7 +14,9 @@ Erprobung klärt, bevor ein v2.0-Release geplant wird.
 |---|---|---|
 | [Use Cases](05-use-cases.md) | Akteure und Abläufe, und die Fragen, die sie an das Design stellen | [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung) – [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline) |
 | [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen) |
-| [Gap Ledger](70-gap-ledger.md) | Offene Fragen, Annahmen und Inkonsistenzen | [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst) – [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse) |
-
-Die Dokumente entstehen in der Reihenfolge der Methode (Use Cases zuerst) und werden
-erst in diese Tabelle aufgenommen, wenn sie Inhalt haben.
+| [Feature-Katalog](20-feature-catalogue.md) | Features, jedes auf seine Decisions gemappt | [F1](20-feature-catalogue.md#f1-blocke-aus-typisierten-spalten-mit-nullwerten) – [F23](20-feature-catalogue.md#f23-auslieferung-als-experimenteller-prototyp-und-als-v2-modul) |
+| [Test-Plan](30-test-plan.md) | T-Fälle, jeder an eine D- oder F-Eigenschaft gebunden | [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) – [T32](30-test-plan.md#t32-der-v1-adapter-wandelt-verlustfrei-hin-und-zuruck) |
+| [Scope Prototyp](40-scope-prototype.md) | Selektion, Vereinfachungen und Exit-Kriterien des Prototyps | [P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren) – [P4](40-scope-prototype.md#p4-datei-writer-fur-csv-und-excel) |
+| [Failure Modes](50-failure-modes.md) | Was bei einem Lauf schiefgehen kann und wie reagiert wird | — |
+| [Security Boundaries](60-security-boundaries.md) | Grenzen für nicht vertrauenswürdige Lieferungen und ausgelagerte Daten | — |
+| [Gap Ledger](70-gap-ledger.md) | Offene Fragen, Annahmen und Inkonsistenzen | [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst) – [G20](70-gap-ledger.md#g20-grenzen-fur-feldlange-und-entpackten-umfang) |

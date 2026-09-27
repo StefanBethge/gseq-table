@@ -78,7 +78,7 @@ genau das verwehren. Unveränderliche Tabellen machen Zweige ([UC5](05-use-cases
 und den Rohzustand ([D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten))
 einfacher, weil kein Schritt die Daten eines anderen verändert.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
-**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
 ### D6 — Pipelines sind Pläne, die in Blöcken ausgeführt werden und auf die Platte auslagern können
 
@@ -90,7 +90,7 @@ wenn ein Speicherbudget erreicht ist. Derselbe Pipeline-Code läuft für kleine 
 im Speicher und für große im Streaming. Die Wahl trifft die Engine, nicht der
 Pipeline-Entwickler.
 **Begründung:** Das ist das Modell von Polars, DuckDB und DataFusion. Es ist das einzige
-der betrachteten Modelle, das [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+der betrachteten Modelle, das [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 vollständig erfüllt: große Lieferungen, begrenzter Speicher, kein Umbau der Pipeline.
 Verworfen wurden (B) Blöcke mit Speicherbudget ohne Auslagern, bei dem Schritte über
 alle Zeilen am Budget scheitern, und (C) blockweise Verarbeitung durch den Entwickler
@@ -98,7 +98,7 @@ selbst, die "ohne großen Umbau" widerspricht. Der Plan ermöglicht außerdem, S
 dem Lauf zu prüfen und zu optimieren. Der Aufwand für das Auslagern ist hoch und wird im
 Scope des Prototyps bewusst begrenzt.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Option A aus dem Vergleich mit pandas, Polars, DuckDB, Spark/Dask, DataFusion)
-**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
 
 ### D7 — Die Engine entscheidet, ob sie Daten kopiert oder an Ort und Stelle ändert
 
@@ -116,7 +116,7 @@ doppelte API weg, und der Gewinn bleibt erhalten, wo er ohne Risiko möglich ist
 genauso schnell und sparsam ist wie v1 `MutableTable`, prüft der Prototyp
 ([G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht)).
 **Quelle:** Maintainer im Kickoff, 2026-09-27
-**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
 
 ### D8 — Eine Option legt fest, dass die Engine immer kopiert oder immer an Ort und Stelle ändert
 
@@ -130,7 +130,7 @@ er jeden Zwischenstand behalten, bei einer großen Lieferung ohne Zweige will er
 und Zeit sparen. Wie "immer ändern" mit Zweigen und dem Rohzustand verträglich bleibt,
 ist offen ([G8](70-gap-ledger.md#g8-immer-andern-gegen-zweige-und-rohzustand)).
 **Quelle:** Maintainer im Kickoff, 2026-09-27
-**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
 
 ### D9 — Der Rohzustand wird getrennt gehalten, an Verzweigungen wird immer kopiert
 
@@ -147,9 +147,9 @@ behält seinen Nutzen für lineare Pipelines. Verworfen: Pläne mit Verzweigung 
 [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
 unbrauchbar gemacht. Der Vermerk im Trace macht sichtbar, wo der Modus nicht greift.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G8](70-gap-ledger.md#g8-immer-andern-gegen-zweige-und-rohzustand))
-**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
-### D10 — Rohzustand heißt gelesene Zellwerte, Rohbytes bei unzerlegbaren Zeilen, und immer die Fundstelle
+### D10 — Rohzustand bedeutet gelesene Zellwerte, Rohbytes bei unzerlegbaren Zeilen, und immer die Fundstelle
 
 **Entscheidung:** Der Rohzustand einer Zeile besteht aus den Zellwerten, wie der Reader
 sie gelesen hat. Konnte der Reader eine Zeile nicht in Zellen zerlegen (z. B. CSV mit
@@ -166,13 +166,13 @@ wurde verworfen. Das setzt voraus, dass die Quelle noch unverändert vorliegt, u
 HTTP- und Streaming-Quellen nicht. Die Fundstelle kommt trotzdem immer mit, damit der
 Pipeline-Entwickler die Zeile in der Originaldatei findet.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst))
-**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
 ### D11 — Scheitert eine Zeile nach einem Join, wird jede beteiligte Quellzeile aussortiert
 
 **Entscheidung:** Scheitert eine Zeile, die aus einem Join entstanden ist, landet jede
 beteiligte Quellzeile mit ihrem eigenen Rohzustand und ihrer eigenen Fundstelle nach
-[D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
+[D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 in den aussortierten Zeilen. Eine gemeinsame Kennung (`reject_id`) verbindet die Einträge,
 die zu demselben Fehler gehören. Wie die aussortierten Zeilen verschiedener Quellen
 zusammen dargestellt werden, ist offen ([G10](70-gap-ledger.md#g10-aussortierte-zeilen-mehrerer-quellen-eine-tabelle-oder-je-quelle)).
@@ -195,11 +195,11 @@ sobald sie einen zusammenfassenden Schritt erreicht hat oder alle aus ihr entsta
 Zeilen im Ziel angekommen sind. Danach wird ihr Rohzustand freigegeben.
 **Begründung:** In eine aggregierte Zeile gehen bei großen Lieferungen bis zu Millionen
 Quellzeilen ein. Deren Rohzustand mitzuführen, würde den Speicherrahmen aus
-[UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+[UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 sprengen. Über den Gruppenschlüssel lassen sich die Quellzeilen bei Bedarf in der Lieferung
 finden. Die Option "volle Herkunft" deckt kleine Läufe und das Debuggen ab.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G9](70-gap-ledger.md#g9-rohzustand-und-fundstelle-nach-aggregation-und-join), zusammen mit [D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert))
-**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
 ### D13 — Aussortierte Zeilen gibt es je Quelle, dazu eine Übersicht über alle Quellen
 
@@ -224,7 +224,7 @@ sind. Die ist schwer zu schreiben und nachzuverarbeiten.
 Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt diese Spalten:
 `reject_id` (verbindet zusammengehörige Einträge), `run_id`, `record_key` und optional
 `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
-[D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
+[D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
 Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
 `validation`, `unparseable_line`) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
@@ -254,7 +254,7 @@ und kaum aussagekräftig.
 ([D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen))
 als Eingabe eines Laufs. Sie übernimmt die Rohspalten, lässt die Info-Spalten weg und
 setzt die ursprüngliche Fundstelle aus
-[D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
+[D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 als Fundstelle jeder Zeile. Zeilen mit `raw_line` gehen erneut durch den Reader der
 ursprünglichen Quelle, mit dessen aktueller Konfiguration.
 **Begründung:** So verarbeitet dieselbe, angepasste Pipeline die fehlenden Daten nach,
@@ -319,12 +319,12 @@ eines solchen Fehlers durchzuziehen, bringt keine brauchbaren Ergebnisse, deshal
 Verhalten nicht konfigurierbar. Bei Liefer- und Datenfehlern will der Maintainer je nach
 Pipeline und Kunde unterschiedlich reagieren, deshalb ist ihr Verhalten konfigurierbar.
 Sortiert ein Lieferfehler alle Zeilen aus, macht die Schwelle aus
-[D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-standardmassig-zu-ende-laufen)
+[D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen)
 die Formatänderung aus [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt) sichtbar.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
 
-### D20 — Die Schwelle ist absolut oder als Anteil, je Lauf oder je Schritt, und lässt den Lauf standardmäßig zu Ende laufen
+### D20 — Die Schwelle ist absolut oder als Anteil, je Lauf oder je Schritt, und lässt den Lauf per Voreinstellung zu Ende laufen
 
 **Entscheidung:** Die Schwelle aus
 [D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen) wird absolut
@@ -336,7 +336,7 @@ Eine Option bricht den Lauf stattdessen sofort ab.
 Pipeline-Entwickler sieht bei einer Formatänderung das ganze Ausmaß. Der sofortige Abbruch
 spart bei großen Lieferungen Zeit, wenn das Ausmaß nicht gebraucht wird.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G3](70-gap-ledger.md#g3-bemessung-und-wirkung-der-schwelle))
-**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
 ### D21 — Ein Lauf liefert einen Status und Zählungen, aus denen sich ein Exit-Code ableiten lässt
 
@@ -403,7 +403,7 @@ Läufen auf.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
 
-### D25 — Gescheiterte Zeilen eines Schritts können in einen Zweig gegeben werden und fließen danach zurück
+### D25 — Gescheiterte Zeilen eines Schritts können in einen Zweig gegeben werden und laufen danach zurück
 
 **Entscheidung:** Ein Schritt kann einen Zweig für seine gescheiterten Zeilen haben. Die
 Zeilen kommen in dem Zustand in den Zweig, in dem sie in den gescheiterten Schritt
@@ -437,7 +437,7 @@ Lieferung. Stilles Umwandeln in einen gemeinsamen Typ würde Fehler verdecken.
 ### D27 — Eine im Zweig erneut gescheiterte Zeile behält ihre Kennung und zeigt ihren Weg
 
 **Entscheidung:** Scheitert eine Zeile, die schon in einem Zweig nach
-[D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-fliessen-danach-zuruck)
+[D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck)
 ist, erneut, behält sie ihre `reject_id`. Die Info-Spalte `step` enthält den ganzen Weg
 (z. B. `cast › cast_alt`). Eine zusätzliche Info-Spalte `prev_reason` enthält den Grund aus
 dem Hauptweg. Jede Quellzeile wird in den Zählungen nach
@@ -445,7 +445,7 @@ dem Hauptweg. Jede Quellzeile wird in den Zählungen nach
 nur einmal gezählt.
 **Begründung:** Der Pipeline-Entwickler sieht so, dass die Zeile im Hauptweg und im Zweig
 gescheitert ist und warum. Mehrfach zu zählen würde die Schwelle aus
-[D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-standardmassig-zu-ende-laufen)
+[D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen)
 verfälschen.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
@@ -463,11 +463,11 @@ einem Abbruch.
 ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)). Ein Budget, das das
 Container-Limit ignoriert, würde dort zum Abbruch durch das System führen statt zum
 Auslagern. Wie groß der Anteil als Voreinstellung sein soll, klärt der Prototyp
-([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse)).
+([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
 **Quelle:** Maintainer im Kickoff, 2026-09-27
-**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
 
-### D29 — Daten fließen in Blöcken typisierter Spalten, Rohspalten bleiben bis zum Cast Text
+### D29 — Daten laufen in Blöcken typisierter Spalten, Rohspalten bleiben bis zum Cast Text
 
 **Entscheidung:** Die Blöcke aus
 [D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
@@ -480,9 +480,9 @@ in v1.2 gemessen hat. Dass Rohspalten Text bleiben, passt zu schmutzigen Lieferu
 Erst beim Umwandeln entscheidet sich, ob ein Wert passt oder die Zeile aussortiert wird
 ([D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte)).
 Ob der Vorteil gegenüber v1 messbar ist, klärt der Prototyp
-([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse)).
+([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
 **Quelle:** Maintainer im Kickoff, 2026-09-27
-**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
 ### D30 — Es gibt echte Nullwerte, getrennt vom leeren Text
 
@@ -500,7 +500,7 @@ Dadurch sind Fehler still verschwunden. Das Zusammenführen nach
 braucht einen Wert für "fehlt". Konfigurierbare Null-Texte decken Platzhalter ab, die in
 Anbieter-Excel-Dateien häufig vorkommen.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
-**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
 
 ### D31 — Jede Operation gibt es einmal als Wert, mit zwei Einstiegen: sofort auf einer Tabelle oder im Plan
 
@@ -510,7 +510,7 @@ Operation sofort an. Eine Pipeline ist ein Plan nach
 [D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
 und nimmt dieselben Operationen als Schritte. Beide laufen über dieselbe Engine. Die
 Pipeline bietet nur Ablaufsteuerung: Schritte benennen, Zweige
-([D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-fliessen-danach-zuruck)),
+([D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck)),
 Fehlerverhalten, Schwelle, Trace und `Run`. Sie bietet keine eigenen Datenoperationen.
 Es gibt keine eigene veränderbare Tabelle
 ([D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert))
@@ -541,7 +541,7 @@ Ausweg ließe sich aber Sonderlogik einzelner Kunden nicht ausdrücken. Dass Feh
 Closure zu aussortierten Zeilen werden, hält das Fehlermodell auch für eigene Logik
 einheitlich.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
-**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
 
 ### D33 — Die öffentliche API verwendet Standard-Go-Typen und eigene Typen der Library, keine gseq-Typen
 
@@ -568,7 +568,7 @@ großen neuen Funktionen mehr.
 ([G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht),
 [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren),
 [G12](70-gap-ledger.md#g12-ab-wann-eine-haufung-von-fehlern-als-formatanderung-gilt),
-[G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blockgrosse))
+[G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange))
 und darf sich dabei frei ändern. Externe Nutzer brauchen ab v2.0.0 eine verlässliche
 Zusage. Bestehende v1-Pipelines laufen weiter.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
