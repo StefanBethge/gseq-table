@@ -483,14 +483,20 @@ verfälschen.
 [D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
 einhält, indem sie auslagert. Es ist je Lauf einstellbar. Voreinstellung ist ein Anteil
 des verfügbaren Speichers, wobei die Engine das Limit eines Containers bzw. der cgroup
-berücksichtigt. Das Verzeichnis zum Auslagern ist einstellbar, Standard ist das temporäre
+berücksichtigt. Ist `GOMEMLIMIT` nicht gesetzt, setzt die Engine es passend zum
+verfügbaren Speicher bzw. Container-Limit, damit die Speicherbereinigung von Go rechtzeitig
+arbeitet. Die Höhe des Anteils wird aus den Messungen des Prototyps festgelegt. Das
+Verzeichnis zum Auslagern ist einstellbar, Standard ist das temporäre
 Verzeichnis des Systems. Ausgelagerte Daten werden am Ende des Laufs gelöscht, auch bei
 einem Abbruch. Ausgenommen sind ausgelagerte aussortierte Zeilen nach
 [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), die bis zum Schließen des Ergebnisses leben.
 **Begründung:** Läufe starten per Cron, auch in Containern
 ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)). Ein Budget, das das
 Container-Limit ignoriert, würde dort zum Abbruch durch das System führen statt zum
-Auslagern. Wie groß der Anteil als Voreinstellung sein soll, klärt der Prototyp
+Auslagern. Das Budget zählt nur die Blöcke der Engine. Speicherbereinigung,
+Reader- und Writer-Puffer, Closures und die Go-Runtime brauchen zusätzlich Speicher, und
+eine Beendigung durch das System lässt sich nicht abfangen. Deshalb liegt der Anteil
+deutlich unter dem verfügbaren Speicher. Wie groß er als Voreinstellung sein soll, klärt der Prototyp
 ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

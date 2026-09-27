@@ -129,6 +129,8 @@ für den Anteil des Speichers ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein
 gegen v1 geklärt werden
 ([UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)).
 Zusätzlich zu messen: Spitzenspeicher und Auslagern mit und ohne Rohzustand ([D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert)).
+Zusätzlich zu messen: Spitzenspeicher des Prozesses im Verhältnis zum Budget, mit und ohne
+von der Engine gesetztes `GOMEMLIMIT`.
 
 ### G14 — Docs-Gates aus dem Archivar-Repo übernehmen
 
