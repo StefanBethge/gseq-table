@@ -302,9 +302,7 @@ sind.
 ### D18 — Jede Quellzeile trägt einen stabilen Schlüssel, optional einen Inhalts-Hash
 
 **Entscheidung:** Jede Quellzeile trägt einen Schlüssel `record_key`. Standardmäßig wird er
-aus einer Kennung der Lieferung und der Position der Zeile gebildet. Die Kennung ist ein
-Hash über den Inhalt der Lieferung oder eine Kennung, die die Pipeline angibt (z. B. für
-HTTP- und Streaming-Quellen). Die Zusage lautet: stabil innerhalb derselben Lieferung, auch
+aus einer Kennung der Lieferung und der Position der Zeile gebildet. Die Kennung legt [D61](#d61-die-kennung-einer-lieferung-ist-ein-fingerabdruck-der-beim-offnen-feststeht) fest. Die Zusage lautet: stabil innerhalb derselben Lieferung, auch
 bei einer Nachverarbeitung nach
 [D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle).
 Für Ziele, die über Lieferungen hinweg deduplizieren, kann eine Quelle einen fachlichen
@@ -376,7 +374,7 @@ oder abgebrochen über den Kontext), `plan_error` (Planfehler nach
 [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)),
 `delivery_error` (Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) oder
 `sink_error` (Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab))
-(Vorrang offen: [G46](70-gap-ledger.md#g46-vorrang-der-status-und-umfang-von-aborted)). Dazu kommen die Zählungen gelesener, durchgelaufener,
+(Vorrang nach [D63](#d63-es-gilt-der-hochste-zutreffende-status-und-das-ergebnis-nennt-alle-befunde)). Dazu kommen die Zählungen gelesener, durchgelaufener,
 aussortierter und verworfener Quellzeilen nach [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben), je Schritt und je Fehlercode. Eine Hilfsfunktion bildet den Status auf einen Exit-Code für den Scheduler ab.
 **Begründung:** Der Scheduler braucht ein eindeutiges Signal, der Pipeline-Entwickler die
 Zählungen, um zu sehen, wo etwas passiert ist. Den Status als Wert zurückzugeben, statt ihn
@@ -489,9 +487,7 @@ verfälschen.
 [D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
 einhält, indem sie auslagert. Es ist je Lauf einstellbar. Voreinstellung ist ein Anteil
 des verfügbaren Speichers, wobei die Engine das Limit eines Containers bzw. der cgroup
-berücksichtigt. Ist `GOMEMLIMIT` nicht gesetzt, setzt die Engine es passend zum
-verfügbaren Speicher bzw. Container-Limit, damit die Speicherbereinigung von Go rechtzeitig
-arbeitet. Die Höhe des Anteils wird aus den Messungen des Prototyps festgelegt. Das
+berücksichtigt. Wann die Engine `GOMEMLIMIT` setzt und dass das Budget je Prozess gilt, regelt [D65](#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess). Die Höhe des Anteils wird aus den Messungen des Prototyps festgelegt. Das
 Verzeichnis zum Auslagern ist einstellbar, Standard ist das temporäre
 Verzeichnis des Systems. Ausgelagerte Daten werden am Ende des Laufs gelöscht, auch bei
 einem Abbruch. Ausgenommen sind ausgelagerte aussortierte Zeilen nach
@@ -913,6 +909,7 @@ Prototyp ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-vore
 ist das, was der Pipeline-Entwickler in der Datei wiederfindet. Würde der formatierte Text
 umgewandelt, scheiterten echte Datumszellen an Ländereinstellungen. Byte-Offsets ergeben in
 einem gezippten XML-Archiv keinen Sinn.
+Den Rohzustand legt inzwischen [D62](#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform) fest.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G32](70-gap-ledger.md#g32-rohzustand-und-fundstelle-bei-excel))
 **Betroffene Use Cases:** [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
 
@@ -1037,3 +1034,73 @@ den zweistelligen GB-Bereich und passt zu Gruppieren und Sortieren aus
 Containern ab ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)).
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G16](70-gap-ledger.md#g16-konkrete-werte-fur-die-exit-kriterien-des-prototyps); ändert das Exit-Kriterium zu [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D61 — Die Kennung einer Lieferung ist ein Fingerabdruck, der beim Öffnen feststeht
+
+**Entscheidung:** Die Kennung einer Lieferung für `record_key` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash) ist ein
+Fingerabdruck aus Quellname, Größe, Änderungszeit und einem Hash über die ersten 64 KiB. Er
+steht fest, sobald die Quelle geöffnet ist. Gibt die Pipeline eine eigene Kennung an (z. B.
+bei HTTP-Quellen), gilt diese. `record_hash` wird je Zeile beim Lesen gebildet. Ändert sich
+eine Datei nachträglich, gilt sie als andere Lieferung, und ihre Schlüssel ändern sich.
+**Begründung:** Ein Hash über die ganze Lieferung wäre erst am Ende bekannt, Zeilen werden
+nach [D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen) und [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) aber schon während des Lesens mit Schlüssel geschrieben.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G44](70-gap-ledger.md#g44-ein-hash-uber-die-ganze-lieferung-ist-im-streaming-erst-am-ende-bekannt))
+**Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D62 — Bei Excel tragen Rohzustand und Arbeitsspalte den gespeicherten Wert in fester Textform
+
+**Entscheidung:** Bei Excel-Lieferungen enthalten Rohzustand und Arbeitsspalte den
+gespeicherten Wert einer Zelle in einer festen, von Ländereinstellungen unabhängigen
+Textform: Datum als `2026-09-27`, Zahl als `1234.5`, bei Formeln das Ergebnis. Der von Excel
+angezeigte Text steht in den aussortierten Zeilen zusätzlich in der Info-Spalte `display`.
+Das ersetzt die Festlegung des Rohzustands in [D52](#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert).
+**Begründung:** Mit dem angezeigten Text als Rohzustand hätten Roh- und Arbeitsspalte von
+Anfang an verschiedene Werte, [D55](#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) hätte für Excel nicht gegolten, und eine
+Nachverarbeitung nach [D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) hätte den angezeigten Text umgewandelt und wäre an den
+Ländereinstellungen gescheitert. Die Info-Spalte `display` lässt die Zelle trotzdem
+wiedererkennen.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G45](70-gap-ledger.md#g45-excel-halt-zwei-werte-je-zelle))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets)
+
+### D63 — Es gilt der höchste zutreffende Status, und das Ergebnis nennt alle Befunde
+
+**Entscheidung:** Treffen auf einen Lauf mehrere Status nach [D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) zu, gilt der
+höchste in der Rangfolge `plan_error` > `sink_error` > `delivery_error` > `aborted` >
+`failed_threshold` > `ok`. Das Ergebnis nennt zusätzlich alle zutreffenden Befunde.
+`aborted` umfasst einen Stopp nach [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen), einen Abbruch über den Kontext und
+Ressourcenfehler wie eine volle Platte beim Auslagern oder eine zu große rechte Seite eines
+Joins im Prototyp nach [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget). Ein Lieferfehler im Modus "stoppen" ergibt
+`delivery_error`.
+**Begründung:** Der Scheduler braucht genau einen Status für den Exit-Code. Die Rangfolge
+stellt Fehler der Pipeline und des Ziels vor Fehler der Lieferung und diese vor Abbrüche
+und Schwellen. Die Liste aller Befunde verhindert, dass ein höherer Status einen anderen
+verdeckt.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G46](70-gap-ledger.md#g46-vorrang-der-status-und-umfang-von-aborted))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D64 — Mit dem Rohzustand geteilte Spalten gelten als geteilt, auch im Modus immer ändern
+
+**Entscheidung:** Eine Spalte, die sich Arbeitsdaten und Rohzustand nach [D55](#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) teilen,
+gilt als geteilt im Sinn von [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert). Auch im Modus "immer an Ort und Stelle ändern" nach
+[D8](#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert) kopiert die Engine sie bei der ersten Änderung einmal und vermerkt das im Trace,
+wie an Verzweigungen nach [D9](#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert). Die Vergleiche nach [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) messen v2 mit
+mitgeführtem Rohzustand.
+**Begründung:** Sonst würde eine Änderung an Ort und Stelle den Rohzustand verändern, was
+[D9](#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert) ausschließt. Der Modus behält seinen Nutzen für alle weiteren Änderungen und für
+abgeleitete Spalten. Der Vergleich mit Rohzustand zeigt die ehrlichen Kosten des
+Fehlermodells.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G52](70-gap-ledger.md#g52-geteilte-rohspalten-gegen-den-modus-immer-andern))
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D65 — GOMEMLIMIT setzt die Engine nur auf Wunsch, und das Budget gilt je Prozess
+
+**Entscheidung:** Die Engine setzt `GOMEMLIMIT` nur, wenn die Pipeline das ausdrücklich
+verlangt, und überschreibt einen gesetzten Wert nie. Das Speicherbudget nach [D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) gilt
+für den ganzen Prozess. Laufen mehrere Läufe in einem Prozess, teilen sie es sich. Das
+ersetzt das automatische Setzen von `GOMEMLIMIT` in [D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern).
+**Begründung:** `GOMEMLIMIT` wirkt auf den ganzen Prozess. Setzt es jeder Lauf selbst,
+überschreibt der letzte die anderen, und Budgets je Lauf ergäben zusammen mehr als das
+Limit. Für den häufigen Fall "ein Lauf je Prozess" per Cron bleibt das Setzen auf Wunsch
+einfach.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G53](70-gap-ledger.md#g53-gomemlimit-wirkt-auf-den-ganzen-prozess))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

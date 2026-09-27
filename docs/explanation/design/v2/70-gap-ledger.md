@@ -336,17 +336,17 @@ Nach [D47](10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ih
 
 ### G44 — Ein Hash über die ganze Lieferung ist im Streaming erst am Ende bekannt
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D61](10-design-decisions.md#d61-die-kennung-einer-lieferung-ist-ein-fingerabdruck-der-beim-offnen-feststeht)
 [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash) bildet `record_key` standardmäßig mit einem Hash über den Inhalt der Lieferung. Nach [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen) werden Zeilen aber schon während des Lesens mit Schlüssel geschrieben ([D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), [D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit)). Optionen: Hash über Kopf, ersten Block und Größe; eine von der Pipeline gelieferte Kennung als Standard; zwei Lesedurchgänge.
 
 ### G45 — Excel hält zwei Werte je Zelle
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D62](10-design-decisions.md#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform)
 Nach [D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert) ist der Rohzustand der angezeigte Text, umgewandelt wird aber der gespeicherte Wert. Unklar ist, welchen Wert die Arbeitsspalte vor dem Umwandeln trägt. Dann stimmt [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) für Excel nicht, und eine Nachverarbeitung nach [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) wandelt den angezeigten Text um und scheitert genau an den Ländereinstellungen, die [D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert) vermeiden wollte. Option: Arbeitsspalte trägt den gespeicherten Wert, der Rohzustand beide.
 
 ### G46 — Vorrang der Status und Umfang von aborted
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D63](10-design-decisions.md#d63-es-gilt-der-hochste-zutreffende-status-und-das-ergebnis-nennt-alle-befunde)
 [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) legt nicht fest, welcher Status gilt, wenn mehrere zutreffen (Lieferfehler und Schwelle; Lieferfehler und Schreibfehler; Lieferfehler im Modus "stoppen"). `aborted` ist nur für Stopp und Kontext definiert, wird aber auch für einen zu großen Join ([D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget)) und "Platte voll" (Failure Modes) verwendet. Option: feste Rangfolge, z. B. `plan_error` > `sink_error` > `delivery_error` > `aborted` > `failed_threshold` > `ok`.
 
 ### G47 — Aufräumen verwaister Läufe gegen offene Ergebnisse
@@ -376,12 +376,12 @@ Neue JSON-Felder, die erst spät auftauchen und nach [D22](10-design-decisions.m
 
 ### G52 — Geteilte Rohspalten gegen den Modus "immer ändern"
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D64](10-design-decisions.md#d64-mit-dem-rohzustand-geteilte-spalten-gelten-als-geteilt-auch-im-modus-immer-andern)
 Ändert ein Schritt im Modus "immer an Ort und Stelle ändern" ([D8](10-design-decisions.md#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert)) eine Spalte, die er sich nach [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) mit dem Rohzustand teilt, würde er den Rohzustand ändern, was [D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert) verbietet. Der Modus müsste also bei jeder ersten Änderung einer Rohspalte kopieren. Das nimmt ihm viel von seinem Nutzen und verzerrt den Vergleich nach [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget).
 
 ### G53 — GOMEMLIMIT wirkt auf den ganzen Prozess
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D65](10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess)
 [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) setzt `GOMEMLIMIT`, eine Einstellung für den ganzen Prozess. Laufen mehrere Läufe in einem Prozess, überschreibt der letzte die Einstellung der anderen, und die Budgets als Anteil des verfügbaren Speichers ergeben zusammen mehr als das Limit. [D40](10-design-decisions.md#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab) verwirft eine Panik gerade, weil sie andere Läufe im selben Prozess trifft. Optionen: nur auf ausdrücklichen Wunsch setzen, ein gemeinsames Budget je Prozess, einen gesetzten Wert nie überschreiben.
 
 ### G54 — Lücken bei Writern für aussortierte Zeilen im Plan
