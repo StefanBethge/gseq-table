@@ -946,3 +946,48 @@ bleiben nach [D29](#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-b
 reicht, misst der Prototyp ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G36](70-gap-ledger.md#g36-speicherkosten-des-rohzustands-beim-sortieren-und-joinen))
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D56 — Die Library begrenzt Feldlänge und entpackten Umfang, schützt ausgelagerte Dateien und maskiert Formeln in CSV auf Wunsch
+
+**Entscheidung:** Ein einzelnes Feld darf standardmäßig höchstens 16 MiB groß sein; die
+Grenze ist einstellbar. Längere Felder sortieren die Zeile mit dem Code `field_too_large`
+aus, und `raw_line` wird auf die Grenze gekürzt. Für Excel-Archive gibt es eine Grenze für
+den entpackten Umfang und für das Verhältnis zwischen gepacktem und entpacktem Umfang
+(standardmäßig höchstens 100:1), beide einstellbar. Wird eine überschritten, ist das der
+Lieferfehler `unreadable` nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error). Das Verzeichnis zum Auslagern ist nur für den
+ausführenden Nutzer zugänglich (Verzeichnis `0700`, Dateien `0600`). Der CSV-Writer
+maskiert Werte, die als Formel gelesen würden (beginnend mit `=`, `+`, `-`, `@`), nur auf
+Wunsch durch ein vorangestelltes `'`. Standardmäßig ist das aus.
+**Begründung:** Lieferungen kommen von externen Anbietern und sind nicht vertrauenswürdig
+([Security Boundaries](60-security-boundaries.md)). Das Budget nach [D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) gilt für
+Blöcke, nicht für einzelne Werte oder das Entpacken eines Archivs. Formeln standardmäßig zu
+maskieren würde Werte beim Datenaustausch verfälschen, deshalb ist es eine Option.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G20](70-gap-ledger.md#g20-grenzen-fur-feldlange-und-entpackten-umfang))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D57 — Der Prototyp liest CSV und Excel, v2.0 zusätzlich JSON und NDJSON
+
+**Entscheidung:** Der Prototyp bringt Reader für CSV und Excel mit, v2.0.0 zusätzlich für
+JSON und NDJSON. Ob und wann ein Reader für Parquet dazukommt, ist nicht Teil von v2.0.0.
+**Begründung:** Excel und CSV sind die häufigsten Lieferformate ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)). JSON und
+NDJSON kommen aus v1 und aus HTTP-Quellen. Parquet setzt die spaltenorientierte Speicherung
+voraus, deren Nutzen der Prototyp erst messen soll ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G37](70-gap-ledger.md#g37-bestehkriterien-und-fehlende-festlegungen-im-scope-des-prototyps))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets)
+
+### D58 — Der Prototyp hat feste Bestehkriterien für Laufzeit, Speicher und Budget
+
+**Entscheidung:** [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) gilt als bestanden, wenn v2 mit automatischer Wahl nach
+[D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) bei Filter, Umwandeln, Sortieren, Gruppieren und Join höchstens das 1,2-Fache der
+Laufzeit und höchstens den Spitzenspeicher von v1 `MutableTable` braucht. Andernfalls wird
+[D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) durch eine neue Decision wieder aufgemacht. [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) gilt als bestanden, wenn v2
+bei zahlenlastigen Lieferungen nicht langsamer als v1 `Table` ist und höchstens 70 % von
+dessen Spitzenspeicher braucht. Die Voreinstellungen für den Anteil des Speichers und die
+Blocklänge werden aus diesen Messungen festgelegt. Die Toleranz in
+[T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) beträgt 10 % über dem Budget. Überschreitet im
+Prototyp die rechte Seite eines Joins das Budget ([P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren)),
+endet der Lauf mit `aborted` und einem Grund, der die Einschränkung nennt.
+**Begründung:** Ohne Grenze würde jedes Messergebnis die Gaps schließen, und der Prototyp
+könnte seine Fragen nicht wirklich beantworten.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G37](70-gap-ledger.md#g37-bestehkriterien-und-fehlende-festlegungen-im-scope-des-prototyps))
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

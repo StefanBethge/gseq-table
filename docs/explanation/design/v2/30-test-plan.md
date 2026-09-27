@@ -178,7 +178,7 @@ im Speicher, blockweise oder mit Auslagern ausgeführt wird, und gleich dem Erge
 **Beweist:** [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)
 Sortieren, Gruppieren und Join über eine Lieferung, die ein Vielfaches des Budgets groß
 ist, kommen durch, und der gemessene Spitzenwert des Speichers bleibt innerhalb des
-Budgets plus einer festgelegten Toleranz.
+Budgets plus 10 % ([D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget)).
 
 ### T24 — Nach einem Lauf bleibt nichts neben den Zielen zurück
 

@@ -190,7 +190,7 @@ bewahren soll.
 
 ### G20 — Grenzen für Feldlänge und entpackten Umfang
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D56](10-design-decisions.md#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch)
 Aus den [Security Boundaries](60-security-boundaries.md): Grenzen für einzelne Feldgrößen
 und für die entpackte Größe von Excel-Archiven, Dateirechte der ausgelagerten Daten, und
 ob der CSV-Writer Werte maskiert, die als Formel interpretiert würden. Keines davon ist
@@ -278,7 +278,7 @@ Nach [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schri
 
 ### G37 — Bestehkriterien und fehlende Festlegungen im Scope des Prototyps
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D57](10-design-decisions.md#d57-der-prototyp-liest-csv-und-excel-v20-zusatzlich-json-und-ndjson) und [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget)
 Die Exit-Kriterien im [Scope](40-scope-prototype.md) verlangen, dass [G5](#g5-ob-es-eine-veranderbare-tabelle-braucht) und [G13](#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) "beantwortet" sind, ohne Grenze. Damit schließt jedes Ergebnis sie. Die Toleranz in [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) ist nirgends festgelegt. [P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren) lässt einen Join über dem Budget mit einer Meldung scheitern, ohne Status nach [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst). Keine Decision legt die Reader-Formate fest, die [F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand) nennt. [P3](40-scope-prototype.md#p3-reader-fur-csv-und-excel) verweist deshalb auf ein Feature statt auf eine Decision.
 
 ### G38 — Panik oder Rückgabe bei Schreibfehlern

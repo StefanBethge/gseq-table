@@ -63,8 +63,8 @@ und Ausdrücke
 ### P3 — Reader für CSV und Excel
 
 Der Prototyp liest CSV und Excel, die beiden häufigsten Lieferformate. Produktion: dazu
-JSON und NDJSON ([F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand);
-keine Decision, siehe [G37](70-gap-ledger.md#g37-bestehkriterien-und-fehlende-festlegungen-im-scope-des-prototyps)).
+JSON und NDJSON ([D57](10-design-decisions.md#d57-der-prototyp-liest-csv-und-excel-v20-zusatzlich-json-und-ndjson),
+[F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand)).
 
 ### P4 — Datei-Writer für CSV und Excel
 
@@ -89,7 +89,7 @@ v2.0.0 als eigenes `/v2`-Modul mit SemVer
   und Gruppieren, nicht für Join.
 - [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und
   [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)
-  sind durch Benchmarks gegen v1 (`Table` und `MutableTable`) beantwortet: Laufzeit und
+  sind nach den Bestehkriterien aus [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) durch Benchmarks gegen v1 (`Table` und `MutableTable`) beantwortet: Laufzeit und
   Spitzenspeicher für Filter, abgeleitete Spalten, Umwandeln, Sortieren, Gruppieren und
   Join auf generierten Lieferungen verschiedener Größe. Die Ergebnisse stehen im Repo, und
   die Gaps sind geschlossen oder mit neuer Decision aufgelöst.
