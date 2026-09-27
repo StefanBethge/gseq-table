@@ -33,7 +33,7 @@ als fehlgeschlagen gilt. Offen ist auch, wie der Scheduler das Ergebnis erfährt
 
 ### G4 — Verarbeitungsmodell für große Lieferungen
 
-**Type:** Gap · **Kind:** verify · **Status:** offen
+**Type:** Gap · **Kind:** verify · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
 [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 verlangt, dass dieselbe Pipeline große Lieferungen verarbeitet, ohne sie vollständig zu
 laden. Offen ist, wie Streaming und In-Memory-Verarbeitung zusammenspielen und was mit
@@ -49,6 +49,10 @@ veränderbare Variante. Der Maintainer braucht sie nicht, wenn es ohne sie gleic
 ([D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen),
 [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)).
 Soll durch Messung im Prototyp gegen v1 `MutableTable` geprüft werden.
+Seit [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert)
+entscheidet die Engine über Kopieren oder Ändern. Die Annahme lautet damit: Ändern an Ort
+und Stelle, wo Daten nicht geteilt sind, erreicht Laufzeit und Speicher von v1
+`MutableTable`.
 
 ### G6 — Writer für Datenbank und HTTP
 
@@ -57,3 +61,11 @@ Soll durch Messung im Prototyp gegen v1 `MutableTable` geprüft werden.
 schreibt aussortierte Zeilen und Ergebnisse über Writer. Offen ist, ob die Library Writer
 für Datenbank und HTTP mitbringt oder nur eine Schnittstelle, die der Pipeline-Entwickler
 selbst umsetzt ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)).
+
+### G7 — Wirkung des harten Schalters für Kopieren und Ändern
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+[D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert)
+sieht einen harten Schalter am Anfang der Pipeline vor. Offen ist, was er festlegt: immer
+kopieren (nachvollziehbar, für Debugging), immer an Ort und Stelle ändern (schnell, aber
+nur ohne Zweige sicher), oder die Ausführungsart (Speicher, Streaming, automatisch).

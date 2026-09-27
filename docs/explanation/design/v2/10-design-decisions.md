@@ -79,3 +79,41 @@ und den Rohzustand ([D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustan
 einfacher, weil kein Schritt die Daten eines anderen verändert.
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D6 — Pipelines sind Pläne, die in Blöcken ausgeführt werden und auf die Platte auslagern können
+
+**Entscheidung:** Eine Pipeline beschreibt einen Plan. Ausgeführt wird er erst, wenn das
+Ergebnis angefordert wird. Die Engine verarbeitet die Daten in Blöcken von Zeilen, die
+schon während des Lesens durch die Schritte fließen. Schritte, die alle Zeilen brauchen
+(Sortieren, Gruppieren, Joins, Pivot), sammeln ihre Blöcke und lagern auf die Platte aus,
+wenn ein Speicherbudget erreicht ist. Derselbe Pipeline-Code läuft für kleine Lieferungen
+im Speicher und für große im Streaming. Die Wahl trifft die Engine, nicht der
+Pipeline-Entwickler.
+**Begründung:** Das ist das Modell von Polars, DuckDB und DataFusion. Es ist das einzige
+der betrachteten Modelle, das [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+vollständig erfüllt: große Lieferungen, begrenzter Speicher, kein Umbau der Pipeline.
+Verworfen wurden (B) Blöcke mit Speicherbudget ohne Auslagern, bei dem Schritte über
+alle Zeilen am Budget scheitern, und (C) blockweise Verarbeitung durch den Entwickler
+selbst, die "ohne großen Umbau" widerspricht. Der Plan ermöglicht außerdem, Schritte vor
+dem Lauf zu prüfen und zu optimieren. Der Aufwand für das Auslagern ist hoch und wird im
+Scope des Prototyps bewusst begrenzt.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Option A aus dem Vergleich mit pandas, Polars, DuckDB, Spark/Dask, DataFusion)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D7 — Die Engine entscheidet, ob sie Daten kopiert oder an Ort und Stelle ändert
+
+**Entscheidung:** Für den Pipeline-Entwickler sind Tabellen unveränderlich
+([D5](#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen)): Ein
+Schritt verändert nie Daten, die ein anderer Schritt, ein Zweig oder die aussortierten
+Zeilen noch sehen. Intern darf die Engine Daten an Ort und Stelle ändern, wenn niemand
+sonst sie sieht, und kopieren, wenn sie geteilt sind. Es gibt keine eigene veränderbare
+Tabelle in der API. Zusätzlich gibt es einen harten Schalter am Anfang der Pipeline,
+dessen genaue Wirkung offen ist ([G7](70-gap-ledger.md#g7-wirkung-des-harten-schalters-fur-kopieren-und-andern)).
+**Begründung:** In v1 gab es jede Operation doppelt, auf `Table` und `MutableTable`. Der
+Maintainer hat `MutableTable` nur wegen Tempo und Speicher genutzt, nicht wegen einer
+anderen Bedeutung. Entscheidet die Engine anhand dessen, ob Daten geteilt sind, fällt die
+doppelte API weg, und der Gewinn bleibt erhalten, wo er ohne Risiko möglich ist. Ob das
+genauso schnell und sparsam ist wie v1 `MutableTable`, prüft der Prototyp
+([G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)

@@ -119,10 +119,10 @@ Stelle etwas ändern, nicht jeden Schritt umschreiben. Der Lauf ist langsamer al
 spezialisiertes Werkzeug, aber er kommt mit begrenztem Speicher durch.
 
 **Erzwingt Entscheidungen:**
-- Wie wird zwischen "alles im Speicher" und "während des Lesens verarbeiten" umgeschaltet, und muss der Entwickler das überhaupt wählen? → offen, [G4](70-gap-ledger.md#g4-verarbeitungsmodell-fur-grosse-lieferungen)
-- Was passiert mit Schritten, die alle Zeilen brauchen (Sortieren, Gruppieren, Joins, Pivot), wenn nicht alles in den Speicher passt: auslagern auf die Platte, verbieten, oder nur für kleine Seiten erlauben? → offen, [G4](70-gap-ledger.md#g4-verarbeitungsmodell-fur-grosse-lieferungen)
+- Wie wird zwischen "alles im Speicher" und "während des Lesens verarbeiten" umgeschaltet, und muss der Entwickler das überhaupt wählen? → [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
+- Was passiert mit Schritten, die alle Zeilen brauchen (Sortieren, Gruppieren, Joins, Pivot), wenn nicht alles in den Speicher passt: auslagern auf die Platte, verbieten, oder nur für kleine Seiten erlauben? → auslagern: [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
 - Wie wird der Speicherbedarf begrenzt oder konfiguriert?
-- Braucht es eine veränderbare (mutable) Datenstruktur, um schnell und speichersparend genug zu sein, oder erreicht eine unveränderliche mit geteilten Spalten dieselben Ergebnisse? Der Maintainer braucht die mutable Variante nicht, wenn es ohne sie gleich gut geht. → Voreinstellung unveränderlich: [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen); Bedarf offen: [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht)
+- Braucht es eine veränderbare (mutable) Datenstruktur, um schnell und speichersparend genug zu sein, oder erreicht eine unveränderliche mit geteilten Spalten dieselben Ergebnisse? Der Maintainer braucht die mutable Variante nicht, wenn es ohne sie gleich gut geht. → Engine entscheidet: [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert); Voreinstellung unveränderlich: [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen); Bedarf offen: [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht)
 - Bringt spaltenorientierte Speicherung hier messbare Vorteile?
 
 ### UC7 — Externer Entwickler baut seine erste Pipeline

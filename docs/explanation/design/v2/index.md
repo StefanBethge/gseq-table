@@ -13,8 +13,8 @@ Erprobung klärt, bevor ein v2.0-Release geplant wird.
 | Dokument | Inhalt | IDs |
 |---|---|---|
 | [Use Cases](05-use-cases.md) | Akteure und Abläufe, und die Fragen, die sie an das Design stellen | [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung) – [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline) |
-| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen) |
-| [Gap Ledger](70-gap-ledger.md) | Offene Fragen, Annahmen und Inkonsistenzen | [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst) – [G6](70-gap-ledger.md#g6-writer-fur-datenbank-und-http) |
+| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) |
+| [Gap Ledger](70-gap-ledger.md) | Offene Fragen, Annahmen und Inkonsistenzen | [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst) – [G7](70-gap-ledger.md#g7-wirkung-des-harten-schalters-fur-kopieren-und-andern) |
 
 Die Dokumente entstehen in der Reihenfolge der Methode (Use Cases zuerst) und werden
 erst in diese Tabelle aufgenommen, wenn sie Inhalt haben.
