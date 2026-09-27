@@ -171,6 +171,72 @@ When you need types, use the `schema` package:
 
 This keeps the core pipeline simple without pulling in a large type system or analytics stack.
 
+### Typed access with generic methods (Go 1.27+)
+
+When you build with Go 1.27 or newer, `Row`, `Table`, and `MutableTable` gain typed methods that use Go 1.27 generic methods.
+Cells are still stored as strings. The methods parse on read and format on write.
+
+```go
+// Row: option.Option[T]
+qty := row.GetAs[int]("qty").UnwrapOr(0)
+price := row.GetAs[float64]("price")          // option.Option[float64]
+born := row.GetAs[time.Time]("birthday")
+ttl := row.GetWith("ttl", time.ParseDuration) // any type, T inferred from the parser
+
+// Columns
+ages, err := t.ColAs[int]("age")        // error on unknown column or any bad cell
+prices := t.ColOptAs[float64]("price")  // []option.Option[float64], aligned with rows
+ids, err := t.ColWith("id", uuid.Parse) // custom parser
+
+// Typed transforms (types inferred from fn)
+t = t.MapAs("price", func(p float64) float64 { return p * 1.19 })
+t = t.AddColAs("total", func(r table.Row) float64 {
+    return r.GetAs[float64]("price").UnwrapOr(0) * float64(r.GetAs[int]("qty").UnwrapOr(0))
+})
+
+// Typed aggregations (empty and unparseable cells are skipped)
+units := t.SumAs[int64]("qty")
+cheapest := t.MinAs[float64]("price") // option.Option[float64]
+latest := t.MaxAs[string]("sku")
+active := t.ReduceAs("active", 0, func(n int, b bool) int {
+    if b { n++ }
+    return n
+})
+
+// MutableTable: same methods, in place, plus SetAs
+m := t.Mutable()
+m.MapAs("qty", func(n int) int { return n + 1 }).SetAs(0, "active", true)
+```
+
+| Method | Row | Table | MutableTable |
+| --- | :-: | :-: | :-: |
+| `GetAs[T]`, `AtAs[T]`, `GetWith` | ✓ | | |
+| `ColAs[T]`, `ColWith`, `ColOptAs[T]` | | ✓ | ✓ |
+| `MapAs`, `AddColAs` | | ✓ | ✓ (in place) |
+| `SumAs[T]`, `MinAs[T]`, `MaxAs[T]`, `ReduceAs` | | ✓ | ✓ |
+| `SetAs` | | | ✓ |
+
+Supported types (`table.Value`): all built-in integer and float types, `string`, `bool`, and `time.Time`.
+For anything else, use `GetWith` or `ColWith` with your own parser.
+
+Parsing follows the same rules as the `schema` row accessors:
+
+- surrounding whitespace is trimmed
+- empty cells count as missing for every type except `string`
+- booleans accept `true`/`false`, `1`/`0`, `yes`/`no` (case-insensitive)
+- dates use the same layouts as `schema.Time`
+- the zero date (`0001-01-01`) counts as not parsed, the same as in `schema.Time`
+
+Formatting writes integers in base 10, floats in their shortest round-trip form, and booleans as `true`/`false`.
+A date at midnight UTC is written as `2006-01-02`. Any other time is written as RFC 3339.
+
+`MapAs` leaves empty and unparseable cells unchanged. If the column does not exist, it records a table error like `Map` does.
+
+Compatibility notes:
+
+- The module still declares `go 1.23`. The typed methods live in files with a `//go:build go1.27` constraint, so older toolchains build the module without them.
+- Generic methods cannot satisfy interfaces, so no existing interface changed. The existing package-level helpers (`table.ColAs`, `table.MapColTo`, `table.AddColOf`) are still there.
+
 ## Two APIs: immutable and mutable
 
 ### Table
@@ -366,6 +432,7 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - select, drop, rename, transpose
 - filtering, partitioning, sampling
 - map and transform by column or row
+- typed access, transforms, and aggregations via generic methods (Go 1.27+)
 - joins: inner, left, right, outer, anti
 - stable sorting and multi-column sorting
 - distinct, union, intersect
