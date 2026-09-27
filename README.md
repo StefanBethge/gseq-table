@@ -102,6 +102,7 @@ Core dependency footprint:
 | `etl` | composable pipelines with short-circuiting error propagation |
 | `schema` | type inference, normalization, validation, typed accessors, stats |
 | `excel` | optional Excel reader in a separate module |
+| `experimental/simd` | **experimental**: SIMD kernels for `[]float64` / `[]int64` (not covered by the v1 guarantee) |
 
 ## Quick example
 
@@ -517,6 +518,54 @@ The main tradeoff is deliberate:
 - you give up some type safety until validation time
 
 That is usually the right trade for messy external data, and the wrong trade for already-clean domain objects.
+
+## Experimental: SIMD kernels
+
+> **Experimental.** `experimental/simd` is outside the v1 stability guarantee.
+> Its API may change or be removed in any release.
+
+`github.com/stefanbethge/gseq-table/experimental/simd` provides numeric kernels on plain slices:
+
+- `SumFloat64`, `SumInt64`, `MeanFloat64`, `MeanInt64`
+- `MinFloat64`, `MaxFloat64`, `MinInt64`, `MaxInt64`
+- `DotFloat64`, `DotInt64`
+- elementwise `AddFloat64`, `AddInt64`, `MulFloat64`, `MulInt64`
+- filters: `CompareFloat64` / `CompareInt64` (to a `[]bool` mask) and `IndicesFloat64` / `IndicesInt64` (to matching row indices), with `Eq`, `Ne`, `Lt`, `Le`, `Gt`, `Ge`
+
+```go
+import "github.com/stefanbethge/gseq-table/experimental/simd"
+
+total := simd.SumFloat64(prices)
+rows := simd.IndicesFloat64(nil, prices, simd.Gt, 100)
+```
+
+The package always builds. By default it uses a plain-Go scalar implementation.
+To enable the vector kernels, build with Go 1.27+ and the `simd` experiment, which uses the standard library's experimental `simd/archsimd` package:
+
+```bash
+GOEXPERIMENT=simd go build ./...
+GOEXPERIMENT=simd go test ./experimental/simd
+```
+
+`simd.Accelerated()` reports whether the vector kernels are active.
+
+| Target | With `GOEXPERIMENT=simd` |
+|---|---|
+| amd64 | AVX2 (256-bit), detected at runtime; scalar on CPUs without AVX2 |
+| arm64 | NEON (128-bit) |
+| other | scalar fallback |
+
+Some kernels always use the scalar code:
+
+- `MulInt64` and `DotInt64`: NEON has no 64-bit integer multiply, and on amd64 it needs AVX-512.
+- `Compare*` and `Indices*` on arm64: NEON has no movemask, and extracting mask lanes costs more than Go's scalar compare.
+
+Results are bit-identical across builds and CPUs.
+Float `Sum`, `Mean` and `Dot` accumulate in eight fixed lanes, and the scalar fallback uses the same order.
+The last bits can therefore differ from a naive left-to-right loop.
+`Min` and `Max` behave like Go's builtin `min` and `max`: NaN propagates, and `-0 < +0`.
+
+Integration with typed table columns is planned separately.
 
 ## License
 
