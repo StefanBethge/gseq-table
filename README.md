@@ -99,6 +99,7 @@ Core dependency footprint:
 | `table` | core `Table`, `MutableTable`, `Row`, joins, aggregations, reshape, validation |
 | `csv` | CSV reader/writer, including chunked streaming reads |
 | `json` | JSON reader/writer with flat, flatten, and field mapping modes |
+| `markdown` | Markdown table writer for reports and docs |
 | `etl` | composable pipelines with short-circuiting error propagation |
 | `schema` | type inference, normalization, validation, typed accessors, stats |
 | `excel` | optional Excel reader in a separate module |
@@ -456,6 +457,7 @@ _ = csv.NewWriter().WriteFile("output.csv", t)
 - JSON read/write with three modes: flat (default), recursive flatten, and field mapping
 - NDJSON (newline-delimited JSON) support
 - optional Excel reading in a separate module
+- human-readable output: `fmt.Println(t)` prints an aligned text table (`t.Pretty(table.WithPrettyMaxRows(5), table.WithPrettyMaxColWidth(20))` to tune it), and `markdown.ToString(t)` / `markdown.NewWriter()` render GitHub-flavoured Markdown; widths are Unicode-aware
 
 ### Schema
 
