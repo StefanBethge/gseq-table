@@ -21,7 +21,8 @@ während noch gelesen wird.
 
 Schritte über alle Zeilen (Sortieren, Gruppieren, Joins, Pivot) sammeln ihre Blöcke und
 lagern bei Erreichen des Budgets auf die Platte aus. Das Budget berücksichtigt
-Container-Limits, und ausgelagerte Daten werden nach dem Lauf entfernt.
+Container-Limits, und ausgelagerte Daten werden nach dem Lauf entfernt, im Ergebnis
+gehaltene aussortierte Zeilen erst beim Schließen des Ergebnisses ([D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close)).
 **Setzt um:** [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)
 
 ### F4 — Kopieren oder Ändern an Ort und Stelle
@@ -50,7 +51,8 @@ SQL-Semantik für Nullwerte.
 ### F7 — Operationen mit eigener Logik
 
 Operationen, die eine Closure ausführen. Gibt sie einen Fehler zurück, wird die Zeile mit
-`code=custom` aussortiert.
+`code=custom` aussortiert, bei einem typisierten Fehler mit einem eigenen Code, der mit
+`custom:` beginnt ([D54](10-design-decisions.md#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus)).
 **Setzt um:** [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg)
 
 ## Quellen
@@ -80,13 +82,15 @@ Die Library bewahrt dafür nichts selbst auf.
 ### F11 — Aussortierte Zeilen
 
 Zeilen, die ein Schritt nicht verarbeiten kann, werden im ersten scheiternden Schritt
-aussortiert, mit einem Eintrag je betroffener Spalte. Das Ergebnis enthält je Quelle eine
-Tabelle mit Rohspalten und Info-Spalten sowie eine Übersicht über alle Quellen.
-**Setzt um:** [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix), [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte)
+aussortiert. Das Ergebnis enthält je Quelle eine Tabelle mit Rohspalten und Info-Spalten,
+in der jede Quellzeile einmal steht, sowie eine Übersicht über alle Quellen mit einem
+Eintrag je betroffener Spalte ([D44](10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler)).
+**Setzt um:** [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix), [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte)
 
 ### F12 — Herkunft über Joins und Aggregationen
 
-Nach einem Join werden alle beteiligten Quellzeilen aussortiert. Der Rohzustand reicht bis
+Scheitert eine Ergebniszeile nach einem Join, werden ihre Quellzeilen aussortiert, bei
+1:n-Joins nur die der gescheiterten Ergebniszeile ([D47](10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen)). Der Rohzustand reicht bis
 zum ersten zusammenfassenden Schritt, danach werden aggregierte Zeilen aussortiert. Optional
 gibt es volle Herkunft.
 **Setzt um:** [D11](10-design-decisions.md#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert), [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)
@@ -114,7 +118,8 @@ Kennung und Weg.
 
 ### F16 — Status, Zählungen, Trace und Exit-Code
 
-Das Ergebnis eines Laufs mit Status, Zählungen je Schritt und Fehlercode, Trace der Schritte
+Das Ergebnis eines Laufs mit Status, Zählungen gelesener, durchgelaufener, aussortierter
+und verworfener Quellzeilen ([D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)) je Schritt und Fehlercode, Trace der Schritte
 und einer Abbildung auf Exit-Codes.
 **Setzt um:** [D21](10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst), [D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert)
 
@@ -139,7 +144,7 @@ Markdown. Ergebnisse und aussortierte Zeilen gehen über denselben Weg.
 
 ### F20 — Writer für Datenbank und HTTP
 
-Unterpakete für `database/sql` (Insert, Upsert auf `record_key`) und HTTP (JSON/NDJSON,
+Unterpakete für `database/sql` (Insert, Upsert auf `row_key` nach [D47](10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen)) und HTTP (JSON/NDJSON,
 Batching, Wiederholung).
 **Setzt um:** [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http), [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)
 

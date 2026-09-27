@@ -12,7 +12,7 @@ nicht im Zustand des Schritts, in dem sie gescheitert ist. Dazu kommen Info-Spal
 beschreiben, wo und warum die Zeile aussortiert wurde. Was "Rohzustand" genau umfasst,
 legt [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) fest (vgl. [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst)).
 Welche Info-Spalten es gibt, legen [D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix) und
-[D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte) fest
+[D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte) fest
 (vgl. [G2](70-gap-ledger.md#g2-welche-info-spalten-eine-aussortierte-zeile-tragt)).
 **Begründung:** Eine Tabelle lässt sich mit allen Mitteln der Library weiterverarbeiten:
 filtern, in einen Zweig geben, schreiben. Ein eigenes Fehlerformat bräuchte eigene
@@ -202,9 +202,8 @@ mitgeführt, der alle Zeilen braucht und sie zusammenfasst (Gruppieren, Pivot un
 Ähnliches). Scheitert eine Zeile nach diesem Schritt, wird sie als aggregierte Zeile
 aussortiert: mit ihren Werten, dem Gruppenschlüssel, der Anzahl der eingegangenen
 Quellzeilen und dem Grund, in der Tabelle nach [D48](#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle). Eine Option "volle Herkunft" führt zusätzlich die Kennungen der
-Quellzeilen über die Zusammenfassung hinaus mit. Eine Quellzeile gilt als durchgekommen,
-sobald sie einen zusammenfassenden Schritt erreicht hat oder alle aus ihr entstandenen
-Zeilen im Ziel angekommen sind. Danach wird ihr Rohzustand freigegeben.
+Quellzeilen über die Zusammenfassung hinaus mit. Wie eine Quellzeile gezählt und wann ihr
+Rohzustand freigegeben wird, legt [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) fest (offen: [G43](70-gap-ledger.md#g43-das-zahlmodell-deckt-teilausfalle-einheiten-und-abbruche-nicht-ab)).
 **Begründung:** In eine aggregierte Zeile gehen bei großen Lieferungen bis zu Millionen
 Quellzeilen ein. Deren Rohzustand mitzuführen, würde den Speicherrahmen aus
 [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
@@ -217,9 +216,10 @@ sprengen. Wo sie landen, regelt [D48](#d48-nach-einer-gruppierung-aussortierte-z
 **Entscheidung:** Das Ergebnis eines Laufs liefert je Quelle eine Tabelle aussortierter
 Zeilen mit den Rohspalten dieser Quelle und den Info-Spalten aus
 [D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix). Zusätzlich gibt es
-eine Übersicht über alle Quellen, die nur die Info-Spalten enthält. Die Übersicht ist die
-Grundlage für Zählungen, Meldungen und die Schwelle aus
-[D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen).
+eine Übersicht über alle Quellen, die nur die Info-Spalten enthält, mit einem Eintrag je
+Fehler nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler); sie ist die Grundlage für Meldungen. Zählungen folgen den Quellzeilen nach [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben); wie die Schwelle aus
+[D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen) bemessen wird,
+legt [D45](#d45-die-schwelle-bezieht-anteile-auf-bisher-gelesene-zeilen-gilt-bei-einer-der-grenzen-und-bricht-erst-nach-einer-mindestzahl-ab) fest.
 **Begründung:** Quellen haben unterschiedliche Spalten. Eine Tabelle je Quelle lässt sich
 schreiben ([D2](#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse))
 und wieder als Quelle verwenden
@@ -234,11 +234,14 @@ sind. Die ist schwer zu schreiben und nachzuverarbeiten.
 **Entscheidung:** Die Info-Spalten einer aussortierten Zeile tragen ein reserviertes
 Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt diese Spalten:
 `reject_id` (verbindet zusammengehörige Einträge), `run_id`, `cell` (betroffene Excel-Zelle nach [D52](#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)), `record_key`, `row_key` nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) und optional
-`error_count` nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler), `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
+`error_count` nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler), `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), `formula` (Formel einer Excel-Zelle nach [D52](#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)), die Fundstelle nach
 [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
-Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
-`validation`, `unparseable_line`, `aggregate_failed`, `missing_field`; Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
+Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart aus dem festen Kern nach [D54](#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus):
+`parse`, `validation`, `unparseable_line`, `aggregate_failed`, `missing_field` nach [D53](#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle),
+`field_too_large` nach [D56](#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch), `expr` nach [D54](#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus), `custom` nach [D32](#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg) und
+[D39](#d39-eine-panik-in-einer-closure-wird-wie-ein-zuruckgegebener-fehler-behandelt), die Lieferfehler `missing_column`, `missing_sheet`, `missing_file`, `unreadable` und
+`truncated` nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error); dazu eigene Codes `custom:<name>` aus Closures nach [D54](#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus)) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
 ließen).
 **Begründung:** Das Präfix verhindert Kollisionen mit Datenspalten. Der feste Code erlaubt
 es, ohne Textvergleich zu filtern und Zweige zu bilden
@@ -246,13 +249,14 @@ es, ohne Textvergleich zu filtern und Zweige zu bilden
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G2](70-gap-ledger.md#g2-welche-info-spalten-eine-aussortierte-zeile-tragt); Validierung im Prototyp: [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
 
-### D15 — Eine Zeile wird im ersten scheiternden Schritt aussortiert, mit einem Eintrag je betroffener Spalte
+### D15 — Eine Zeile wird im ersten scheiternden Schritt aussortiert, mit einem Übersichtseintrag je betroffener Spalte
 
 **Entscheidung:** Eine Zeile wird im ersten Schritt aussortiert, in dem sie scheitert.
 Spätere Schritte sehen sie nicht mehr, es sei denn, der Schritt hat einen Fehlerzweig nach
 [D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck). Scheitern in diesem Schritt mehrere Spalten, gibt
-es je Spalte einen Eintrag mit derselben `reject_id` nach
-[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix).
+es in der Übersicht je Spalte einen Eintrag mit derselben `reject_id` nach
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix). In der Tabelle je
+Quelle steht die Zeile nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler) einmal.
 **Begründung:** Der Pipeline-Entwickler sieht so alle Probleme einer Zeile in dem Schritt,
 der sie aussortiert hat, und nicht nur das erste. Alle Schritte weiter auf einer
 gescheiterten Zeile laufen zu lassen, wurde verworfen. Deren Ergebnisse wären Folgefehler
@@ -283,7 +287,8 @@ lesbar.
 ### D17 — Die Library bewahrt aussortierte Zeilen nicht selbst auf
 
 **Entscheidung:** Die Library speichert aussortierte Zeilen nicht über das Ende eines
-Laufs hinaus. Die Pipeline schreibt sie nach
+Laufs hinaus. Ausgenommen sind aussortierte Zeilen, die das Ergebnis nach [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) bis
+zum Schließen hält (offen: [G47](70-gap-ledger.md#g47-aufraumen-verwaister-laufe-gegen-offene-ergebnisse)). Die Pipeline schreibt sie nach
 [D2](#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse)
 in ein Ziel ihrer Wahl und liest sie für eine Nachverarbeitung mit dem passenden Reader
 wieder ein. Wie lange sie aufbewahrt werden, entscheiden Pipeline und Ziel.
@@ -326,7 +331,8 @@ Dedup-Schlüssel für Zeilen.
 die kein Schritt erzeugt, ein Typkonflikt oder ein ungültiger Parameter. Sie werden vor
 dem Lauf geprüft, und der Lauf startet nicht.
 **Lieferfehler** betreffen den Aufbau einer Lieferung, zum Beispiel eine fehlende
-erwartete Spalte oder ein fehlendes Sheet. Sie werden beim Lesen des Kopfs erkannt.
+erwartete Spalte oder ein fehlendes Sheet. Sie werden beim Lesen des Kopfs erkannt oder, bei `truncated`,
+`missing_file` und fehlenden JSON-Feldern, später im Lauf ([D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error), [D53](#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle)).
 **Datenfehler** betreffen einzelne Zeilen, zum Beispiel einen nicht parsebaren Wert, eine
 verletzte Validierung oder eine unzerlegbare Zeile.
 Wie Liefer- und Datenfehler behandelt werden, ist konfigurierbar, je Fehlerart und je
@@ -366,12 +372,12 @@ spart bei großen Lieferungen Zeit, wenn das Ausmaß nicht gebraucht wird.
 **Entscheidung:** Das Ergebnis eines Laufs trägt einen Status: `ok`, `failed_threshold`
 (Schwelle überschritten), `aborted` (gestoppt nach
 [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
-oder abgebrochen über den Kontext) `plan_error` (Planfehler nach
+oder abgebrochen über den Kontext), `plan_error` (Planfehler nach
 [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)),
 `delivery_error` (Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) oder
-`sink_error` (Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)). Dazu
-kommen die Zählungen gelesener, durchgelaufener und aussortierter Zeilen, je Schritt und
-je Fehlercode. Eine Hilfsfunktion bildet den Status auf einen Exit-Code für den Scheduler ab.
+`sink_error` (Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab))
+(Vorrang offen: [G46](70-gap-ledger.md#g46-vorrang-der-status-und-umfang-von-aborted)). Dazu kommen die Zählungen gelesener, durchgelaufener,
+aussortierter und verworfener Quellzeilen nach [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben), je Schritt und je Fehlercode. Eine Hilfsfunktion bildet den Status auf einen Exit-Code für den Scheduler ab.
 **Begründung:** Der Scheduler braucht ein eindeutiges Signal, der Pipeline-Entwickler die
 Zählungen, um zu sehen, wo etwas passiert ist. Den Status als Wert zurückzugeben, statt ihn
 nur über einen `error` auszudrücken, erlaubt es, zwischen "Lauf gescheitert" und
@@ -512,7 +518,7 @@ aus einer Lieferung liest, sind Text, bis ein Schritt sie in einen Typ umwandelt
 billig weiterreichen und erlauben vektorisierte Verarbeitung, wie sie `experimental/simd`
 in v1.2 gemessen hat (PR #12, v1.2.0). Dass Rohspalten Text bleiben, passt zu schmutzigen Lieferungen:
 Erst beim Umwandeln entscheidet sich, ob ein Wert passt oder die Zeile aussortiert wird
-([D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte)).
+([D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte)).
 Ob der Vorteil gegenüber v1 messbar ist, klärt der Prototyp
 ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27
@@ -564,7 +570,8 @@ anzubieten. Vorbild: Polars mit `DataFrame` und `LazyFrame`.
 **Entscheidung:** Berechnungen, Filter und abgeleitete Spalten werden als Ausdrücke
 formuliert (z. B. `Col("netto").Mul(Lit(1.19))`). Ausdrücke sind typisiert. Die Engine
 prüft sie vor dem Lauf, Fehler darin sind Planfehler nach
-[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler), und sie
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) (Fehler, die erst
+bei der Ausführung auftreten, regelt [D54](#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus)), und sie
 führt sie spaltenweise aus. Die String-, Datums- und Rechen-Helfer aus v1 `schema` werden
 zu Ausdrucksfunktionen. Für Logik, die sich nicht als Ausdruck fassen lässt, gibt es
 Operationen mit Closures. Gibt eine Closure einen Fehler zurück, wird die Zeile mit
@@ -650,7 +657,7 @@ Decisions über das Design-Set selbst, wie diese.
 Zugriff bestand. Der Maintainer hat sich ausdrücklich für einen eigenen Bau entschieden.
 Er folgt der Spezifikation der Methode und kann die dort noch fehlende UC-Familie gleich
 mit abdecken.
-**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen))
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen); Ausnahme ergänzt zur Auflösung von [G39](70-gap-ledger.md#g39-d37-nennt-keinen-use-case))
 **Betroffene Use Cases:** keine. Die Decision betrifft die Pflege des Design-Sets und ist nach ihrer eigenen Regel ausgenommen ([G39](70-gap-ledger.md#g39-d37-nennt-keinen-use-case)).
 
 ### D38 — Ein späterer Lauf entfernt verwaiste ausgelagerte Daten
@@ -690,7 +697,7 @@ Die Library löst keine Panik aus.
 **Begründung:** Ein stiller Schreibfehler würde genau die Daten verlieren, die das
 Fehlermodell bewahren soll
 ([D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten)). Der
-sofortige Abbruch hält die Daten in der Quelle vorhanden, und der Lauf lässt sich nach
+sofortige Abbruch hält die Daten bei Datei-Quellen in der Quelle vorhanden, und der Lauf lässt sich nach
 Behebung des Ziels wiederholen. Eine Panik wurde erwogen und verworfen: In einer Library
 beendet sie das ganze Programm, auch andere Läufe im selben Prozess. Der eigene Status
 ist für den Scheduler genauso eindeutig. Wie auf einen Schreibfehler reagiert wird, hängt
@@ -704,7 +711,8 @@ vom Ziel ab und bleibt Sache der Pipeline.
 [D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)
 wiederholt eine Anfrage bei vorübergehenden Fehlern (Zeitüberschreitung, Serverfehler,
 Überlastung) mit wachsendem Abstand. Jeder Batch trägt einen Idempotenzschlüssel, der aus
-den `record_key`s des Batches abgeleitet ist und bei einer Wiederholung gleich bleibt, und
+den `record_key`s des Batches abgeleitet ist (Schlüssel nach `row_key` offen: [G48](70-gap-ledger.md#g48-row_key-uber-joins-hinaus))
+und bei einer Wiederholung gleich bleibt, und
 jede Zeile trägt ihren `record_key`
 ([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)).
 Die Zusage ist "mindestens einmal". Deduplizieren ist Sache des Empfängers.
@@ -741,7 +749,7 @@ etwas nicht" von "zu viele schlechte Werte" (`failed_threshold`) und bleibt im M
 "aussortieren" mit den Daten vereinbar. Verworfen: eine Standard-Schwelle "alle Zeilen einer
 Quelle". Sie erfasst keine abgeschnittene Lieferung und vermischt die beiden Fälle.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G21](70-gap-ledger.md#g21-eine-formatanderung-meldet-mit-voreinstellungen-einen-erfolgreichen-lauf) und [G28](70-gap-ledger.md#g28-abgeschnittene-und-unlesbare-lieferungen))
-**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets)
 
 ### D43 — Gezählt werden Quellzeilen in vier Kategorien, und der Rohzustand wird bei jedem Verlassen des Plans freigegeben
 
@@ -767,7 +775,7 @@ aus einem Filter fallen. Genau dieses stille Verschwinden will [D30](#d30-es-gib
 **Entscheidung:** Die Tabelle aussortierter Zeilen je Quelle nach [D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen) enthält jede
 Quellzeile genau einmal. Ihre Info-Spalten beschreiben den ersten Fehler, und die
 Info-Spalte `error_count` nennt die Zahl der Fehler der Zeile im scheiternden Schritt. Die
-Übersicht enthält einen Eintrag je Fehler, verbunden über `reject_id`. Das präzisiert [D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte).
+Übersicht enthält einen Eintrag je Fehler, verbunden über `reject_id`. Das präzisiert [D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte).
 **Begründung:** Stünde eine Zeile mit drei fehlerhaften Spalten dreimal in der Tabelle je
 Quelle, würde die Nachverarbeitung nach [D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) sie dreimal verarbeiten. Alle Fehler bleiben
 über die Übersicht sichtbar.
@@ -788,7 +796,7 @@ Mindestzahl würde die erste aussortierte Zeile einen Anteil von 100 % ergeben u
 Lauf sofort abbrechen. "Eine der beiden Grenzen" ist die strengere und damit für ein Signal
 die sichere Lesart.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G27](70-gap-ledger.md#g27-schwelle-als-anteil-im-streaming))
-**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
 
 ### D46 — Gerettete Zeilen behalten ihre Geschichte, und die Schwelle zählt nur endgültig aussortierte
 
@@ -939,7 +947,7 @@ Fehlermodells. Das ausdrückliche `OrNull()` deckt die Fälle ab, in denen SQL-V
 gewollt ist. Eigene Codes erlauben es, Zweige nach
 [D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) fachlich zu bilden, ohne Texte zu vergleichen.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G34](70-gap-ledger.md#g34-laufzeitfehler-in-ausdrucken-und-vollstandigkeit-der-fehlercodes))
-**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
 
 ### D55 — Roh- und Arbeitsdaten teilen Spalten, bis ein Schritt eine Spalte ändert
 
@@ -979,7 +987,7 @@ JSON und NDJSON. Ob und wann ein Reader für Parquet dazukommt, ist nicht Teil v
 NDJSON kommen aus v1 und aus HTTP-Quellen. Parquet setzt die spaltenorientierte Speicherung
 voraus, deren Nutzen der Prototyp erst messen soll ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G37](70-gap-ledger.md#g37-bestehkriterien-und-fehlende-festlegungen-im-scope-des-prototyps))
-**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets)
+**Betroffene Use Cases:** [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets)
 
 ### D58 — Der Prototyp hat feste Bestehkriterien für Laufzeit, Speicher und Budget
 

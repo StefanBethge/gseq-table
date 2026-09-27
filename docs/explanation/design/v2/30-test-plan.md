@@ -23,9 +23,11 @@ sie darstellen kann.
 
 ### T3 — Im Modus "stoppen" endet der Lauf beim ersten Datenfehler, im Modus "aussortieren" nicht
 
-**Beweist:** [D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
+**Beweist:** [D3](10-design-decisions.md#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen), [D51](10-design-decisions.md#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben)
 Dieselbe Lieferung mit einem fehlerhaften Wert ergibt im Modus "stoppen" den Status
-`aborted`, im Modus "aussortieren" den Status `ok` mit genau einer aussortierten Zeile.
+`aborted`, im Modus "aussortieren" den Status `ok` mit genau einer aussortierten Zeile. Im
+Modus "stoppen" steht keine Zeile des Blocks mit dem Fehler im Ziel, zuvor geschriebene
+Blöcke bleiben.
 
 ### T4 — Die Schwelle markiert den Lauf als fehlgeschlagen und lässt ihn standardmäßig zu Ende laufen
 
@@ -41,17 +43,19 @@ Eine Pipeline ohne Angaben zum Fehlerverhalten verarbeitet eine Lieferung mit Pa
 Validierungs- und Zerlegungsfehlern. Der Lauf endet mit `ok`, und jede fehlerhafte Zeile
 ist aussortiert.
 
-### T6 — Eine im Schritt scheiternde Zeile erzeugt einen Eintrag je Spalte und erreicht spätere Schritte nicht
+### T6 — Eine im Schritt scheiternde Zeile steht einmal in ihrer Tabelle je Quelle, hat einen Übersichtseintrag je Spalte und erreicht spätere Schritte nicht
 
-**Beweist:** [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte)
-Scheitern in einem Schritt drei Spalten einer Zeile, gibt es drei Einträge mit derselben
+**Beweist:** [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte), [D44](10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler)
+Scheitern in einem Schritt drei Spalten einer Zeile, steht sie in ihrer Tabelle je Quelle
+einmal mit `error_count` gleich 3, und die Übersicht enthält drei Einträge mit derselben
 `reject_id`. Ein späterer Schritt, der jede Zeile zählt, zählt diese Zeile nicht.
 
 ### T7 — Aussortierte Zeilen gibt es je Quelle, und die Übersicht stimmt mit ihnen überein
 
-**Beweist:** [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix)
+**Beweist:** [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix), [D44](10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler)
 Bei zwei Quellen mit verschiedenen Spalten hat jede Tabelle aussortierter Zeilen die
-Rohspalten ihrer Quelle. Die Übersicht enthält genau die Info-Spalten aller Einträge. Ein
+Rohspalten ihrer Quelle. Die Übersicht enthält genau die Info-Spalten, mit einem Eintrag je
+Fehler der Zeilen aus den Tabellen je Quelle. Ein
 geändertes Präfix gilt für alle Info-Spalten, und eine Datenspalte mit Standardpräfix-Namen
 wird nicht überschrieben.
 
@@ -66,11 +70,12 @@ ihrer Tabelle je Quelle.
 
 ### T9 — Nach einer Gruppierung werden aggregierte Zeilen aussortiert, und der Speicher bleibt im Budget
 
-**Beweist:** [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)
+**Beweist:** [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert), [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D48](10-design-decisions.md#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle)
 Eine nach der Gruppierung scheiternde Zeile wird mit Gruppenschlüssel und Anzahl der
 Quellzeilen aussortiert. Der Spitzenspeicher eines Laufs mit Gruppierung über eine
 Lieferung, die ein Vielfaches des Budgets groß ist, bleibt im Budget
-([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)). Mit der Option "volle Herkunft" enthält der Eintrag die Kennungen der Quellzeilen.
+([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)). Mit der Option "volle Herkunft" trägt der Eintrag die Kennungen der Quellzeilen; ob die
+Quellzeilen auch mit Rohzustand in ihren Tabellen je Quelle stehen, ist offen ([G42](70-gap-ledger.md#g42-volle-herkunft-liefert-nach-einer-gruppierung-keinen-rohzustand)).
 
 ## Quellen
 
@@ -89,11 +94,12 @@ der Lieferung, aus der ihre Werte stammen.
 
 ### T12 — Nachverarbeitung behält ursprüngliche Fundstelle und Schlüssel
 
-**Beweist:** [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle), [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)
+**Beweist:** [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle), [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), [D44](10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler)
 Aussortierte Zeilen eines Laufs werden geschrieben, gelesen und als Quelle verwendet.
 Durchlaufende Zeilen tragen denselben `record_key` wie im ersten Lauf. Erneut scheiternde
 Zeilen zeigen auf die Original-Lieferung. Unzerlegbare Zeilen werden nach geänderter
-Reader-Konfiguration verarbeitet.
+Reader-Konfiguration verarbeitet. Eine Zeile mit mehreren fehlerhaften Spalten wird einmal
+verarbeitet.
 
 ### T13 — record_key ist innerhalb einer Lieferung stabil, ein fachlicher Schlüssel darüber hinaus
 
@@ -106,17 +112,20 @@ denselben `record_hash`.
 
 ### T14 — Die Prüfung des Kopfs erkennt fehlende, neue und umbenannte Spalten
 
-**Beweist:** [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird), [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)
-Eine fehlende Spalte sortiert im Modus "aussortieren" alle Zeilen mit `missing_column` aus
-und stoppt im Modus "stoppen". Eine neue Spalte wird gemeldet und durchgereicht. Ein Paar
+**Beweist:** [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird), [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler), [D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error)
+Eine fehlende Spalte ergibt den Status `delivery_error` (Vorrang im Modus "stoppen" offen:
+[G46](70-gap-ledger.md#g46-vorrang-der-status-und-umfang-von-aborted)), sortiert im Modus "aussortieren" alle Zeilen mit `missing_column` aus und
+stoppt im Modus "stoppen". Eine neue Spalte wird gemeldet und durchgereicht. Ein Paar
 aus fehlender und ähnlich benannter neuer Spalte wird als vermutliche Umbenennung gemeldet.
 
 ### T15 — Planfehler verhindern den Lauf, Liefer- und Datenfehler folgen der Konfiguration je Code
 
-**Beweist:** [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler), [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg)
+**Beweist:** [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler), [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg), [D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error), [D54](10-design-decisions.md#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus)
 Ein Ausdruck auf eine unbekannte Spalte oder mit Typkonflikt ergibt `plan_error`, bevor
 eine Zeile gelesen wird, in jedem Modus. Ist `parse` auf "aussortieren" und
-`missing_column` auf "stoppen" gesetzt, verhält sich der Lauf je Code entsprechend.
+`missing_column` auf "stoppen" gesetzt, verhält sich der Lauf je Code entsprechend. Ein
+Ausdruck, der erst bei der Ausführung scheitert (Division durch null), sortiert die Zeile mit
+`expr` aus und ergibt keinen `plan_error`.
 
 ## Laufergebnis
 
@@ -168,24 +177,26 @@ Hauptweg. In den Zählungen erscheint die Quellzeile einmal.
 
 ### T22 — Dieselbe Pipeline liefert im Speicher und im Streaming dasselbe Ergebnis
 
-**Beweist:** [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D31](10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan)
-Für generierte Lieferungen sind Ergebnis und aussortierte Zeilen gleich, egal ob der Lauf
+**Beweist:** [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D31](10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan), [D50](10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler)
+Für generierte Lieferungen im Modus "aussortieren" ohne vorzeitigen Abbruch (vgl.
+[G55](70-gap-ledger.md#g55-t22-ist-nicht-in-jedem-modus-deterministisch-und-der-erste-fehler-hat-keine-reihenfolge)) sind Ergebnis und aussortierte Zeilen gleich, egal ob der Lauf
 im Speicher, blockweise oder mit Auslagern ausgeführt wird, und gleich dem Ergebnis der
 `Table`-Methoden mit denselben Operationen.
 
 ### T23 — Ein Lauf über mehr Daten als das Budget hält das Budget ein
 
-**Beweist:** [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)
+**Beweist:** [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget), [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt)
 Sortieren, Gruppieren und Join über eine Lieferung, die ein Vielfaches des Budgets groß
 ist, kommen durch, und der gemessene Spitzenwert des Speichers bleibt innerhalb des
-Budgets plus 10 % ([D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget)).
+Budgets plus 10 %, auch in Docker mit mehreren Speicher-Limits ([D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget)).
 
 ### T24 — Nach einem Lauf bleibt nichts neben den Zielen zurück
 
-**Beweist:** [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D17](10-design-decisions.md#d17-die-library-bewahrt-aussortierte-zeilen-nicht-selbst-auf)
+**Beweist:** [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D17](10-design-decisions.md#d17-die-library-bewahrt-aussortierte-zeilen-nicht-selbst-auf), [D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), [D38](10-design-decisions.md#d38-ein-spaterer-lauf-entfernt-verwaiste-ausgelagerte-daten)
 Nach einem erfolgreichen, einem gestoppten und einem über den Kontext abgebrochenen Lauf
 ist das Verzeichnis zum Auslagern leer, bei im Ergebnis gehaltenen aussortierten Zeilen nach dem Schließen des Ergebnisses ([D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close)), und die Library hat keine Dateien außerhalb der
-angegebenen Ziele angelegt.
+angegebenen Ziele angelegt. Die Reste eines vom System beendeten Laufs entfernt der nächste
+Lauf (Abgrenzung zu offenen Ergebnissen offen: [G47](70-gap-ledger.md#g47-aufraumen-verwaister-laufe-gegen-offene-ergebnisse)).
 
 ### T25 — Kein Zweig sieht Änderungen eines anderen, in jedem Modus
 
@@ -210,9 +221,11 @@ und Aggregationen überspringen Nullwerte.
 
 ### T28 — Eine Closure, die einen Fehler meldet, sortiert die Zeile mit code=custom aus
 
-**Beweist:** [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg)
+**Beweist:** [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg), [D39](10-design-decisions.md#d39-eine-panik-in-einer-closure-wird-wie-ein-zuruckgegebener-fehler-behandelt), [D54](10-design-decisions.md#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus)
 Eine Closure gibt für bestimmte Zeilen einen Fehler zurück. Diese Zeilen sind mit
-`code=custom` und dem Fehlertext als Grund aussortiert, die übrigen laufen durch.
+`code=custom` und dem Fehlertext als Grund aussortiert, die übrigen laufen durch. Eine
+Closure in Panik sortiert die Zeile ebenso aus, mit der Panik-Meldung im Grund. Ein
+typisierter Fehler mit eigenem Code ergibt einen Code, der mit `custom:` beginnt.
 
 ## Ziele und API
 
@@ -225,7 +238,7 @@ bleiben.
 
 ### T30 — Der HTTP-Writer liefert jede Zeile trotz vorübergehender Fehler aus
 
-**Beweist:** [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)
+**Beweist:** [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http), [D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit)
 Gegen einen Testserver, der einzelne Anfragen vorübergehend ablehnt, kommt jede Zeile an.
 Wiederholte Batches tragen denselben Idempotenzschlüssel ([D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit)).
 
