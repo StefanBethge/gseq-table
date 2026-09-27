@@ -55,13 +55,14 @@ Rohspalten ihrer Quelle. Die Übersicht enthält genau die Info-Spalten aller Ei
 geändertes Präfix gilt für alle Info-Spalten, und eine Datenspalte mit Standardpräfix-Namen
 wird nicht überschrieben.
 
-### T8 — Scheitert eine Zeile nach einem Join, sind beide Quellzeilen mit gemeinsamer Kennung aussortiert
+### T8 — Scheitert eine Ergebniszeile nach einem Join, sind ihre Quellzeilen mit gemeinsamer Kennung aussortiert
 
-**Beweist:** [D11](10-design-decisions.md#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert)
-Eine Zeile aus einem Join zweier Quellen scheitert in einem späteren Schritt. Die Tabellen
-aussortierter Zeilen beider Quellen enthalten je die beteiligte Quellzeile mit eigenem
-Rohzustand und eigener Fundstelle, und beide Einträge tragen dieselbe `reject_id`.
-1:n-Fälle siehe [G24](70-gap-ledger.md#g24-1n-joins-identitat-der-ergebniszeilen-und-teilweiser-erfolg).
+**Beweist:** [D11](10-design-decisions.md#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert), [D47](10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen)
+Scheitert eine Ergebniszeile eines Joins, stehen beide Quellzeilen mit derselben
+`reject_id` in der Übersicht. Bei einem 1:n-Join, in dem eine von fünf Ergebniszeilen
+scheitert, kommen die übrigen vier im Ziel an, die linke Quellzeile zählt als
+durchgelaufen, und eine rechte Zeile mit vielen gescheiterten Partnern steht einmal in
+ihrer Tabelle je Quelle.
 
 ### T9 — Nach einer Gruppierung werden aggregierte Zeilen aussortiert, und der Speicher bleibt im Budget
 
@@ -94,11 +95,13 @@ Durchlaufende Zeilen tragen denselben `record_key` wie im ersten Lauf. Erneut sc
 Zeilen zeigen auf die Original-Lieferung. Unzerlegbare Zeilen werden nach geänderter
 Reader-Konfiguration verarbeitet.
 
-### T13 — record_key ist über Läufe stabil, record_hash über Dateinamen
+### T13 — record_key ist innerhalb einer Lieferung stabil, ein fachlicher Schlüssel darüber hinaus
 
 **Beweist:** [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)
-Zwei Läufe über dieselbe Lieferung ergeben für jede Zeile denselben `record_key`. Dieselbe
-Lieferung unter anderem Dateinamen ergibt einen anderen `record_key`, aber für jede Zeile
+Dieselbe Lieferung ergibt in zwei Läufen und in der Nachverarbeitung dieselben
+`record_key`s. Eine Lieferung mit einer oben eingefügten Zeile und eine neue Lieferung mit
+gleichem Dateinamen überschreiben keine Schlüssel der alten. Mit fachlichem Schlüssel ist
+`record_key` über Lieferungen hinweg gleich. Dieselbe Lieferung unter anderem Namen ergibt
 denselben `record_hash`.
 
 ### T14 — Die Prüfung des Kopfs erkennt fehlende, neue und umbenannte Spalten
@@ -215,10 +218,10 @@ Eine Closure gibt für bestimmte Zeilen einen Fehler zurück. Diese Zeilen sind 
 
 ### T29 — Der Datenbank-Writer ist bei Nachverarbeitung idempotent
 
-**Beweist:** [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http), [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)
-Ein Lauf und eine anschließende Nachverarbeitung mit Upsert auf `record_key` ergeben keine
-doppelten Zeilen im Ziel. 1:n-Fälle siehe
-[G24](70-gap-ledger.md#g24-1n-joins-identitat-der-ergebniszeilen-und-teilweiser-erfolg).
+**Beweist:** [D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http), [D47](10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen)
+Ein Lauf und eine anschließende Nachverarbeitung mit Upsert auf `row_key` ergeben keine
+doppelten Zeilen im Ziel, auch bei einem 1:n-Join, dessen Ergebniszeilen alle erhalten
+bleiben.
 
 ### T30 — Der HTTP-Writer liefert jede Zeile trotz vorübergehender Fehler aus
 

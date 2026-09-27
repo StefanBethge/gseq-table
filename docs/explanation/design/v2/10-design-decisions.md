@@ -201,15 +201,14 @@ Eine zusammengeführte Rohzeile beider Seiten gäbe es in keiner Quelle.
 mitgeführt, der alle Zeilen braucht und sie zusammenfasst (Gruppieren, Pivot und
 Ähnliches). Scheitert eine Zeile nach diesem Schritt, wird sie als aggregierte Zeile
 aussortiert: mit ihren Werten, dem Gruppenschlüssel, der Anzahl der eingegangenen
-Quellzeilen und dem Grund. Eine Option "volle Herkunft" führt zusätzlich die Kennungen der
+Quellzeilen und dem Grund, in der Tabelle nach [D48](#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle). Eine Option "volle Herkunft" führt zusätzlich die Kennungen der
 Quellzeilen über die Zusammenfassung hinaus mit. Eine Quellzeile gilt als durchgekommen,
 sobald sie einen zusammenfassenden Schritt erreicht hat oder alle aus ihr entstandenen
 Zeilen im Ziel angekommen sind. Danach wird ihr Rohzustand freigegeben.
 **Begründung:** In eine aggregierte Zeile gehen bei großen Lieferungen bis zu Millionen
 Quellzeilen ein. Deren Rohzustand mitzuführen, würde den Speicherrahmen aus
 [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
-sprengen. Über den Gruppenschlüssel lassen sich die Quellzeilen bei Bedarf in der Lieferung
-finden. Die Option "volle Herkunft" deckt kleine Läufe und das Debuggen ab.
+sprengen. Wo sie landen, regelt [D48](#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle). Die Option "volle Herkunft" deckt kleine Läufe und das Debuggen ab.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G9](70-gap-ledger.md#g9-rohzustand-und-fundstelle-nach-aggregation-und-join), zusammen mit [D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert))
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
 
@@ -234,12 +233,12 @@ sind. Die ist schwer zu schreiben und nachzuverarbeiten.
 
 **Entscheidung:** Die Info-Spalten einer aussortierten Zeile tragen ein reserviertes
 Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt diese Spalten:
-`reject_id` (verbindet zusammengehörige Einträge), `run_id`, `record_key` und optional
+`reject_id` (verbindet zusammengehörige Einträge), `run_id`, `record_key`, `row_key` nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) und optional
 `error_count` nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler), `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
 [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
 Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
-`validation`, `unparseable_line`; Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
+`validation`, `unparseable_line`, `aggregate_failed`; Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
 ließen).
 **Begründung:** Das Präfix verhindert Kollisionen mit Datenspalten. Der feste Code erlaubt
 es, ohne Textvergleich zu filtern und Zweige zu bilden
@@ -269,13 +268,16 @@ als Eingabe eines Laufs. Sie übernimmt die Rohspalten, lässt die Info-Spalten 
 setzt die ursprüngliche Fundstelle aus
 [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 als Fundstelle jeder Zeile. Zeilen mit `raw_line` gehen erneut durch den Reader der
-ursprünglichen Quelle, mit dessen aktueller Konfiguration.
+ursprünglichen Quelle, mit dessen aktueller Konfiguration. Die Quelle ersetzt genau eine Quelle im Plan; die übrigen Quellen werden
+normal gelesen. Sie erkennt das Standardpräfix der Info-Spalten selbst, ein anderes wird
+als Option angegeben. Aggregierte aussortierte Zeilen nach [D48](#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle) lassen sich so nicht
+nachverarbeiten.
 **Begründung:** So verarbeitet dieselbe, angepasste Pipeline die fehlenden Daten nach,
 ohne Sonderweg. Scheitert eine Zeile erneut, zeigt der neue Eintrag weiterhin auf die
 Original-Lieferung und nicht auf die Datei mit den aussortierten Zeilen. Wurde der Reader
 angepasst (z. B. CSV-Einstellungen), werden bisher unzerlegbare Zeilen jetzt vielleicht
 lesbar.
-**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (ergänzt zur Auflösung von [G30](70-gap-ledger.md#g30-nachverarbeitung-uber-mehrere-quellen-und-mit-anderem-prafix))
 **Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
 
 ### D17 — Die Library bewahrt aussortierte Zeilen nicht selbst auf
@@ -294,19 +296,27 @@ sind.
 
 ### D18 — Jede Quellzeile trägt einen stabilen Schlüssel, optional einen Inhalts-Hash
 
-**Entscheidung:** Jede Quellzeile trägt einen Schlüssel `record_key`, gebildet aus Quelle
-und Fundstelle. Er ist bei einer Nachverarbeitung nach
-[D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle)
-derselbe wie im ursprünglichen Lauf, steht in Ergebnissen zur Verfügung und ist eine
-Info-Spalte der aussortierten Zeilen
-([D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix)). Optional kommt
-ein Hash über den Rohinhalt dazu (`record_hash`). Doppelte Einträge im Ziel verhindert
-die Pipeline selbst, zum Beispiel per Upsert auf diesem Schlüssel.
-**Begründung:** Ob und wie ein Ziel dedupliziert, hängt vom Ziel ab (Datenbank, Datei,
-HTTP). Die Library kann das nicht für alle Ziele lösen, aber sie kann den Schlüssel
-liefern. Der Inhalts-Hash deckt den Fall ab, dass dieselbe Lieferung unter anderem Namen
-erneut kommt und der Fundstellen-Schlüssel dann ein anderer wäre.
-**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27
+**Entscheidung:** Jede Quellzeile trägt einen Schlüssel `record_key`. Standardmäßig wird er
+aus einer Kennung der Lieferung und der Position der Zeile gebildet. Die Kennung ist ein
+Hash über den Inhalt der Lieferung oder eine Kennung, die die Pipeline angibt (z. B. für
+HTTP- und Streaming-Quellen). Die Zusage lautet: stabil innerhalb derselben Lieferung, auch
+bei einer Nachverarbeitung nach
+[D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle).
+Für Ziele, die über Lieferungen hinweg deduplizieren, kann eine Quelle einen fachlichen
+Schlüssel aus Spalten angeben, aus dem `record_key` dann gebildet wird. Das ist für
+Datenbank-Ziele die empfohlene Form. Optional kommt ein Hash über den Rohinhalt der Zeile
+dazu (`record_hash`). Er dient dazu, eine doppelt eingespielte Lieferung zu erkennen, nicht
+dazu, einzelne Zeilen zu deduplizieren. `record_key` ist eine Info-Spalte nach
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix). Doppelte Einträge im
+Ziel verhindert die Pipeline selbst, zum Beispiel per Upsert. Nach Joins gilt der
+Schlüssel der Ergebniszeile nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen).
+**Begründung:** Ob und wie ein Ziel dedupliziert, hängt vom Ziel ab. Die Library kann den
+Schlüssel liefern. Ein Schlüssel nur aus Dateiname und Zeilennummer wurde verworfen: Fügt
+der Anbieter oben eine Zeile ein, verschieben sich alle Schlüssel, und eine neue Datei mit
+gleichem Namen würde die Datensätze der alten überschreiben. Zwei gleiche Zeilen können
+legitim sein (zwei gleiche Bestellpositionen), deshalb taugt `record_hash` nicht als
+Dedup-Schlüssel für Zeilen.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (überarbeitet zur Auflösung von [G29](70-gap-ledger.md#g29-record_key-ist-positionsabhangig))
 **Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
 
 ### D19 — Es gibt drei Fehlerarten: Planfehler, Lieferfehler und Datenfehler
@@ -425,7 +435,9 @@ Zeilen kommen in dem Zustand in den Zweig, in dem sie in den gescheiterten Schri
 hineingegangen sind, zusammen mit den Info-Spalten aus
 [D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix). Ihr Rohzustand
 bleibt nach [D9](#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert)
-im Hintergrund erhalten. Was der Zweig verarbeiten kann, fließt nach dem Schritt in den
+im Hintergrund erhalten. Nach einem zusammenfassenden Schritt nach
+[D12](#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)
+bekommt ein Fehlerzweig aggregierte Zeilen ohne Rohzustand. Was der Zweig verarbeiten kann, fließt nach dem Schritt in den
 Hauptweg zurück. Was auch im Zweig scheitert, wird aussortiert. Unabhängig davon gibt es
 Zweige nach einer Bedingung (`Split`) und das Zusammenführen beliebiger Zweige (`Merge`).
 **Begründung:** Der Zweig soll nachholen, was der Schritt nicht geschafft hat. Dafür
@@ -594,7 +606,7 @@ Zusage. Bestehende v1-Pipelines laufen weiter.
 **Entscheidung:** Alle Writer erfüllen eine gemeinsame `Sink`-Schnittstelle, die Blöcke
 entgegennimmt und Fehler meldet. Die Library bringt Datei-Writer mit (CSV, JSON/NDJSON,
 Excel, Markdown). Kleine Unterpakete bringen einen Writer für Datenbanken über
-`database/sql` mit Insert und Upsert (auch auf `record_key` nach
+`database/sql` mit Insert und Upsert (auf `row_key` nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) bzw. `record_key` nach
 [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash))
 und einen Writer für HTTP mit JSON bzw. NDJSON, Batching und Wiederholung. Der Prototyp
 enthält die Schnittstelle und die Datei-Writer.
@@ -782,3 +794,40 @@ auf die Schwelle anzurechnen, würde einen Lauf scheitern lassen, dessen Daten v
 angekommen sind.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G35](70-gap-ledger.md#g35-zuruckgefuhrte-zeilen-verlieren-ihre-geschichte))
 **Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D47 — Ergebniszeilen tragen einen row_key aus ihren Quellzeilen, und bei 1:n-Joins scheitern nur die betroffenen Ergebniszeilen
+
+**Entscheidung:** Jede Ergebniszeile trägt einen Schlüssel `row_key`, gebildet aus den
+`record_key`s aller Quellzeilen, aus denen sie entstanden ist. Ohne Join ist er gleich dem
+`record_key`. Writer, die upserten, verwenden `row_key`. Scheitert bei einem 1:n-Join eine
+von mehreren Ergebniszeilen einer Quellzeile, wird nur diese Ergebniszeile aussortiert:
+ihre Quellzeilen erscheinen nach [D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert) mit gemeinsamer `reject_id` in der Übersicht. Eine
+Quellzeile zählt nach [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) als aussortiert, wenn keine ihrer Ergebniszeilen durchkommt,
+sonst als durchgelaufen. In ihrer Tabelle je Quelle steht eine Quellzeile je Lauf höchstens
+einmal ([D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler)), auch wenn viele ihrer Partner scheitern; `error_count` zählt die Fehler.
+**Begründung:** Ein Upsert auf `record_key` würde die Ergebniszeilen eines 1:n-Joins, die
+alle denselben Schlüssel der linken Zeile tragen, zu einer zusammenfassen. Eine rechte
+Stammdatenzeile, die mit sehr vielen Zeilen verbunden wird, würde sonst die Tabelle und die
+Schwelle überfluten. Nur die tatsächlich gescheiterten Ergebniszeilen auszusortieren, hält
+angekommene Daten im Ziel.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G24](70-gap-ledger.md#g24-1n-joins-identitat-der-ergebniszeilen-und-teilweiser-erfolg))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D48 — Nach einer Gruppierung aussortierte Zeilen stehen in einer eigenen Tabelle
+
+**Entscheidung:** Zeilen, die nach einem zusammenfassenden Schritt nach
+[D12](#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)
+scheitern, stehen im Laufergebnis in einer eigenen Tabelle aggregierter aussortierter
+Zeilen: Werte der Zeile, Gruppenschlüssel als abgeleiteter Wert und, wo vorhanden, als
+Rohwert, Anzahl der Quellzeilen, Schritt, Grund und Code. Diese Tabelle lässt sich nicht
+nach [D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle)
+nachverarbeiten. Mit der Option "volle Herkunft" stehen zusätzlich die einzelnen
+Quellzeilen in ihren Tabellen je Quelle, mit dem Code `aggregate_failed` und derselben
+`reject_id`. Diese lassen sich nachverarbeiten.
+**Begründung:** Eine aggregierte Zeile hat keine einzelne Quelle und keine Rohspalten und
+passt deshalb in keine Tabelle je Quelle. Ohne volle Herkunft kennt die Engine ihre
+Quellzeilen nicht mehr. Die Annahme, man finde sie über den Gruppenschlüssel in der
+Lieferung, trägt nicht, weil die Lieferung nicht mehr vorliegen muss und der Schlüssel ein
+abgeleiteter Wert sein kann.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G22](70-gap-ledger.md#g22-aussortierte-aggregierte-zeilen-haben-keinen-ort-und-lassen-sich-nicht-nachverarbeiten))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
