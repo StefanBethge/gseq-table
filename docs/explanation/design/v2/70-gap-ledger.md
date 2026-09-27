@@ -396,7 +396,7 @@ Im Modus "stoppen" hängt nach [D51](10-design-decisions.md#d51-im-modus-stoppen
 
 ### G56 — Features und Scope für die Decisions ab D37
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch Auswahl im [Scope Prototyp](40-scope-prototype.md) (Maintainer, 2026-09-27)
 Keine der Decisions [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) bis [D60](10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt) ist einem Feature zugeordnet. Damit wählt der [Scope](40-scope-prototype.md) sie nicht aus, obwohl etwa `delivery_error`, Writer für aussortierte Zeilen, Tabellen mit haftendem Fehler, Quellen je Datei und Sheet und die Grenzen nach [D56](10-design-decisions.md#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch) für den Prototyp wichtig sind. Die [Security Boundaries](60-security-boundaries.md) nennen die Grenzen "enforced", ohne Feature und T-Fall. Zu entscheiden ist, welche davon in den Prototyp kommen.
 
 ### G57 — Erkennen einer abgeschnittenen CSV-Lieferung

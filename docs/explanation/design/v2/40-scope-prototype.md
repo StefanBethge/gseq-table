@@ -20,11 +20,11 @@ Er liegt unter `experimental/v2` ohne Stabilitätszusage
 | [F5](20-feature-catalogue.md#f5-operationen-als-werte-sofort-auf-tabellen-oder-im-plan) | eingeschränkt nach [P2](#p2-teilmenge-der-operationen) |
 | [F6](20-feature-catalogue.md#f6-ausdrucke) | eingeschränkt nach [P2](#p2-teilmenge-der-operationen) |
 | [F7](20-feature-catalogue.md#f7-operationen-mit-eigener-logik) | Sonderlogik echter Kunden-Pipelines |
-| [F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand) | eingeschränkt nach [P3](#p3-reader-fur-csv-und-excel) |
+| [F8](20-feature-catalogue.md#f8-reader-mit-fundstelle-und-rohzustand) | eingeschränkt nach [P3](#p3-reader-fur-csv-und-excel), [P7](#p7-keine-dateigruppen) und [P8](#p8-keine-formelmaskierung-im-csv-writer) |
 | [F9](20-feature-catalogue.md#f9-erwarteter-aufbau-und-prufung-des-kopfs) | Erprobung von [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt) an echten Lieferungen |
 | [F10](20-feature-catalogue.md#f10-aussortierte-zeilen-als-quelle) | Erprobung von [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet) |
 | [F11](20-feature-catalogue.md#f11-aussortierte-zeilen) | Kern des Fehlermodells, Validierung nach [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren) |
-| [F12](20-feature-catalogue.md#f12-herkunft-uber-joins-und-aggregationen) | Herkunft ist ohne Joins und Gruppierung nicht erprobt |
+| [F12](20-feature-catalogue.md#f12-herkunft-uber-joins-und-aggregationen) | Herkunft ist ohne Joins und Gruppierung nicht erprobt, eingeschränkt nach [P6](#p6-aggregierte-aussortierte-zeilen-ohne-volle-herkunft) |
 | [F13](20-feature-catalogue.md#f13-fehlerverhalten) | Kern des Fehlermodells |
 | [F14](20-feature-catalogue.md#f14-schwelle) | Kern des Fehlermodells |
 | [F15](20-feature-catalogue.md#f15-fehlerzweige-split-und-merge) | Erprobung von [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig) |
@@ -33,12 +33,14 @@ Er liegt unter `experimental/v2` ohne Stabilitätszusage
 | [F19](20-feature-catalogue.md#f19-sink-schnittstelle-und-datei-writer) | eingeschränkt nach [P4](#p4-datei-writer-fur-csv-und-excel) |
 | [F21](20-feature-catalogue.md#f21-offentliche-api-ohne-gseq-typen) | Die API-Form soll schon im Prototyp gelten, damit die Erprobung aussagekräftig ist |
 | [F23](20-feature-catalogue.md#f23-auslieferung-als-experimenteller-prototyp-und-als-v2-modul) | nur der Teil `experimental/v2`, nach [P5](#p5-nur-experimentalv2) |
+| [F24](20-feature-catalogue.md#f24-docs-gates-fur-das-design-set) | Phase 6 der Methode, eigene Gates nach [D37](10-design-decisions.md#d37-die-docs-gates-werden-in-diesem-repo-selbst-gebaut) |
 
 Nicht im Prototyp:
 [F18](20-feature-catalogue.md#f18-profil-und-vergleich-mit-fruheren-laufen) (laut
 [D24](10-design-decisions.md#d24-ein-lauf-kann-ein-profil-liefern-das-mit-dem-profil-eines-fruheren-laufs-verglichen-wird)),
 [F20](20-feature-catalogue.md#f20-writer-fur-datenbank-und-http) (laut
-[D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http))
+[D35](10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http),
+damit auch der HTTP-Writer nach [D41](10-design-decisions.md#d41-der-http-writer-liefert-mindestens-einmal-und-schickt-einen-idempotenzschlussel-mit))
 und [F22](20-feature-catalogue.md#f22-v1-adapter) (laut
 [D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen)).
 
@@ -77,13 +79,31 @@ Der Prototyp erscheint nur unter `experimental/v2`, ohne Stabilitätszusage. Pro
 v2.0.0 als eigenes `/v2`-Modul mit SemVer
 ([D34](10-design-decisions.md#d34-der-prototyp-liegt-unter-experimentalv2-ohne-zusage-v200-ist-ein-eigenes-modul-mit-semver)).
 
+### P6 — Aggregierte aussortierte Zeilen ohne volle Herkunft
+
+Der Prototyp hat die eigene Tabelle aggregierter aussortierter Zeilen, aber nicht die
+Option "volle Herkunft". Produktion: mit voller Herkunft stehen auch die einzelnen
+Quellzeilen in ihren Tabellen je Quelle ([D48](10-design-decisions.md#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle), [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)).
+
+### P7 — Keine Dateigruppen
+
+Der Prototyp behandelt jede Datei und jedes Sheet als eigene Quelle, kennt aber keine
+Gruppen von Dateien nach Muster und damit kein `missing_file`. Produktion: Gruppen wirken als
+eine Quelle ([D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle)).
+
+### P8 — Keine Formelmaskierung im CSV-Writer
+
+Der CSV-Writer des Prototyps maskiert keine Werte, die als Formel gelesen würden.
+Produktion: Maskierung auf Wunsch ([D56](10-design-decisions.md#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch)).
+
 ## Exit-Kriterien
 
 - Die T-Fälle der selektierten Features sind grün:
   [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand)–[T17](30-test-plan.md#t17-gehaufte-formatfehler-erscheinen-im-anderungsbericht-mit-beispielen)
-  und [T19](30-test-plan.md#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck)–[T28](30-test-plan.md#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus)
-  sowie [T31](30-test-plan.md#t31-die-offentliche-api-enthalt-keine-gseq-typen), jeweils
-  im Umfang von [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren)–[P5](#p5-nur-experimentalv2).
+  und [T19](30-test-plan.md#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck)–[T28](30-test-plan.md#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus),
+  [T31](30-test-plan.md#t31-die-offentliche-api-enthalt-keine-gseq-typen) sowie
+  [T33](30-test-plan.md#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error)–[T43](30-test-plan.md#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort), jeweils im Umfang von
+  [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren)–[P8](#p8-keine-formelmaskierung-im-csv-writer).
   [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) gilt
   im Umfang von [P1](#p1-auslagern-nur-fur-sortieren-und-gruppieren), also nur für Sortieren
   und Gruppieren, nicht für Join.

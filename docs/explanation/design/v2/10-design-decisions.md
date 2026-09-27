@@ -1103,4 +1103,4 @@ ersetzt das automatische Setzen von `GOMEMLIMIT` in [D28](#d28-ein-lauf-hat-ein-
 Limit. Für den häufigen Fall "ein Lauf je Prozess" per Cron bleibt das Setzen auf Wunsch
 einfach.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G53](70-gap-ledger.md#g53-gomemlimit-wirkt-auf-den-ganzen-prozess))
-**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
