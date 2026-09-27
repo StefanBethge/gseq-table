@@ -200,3 +200,49 @@ sprengen. Über den Gruppenschlüssel lassen sich die Quellzeilen bei Bedarf in 
 finden. Die Option "volle Herkunft" deckt kleine Läufe und das Debuggen ab.
 **Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G9](70-gap-ledger.md#g9-rohzustand-und-fundstelle-nach-aggregation-und-join), zusammen mit [D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert))
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D13 — Aussortierte Zeilen gibt es je Quelle, dazu eine Übersicht über alle Quellen
+
+**Entscheidung:** Das Ergebnis eines Laufs liefert je Quelle eine Tabelle aussortierter
+Zeilen mit den Rohspalten dieser Quelle und den Info-Spalten aus
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix). Zusätzlich gibt es
+eine Übersicht über alle Quellen, die nur die Info-Spalten enthält. Die Übersicht ist die
+Grundlage für Zählungen, Meldungen und die Schwelle aus
+[D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen).
+**Begründung:** Quellen haben unterschiedliche Spalten. Eine Tabelle je Quelle lässt sich
+schreiben ([D2](#d2-aussortierte-zeilen-werden-uber-dieselben-writer-geschrieben-wie-ergebnisse))
+und wieder als Quelle verwenden
+([UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)).
+Verworfen: eine gemeinsame Tabelle, deren Rohspalten je nach Quelle unterschiedlich belegt
+sind. Die ist schwer zu schreiben und nachzuverarbeiten.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G10](70-gap-ledger.md#g10-aussortierte-zeilen-mehrerer-quellen-eine-tabelle-oder-je-quelle); Validierung im Prototyp: [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D14 — Info-Spalten tragen ein reserviertes, einstellbares Präfix
+
+**Entscheidung:** Die Info-Spalten einer aussortierten Zeile tragen ein reserviertes
+Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt diese Spalten:
+`reject_id` (verbindet zusammengehörige Einträge), `run_id`, die Fundstelle nach
+[D10](#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
+(`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
+Fehlers), `reason` (Text), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
+`validation`, `unparseable_line`) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
+ließen).
+**Begründung:** Das Präfix verhindert Kollisionen mit Datenspalten. Der feste Code erlaubt
+es, ohne Textvergleich zu filtern und Zweige zu bilden
+([UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G2](70-gap-ledger.md#g2-welche-info-spalten-eine-aussortierte-zeile-tragt); Validierung im Prototyp: [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D15 — Eine Zeile wird im ersten scheiternden Schritt aussortiert, mit einem Eintrag je betroffener Spalte
+
+**Entscheidung:** Eine Zeile wird im ersten Schritt aussortiert, in dem sie scheitert.
+Spätere Schritte sehen sie nicht mehr. Scheitern in diesem Schritt mehrere Spalten, gibt
+es je Spalte einen Eintrag mit derselben `reject_id` nach
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix).
+**Begründung:** Der Pipeline-Entwickler sieht so alle Probleme einer Zeile in dem Schritt,
+der sie aussortiert hat, und nicht nur das erste. Alle Schritte weiter auf einer
+gescheiterten Zeile laufen zu lassen, wurde verworfen. Deren Ergebnisse wären Folgefehler
+und kaum aussagekräftig.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Validierung im Prototyp: [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)

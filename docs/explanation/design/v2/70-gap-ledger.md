@@ -16,7 +16,7 @@ der Rohzustand bei großen Lieferungen verfügbar bleibt, ohne dass jede Zeile i
 
 ### G2 — Welche Info-Spalten eine aussortierte Zeile trägt
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix) und [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte)
 Kandidaten: Schritt, Grund, betroffene Spalte, Rohwert, Fundstelle in der Quelle (Datei,
 Sheet, Zeile), Lauf. Offen sind außerdem die Namen der Spalten, damit sie nicht mit
 Datenspalten kollidieren, und ob eine Zeile mehrere Gründe tragen kann
@@ -96,9 +96,17 @@ mehrere Ergebniszeilen eingeht
 
 ### G10 — Aussortierte Zeilen mehrerer Quellen: eine Tabelle oder je Quelle
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen)
 Nach [D11](10-design-decisions.md#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert) können aussortierte Zeilen aus verschiedenen Quellen mit verschiedenen Spalten
 stammen. Offen ist, ob es je Quelle eine eigene Tabelle aussortierter Zeilen gibt oder
 eine gemeinsame Tabelle mit einer Spalte für die Quelle, in der die Rohspalten je nach
 Quelle unterschiedlich belegt sind. Hängt mit
 [G2](#g2-welche-info-spalten-eine-aussortierte-zeile-tragt) zusammen.
+
+### G11 — Form der aussortierten Zeilen im Prototyp validieren
+
+**Type:** Assumption · **Kind:** verify · **Status:** offen
+[D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D14](10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix) und [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-eintrag-je-betroffener-spalte) legen die Form der aussortierten Zeilen fest. Der Maintainer will
+sie nach dem Prototyp noch einmal validieren, anhand echter Lieferungen: ob die
+Info-Spalten reichen, ob "je Quelle plus Übersicht" im Alltag handlich ist, und ob ein
+Eintrag je Spalte beim Lesen hilft oder stört.
