@@ -131,3 +131,39 @@ und Zeit sparen. Wie "immer ändern" mit Zweigen und dem Rohzustand verträglich
 ist offen ([G8](70-gap-ledger.md#g8-immer-andern-gegen-zweige-und-rohzustand)).
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D9 — Der Rohzustand wird getrennt gehalten, an Verzweigungen wird immer kopiert
+
+**Entscheidung:** Der Rohzustand einer Zeile wird beim Lesen gesichert und getrennt von
+den Arbeitsdaten gehalten. Kein Schritt und kein Modus aus
+[D8](#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert)
+kann ihn verändern. Wo sich ein Plan verzweigt, kopiert die Engine die Arbeitsdaten auch
+im Modus "immer an Ort und Stelle ändern" und vermerkt das im Trace des Laufs.
+**Begründung:** So gelten [D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten)
+(Rohzustand) und [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert)
+(kein Zweig sieht Änderungen eines anderen) in jedem Modus, und der Modus "immer ändern"
+behält seinen Nutzen für lineare Pipelines. Verworfen: Pläne mit Verzweigung im Modus
+"immer ändern" vor dem Lauf abzulehnen. Das hätte den Modus für
+[UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+unbrauchbar gemacht. Der Vermerk im Trace macht sichtbar, wo der Modus nicht greift.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G8](70-gap-ledger.md#g8-immer-andern-gegen-zweige-und-rohzustand))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D10 — Rohzustand heißt gelesene Zellwerte, Rohbytes bei unzerlegbaren Zeilen, und immer die Fundstelle
+
+**Entscheidung:** Der Rohzustand einer Zeile besteht aus den Zellwerten, wie der Reader
+sie gelesen hat. Konnte der Reader eine Zeile nicht in Zellen zerlegen (z. B. CSV mit
+kaputten Anführungszeichen oder falscher Spaltenzahl), enthält der Rohzustand stattdessen
+die Rohbytes der Quellzeile. Jede Zeile trägt außerdem immer ihre Fundstelle in der
+Quelle: Quelle bzw. Datei, Sheet falls vorhanden, Zeilennummer und, wo die Quelle es
+erlaubt, Byte-Offset. Der Rohzustand wird nur so lange mitgeführt, bis feststeht, dass die
+Zeile durchgekommen ist. Bei großen Läufen kann die Engine ihn auf die Platte auslagern
+([D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)).
+**Begründung:** Zellwerte reichen, um den Fehler an der Lieferung nachzustellen, und
+ergeben eine Tabelle mit denselben Spalten wie die Lieferung. Rohbytes sind nur dort
+nötig, wo es gar keine Zellen gibt. Nur die Fundstelle zu halten und später nachzulesen
+wurde verworfen. Das setzt voraus, dass die Quelle noch unverändert vorliegt, und geht bei
+HTTP- und Streaming-Quellen nicht. Die Fundstelle kommt trotzdem immer mit, damit der
+Pipeline-Entwickler die Zeile in der Originaldatei findet.
+**Quelle:** Maintainer im Kickoff, 2026-09-27 (Auflösung von [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst))
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

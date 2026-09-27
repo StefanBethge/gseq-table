@@ -74,9 +74,9 @@ der sie aussortiert hat, dem Grund, der betroffenen Spalte und dem Rohwert. Er f
 Zeile in der Originaldatei wieder und kann den Fehler nachstellen.
 
 **Erzwingt Entscheidungen:**
-- Was genau ist der Originalzustand: die Zellwerte, wie der Reader sie gelesen hat, oder auch die Rohbytes (z. B. eine CSV-Zeile mit kaputten Anführungszeichen)? → [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), genauer Umfang offen: [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst)
-- Wie wird eine Zeile in der Quelle wiedergefunden (Datei, Sheet, Zeilennummer, Byte-Offset), und bleibt das über Sortieren, Filtern und Joins hinweg erhalten?
-- Was wird bei großen Lieferungen für jede Zeile mitgeführt, damit der Originalzustand der aussortierten Zeilen verfügbar ist, ohne den Speicherbedarf aller Zeilen zu vervielfachen? → offen, [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst)
+- Was genau ist der Originalzustand: die Zellwerte, wie der Reader sie gelesen hat, oder auch die Rohbytes (z. B. eine CSV-Zeile mit kaputten Anführungszeichen)? → [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), [D10](10-design-decisions.md#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
+- Wie wird eine Zeile in der Quelle wiedergefunden (Datei, Sheet, Zeilennummer, Byte-Offset), und bleibt das über Sortieren, Filtern und Joins hinweg erhalten? → Fundstelle: [D10](10-design-decisions.md#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle); nach Join und Aggregation offen: [G9](70-gap-ledger.md#g9-rohzustand-und-fundstelle-nach-aggregation-und-join)
+- Was wird bei großen Lieferungen für jede Zeile mitgeführt, damit der Originalzustand der aussortierten Zeilen verfügbar ist, ohne den Speicherbedarf aller Zeilen zu vervielfachen? → [D10](10-design-decisions.md#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle), [D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert)
 - Wird eine Zeile, die in mehreren Schritten scheitern würde, beim ersten Fehler aussortiert, oder werden alle Gründe gesammelt? → offen, [G2](70-gap-ledger.md#g2-welche-info-spalten-eine-aussortierte-zeile-tragt)
 
 ### UC4 — Aussortierte Zeilen werden nach einer Anpassung nachverarbeitet

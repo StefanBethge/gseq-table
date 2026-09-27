@@ -5,7 +5,7 @@ sie geschlossen hat. Akzeptierte Einträge nennen ihre Revisit-Bedingung.
 
 ### G1 — Was der Rohzustand einer Zeile umfasst
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D10](10-design-decisions.md#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten)
 legt fest, dass aussortierte Zeilen im Rohzustand zurückkommen. Offen ist, ob das die
 Zellwerte sind, wie der Reader sie gelesen hat, oder auch die Rohbytes der Quelle, etwa
@@ -72,7 +72,7 @@ nur ohne Zweige sicher), oder die Ausführungsart (Speicher, Streaming, automati
 
 ### G8 — "Immer ändern" gegen Zweige und Rohzustand
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert)
 Der Modus "immer an Ort und Stelle ändern" aus [D8](10-design-decisions.md#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert) verträgt sich nicht ohne Weiteres mit
 zwei anderen Zusagen. Erstens garantiert
 [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert),
@@ -83,3 +83,13 @@ Zweitens verlangt
 dass aussortierte Zeilen im Rohzustand zurückkommen. Kandidaten: Der Rohzustand wird
 getrennt von den Arbeitsdaten gehalten, sodass Ändern ihn nie berührt. An Verzweigungen
 kopiert die Engine auch in diesem Modus, oder sie lehnt den Plan vor dem Lauf ab.
+
+### G9 — Rohzustand und Fundstelle nach Aggregation und Join
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+[D10](10-design-decisions.md#d10-rohzustand-heisst-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) ordnet jeder Zeile einen Rohzustand und eine Fundstelle zu. Nach einem Join besteht
+eine Ergebniszeile aus zwei Quellzeilen, nach einer Gruppierung aus vielen. Offen ist,
+welchen Rohzustand und welche Fundstelle eine solche Zeile trägt, wenn sie in einem
+späteren Schritt scheitert, und was nach "durchgekommen" bedeutet, wenn eine Quellzeile in
+mehrere Ergebniszeilen eingeht
+([UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)).
