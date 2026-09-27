@@ -9,9 +9,9 @@ Fehlermodells ([D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfeh
 
 | Failure | Detection | Response |
 |---|---|---|
-| Datei fehlt oder ist nicht lesbar | Fehler beim Öffnen | Lieferfehler nach [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler); eine fehlende Datei hat keine Zeilen zum Aussortieren und stoppt den Lauf mit `aborted` |
-| Datei bricht mitten im Lesen ab (abgeschnittene Übertragung) | Lesefehler oder unvollständige letzte Zeile | Bis dahin gelesene Zeilen laufen durch; die unvollständige Zeile wird mit `unparseable_line` aussortiert; der Abbruch erscheint im Änderungsbericht ([D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht)) |
-| Excel-Datei ist beschädigt oder kein gültiges Archiv | Fehler beim Öffnen des Archivs | Lieferfehler, der Lauf stoppt |
+| Datei fehlt oder ist nicht lesbar | Fehler beim Öffnen | Lieferfehler `unreadable`, Status `delivery_error`, keine Zeilen verarbeitet ([D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) |
+| Datei bricht mitten im Lesen ab (abgeschnittene Übertragung) | Lesefehler oder unvollständige letzte Zeile | Lieferfehler `truncated`, Status `delivery_error`; im Modus "aussortieren" laufen die bis dahin gelesenen Zeilen durch; Befund im Änderungsbericht ([D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) |
+| Excel-Datei ist beschädigt oder kein gültiges Archiv | Fehler beim Öffnen des Archivs | Lieferfehler `unreadable`, Status `delivery_error` ([D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) |
 
 ## Engine
 

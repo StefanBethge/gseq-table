@@ -239,7 +239,7 @@ Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt die
 [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
 Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
-`validation`, `unparseable_line`) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
+`validation`, `unparseable_line`; Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
 ließen).
 **Begründung:** Das Präfix verhindert Kollisionen mit Datenspalten. Der feste Code erlaubt
 es, ohne Textvergleich zu filtern und Zweige zu bilden
@@ -357,7 +357,8 @@ spart bei großen Lieferungen Zeit, wenn das Ausmaß nicht gebraucht wird.
 (Schwelle überschritten), `aborted` (gestoppt nach
 [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen)
 oder abgebrochen über den Kontext) `plan_error` (Planfehler nach
-[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)) oder
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler)),
+`delivery_error` (Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) oder
 `sink_error` (Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab)). Dazu
 kommen die Zählungen gelesener, durchgelaufener und aussortierter Zeilen, je Schritt und
 je Fehlercode. Eine Hilfsfunktion bildet den Status auf einen Exit-Code für den Scheduler ab.
@@ -695,3 +696,27 @@ empfindlich. Endpunkte verhalten sich unterschiedlich, deshalb sind die Regeln
 konfigurierbar und die Reaktion auf ein endgültiges Scheitern liegt beim Entwickler.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G15](70-gap-ledger.md#g15-zustellzusage-des-http-writers))
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D42 — Jeder Lieferfehler setzt den Status delivery_error
+
+**Entscheidung:** Lieferfehler nach
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) sind
+`missing_column`, `missing_sheet`, `unreadable` (Datei fehlt oder ist nicht lesbar bzw.
+beschädigt) und `truncated` (Lieferung endet mitten in einer Zeile oder einem Archiv). Jeder
+Lieferfehler setzt den Status `delivery_error` nach
+[D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst),
+unabhängig vom Modus. Im Modus "aussortieren" verarbeitet der Lauf trotzdem, was lesbar ist,
+und sortiert betroffene Zeilen aus. Im Modus "stoppen" bricht er ab. Gibt es keine lesbaren
+Zeilen (`unreadable`), verarbeitet der Lauf nichts und meldet ebenfalls `delivery_error`.
+`truncated` und `unreadable` erscheinen als Befunde im Änderungsbericht
+([D23](#d23-das-laufergebnis-enthalt-einen-anderungsbericht)). Eine neue, unerwartete Spalte
+ist kein Lieferfehler, sondern ein Befund nach
+[D22](#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird).
+**Begründung:** Mit den Voreinstellungen hätte eine Formatänderung, die alle Zeilen
+aussortiert, den Status `ok` ergeben, und eine abgeschnittene Lieferung wäre bis auf die
+letzte Zeile unbemerkt durchgelaufen. Der eigene Status trennt "mit der Lieferung stimmt
+etwas nicht" von "zu viele schlechte Werte" (`failed_threshold`) und bleibt im Modus
+"aussortieren" mit den Daten vereinbar. Verworfen: eine Standard-Schwelle "alle Zeilen einer
+Quelle". Sie erfasst keine abgeschnittene Lieferung und vermischt die beiden Fälle.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G21](70-gap-ledger.md#g21-eine-formatanderung-meldet-mit-voreinstellungen-einen-erfolgreichen-lauf) und [G28](70-gap-ledger.md#g28-abgeschnittene-und-unlesbare-lieferungen))
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)

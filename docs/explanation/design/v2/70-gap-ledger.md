@@ -197,7 +197,7 @@ entschieden.
 
 ### G21 — Eine Formatänderung meldet mit Voreinstellungen einen erfolgreichen Lauf
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error)
 Mit den Voreinstellungen aus [D5](10-design-decisions.md#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen) und ohne Schwelle nach [D4](10-design-decisions.md#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen) sortiert eine fehlende Spalte nach [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) alle Zeilen aus, und der Lauf meldet `ok`. Die Begründung von [D4](10-design-decisions.md#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen) sagt selbst, dass das die Änderung verdeckt, und [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) verlässt sich auf eine Schwelle, die per Voreinstellung nicht gesetzt ist. Betrifft [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt) und [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline). Optionen: eine Standard-Schwelle (z. B. alle Zeilen einer Quelle), Lieferfehler per Voreinstellung auf "stoppen", oder ein eigener Status für Läufe mit Befunden aus [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht).
 
 ### G22 — Aussortierte aggregierte Zeilen haben keinen Ort und lassen sich nicht nachverarbeiten
@@ -232,7 +232,7 @@ Der Anteil aus [D20](10-design-decisions.md#d20-die-schwelle-ist-absolut-oder-al
 
 ### G28 — Abgeschnittene und unlesbare Lieferungen
 
-**Type:** Inconsistency · **Kind:** design · **Status:** offen
+**Type:** Inconsistency · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error)
 Die [Failure Modes](50-failure-modes.md) sortieren bei einer abgeschnittenen Übertragung nur die letzte Zeile aus. Der Lauf meldet `ok`, obwohl die halbe Lieferung fehlt, und [D23](10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht) kennt keinen Befund dafür. "Datei fehlt" und "Excel beschädigt" stoppen dort ohne Wahl, obwohl [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) Lieferfehler konfigurierbar macht und sie beim Lesen des Kopfs verortet. Braucht Codes wie `truncated` und `unreadable`, und eine Aussage in [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler), welche Lieferfehler sich nicht aussortieren lassen, weil es keine Zeilen gibt.
 
 ### G29 — record_key ist positionsabhängig
