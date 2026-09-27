@@ -388,6 +388,24 @@ func (t Table) AddCol(name string, fn func(Row) string) Table {
 	return newTableFrom(t, newHeaders, rows)
 }
 
+// AddColConstValue appends a new column with a constant value for every row.
+// If name already exists, a numeric suffix is appended to keep headers unique.
+//
+//	t.AddColConstValue("status", "active")
+func (t Table) AddColConstValue(name, value string) Table {
+	newHeaders := make(slice.Slice[string], len(t.Headers)+1)
+	copy(newHeaders, t.Headers)
+	newHeaders[len(t.Headers)] = name
+	rows := make(slice.Slice[Row], len(t.Rows))
+	for i, row := range t.Rows {
+		vals := make(slice.Slice[string], len(row.values)+1)
+		copy(vals, row.values)
+		vals[len(row.values)] = value
+		rows[i] = NewRow(newHeaders, vals)
+	}
+	return newTableFrom(t, newHeaders, rows)
+}
+
 // GroupBy splits the table into sub-tables keyed by the distinct values of
 // col. The original row order is preserved within each group.
 //

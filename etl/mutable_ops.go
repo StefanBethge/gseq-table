@@ -57,6 +57,10 @@ func (mutableOps) AddCol(name string, fn func(table.Row) string) MutableFunc {
 	return func(m *table.MutableTable) *table.MutableTable { return m.AddCol(name, fn) }
 }
 
+func (mutableOps) AddColConstValue(name, value string) MutableFunc {
+	return func(m *table.MutableTable) *table.MutableTable { return m.AddColConstValue(name, value) }
+}
+
 func (mutableOps) AddColFloat(name string, fn func(table.Row) float64) MutableFunc {
 	return func(m *table.MutableTable) *table.MutableTable { return m.AddColFloat(name, fn) }
 }
