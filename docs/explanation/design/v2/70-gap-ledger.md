@@ -125,7 +125,7 @@ erprobt werden.
 **Type:** Assumption · **Kind:** verify · **Status:** offen
 Annahme: Blöcke typisierter Spalten nach [D29](10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) sind bei Laufzeit und Speicher messbar
 besser als die zeilenbasierte Speicherung aus v1. Offen sind außerdem die Voreinstellungen
-für den Anteil des Speichers ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)) und die Blockgröße. Soll im Prototyp mit Benchmarks
+für den Anteil des Speichers ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)) und die Blockgröße. Ebenfalls offen: ob das Lesen großer Excel-Dateien im Budget bleibt ([D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)). Soll im Prototyp mit Benchmarks
 gegen v1 geklärt werden
 ([UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)).
 
@@ -252,12 +252,12 @@ Eine sofortige `Table`-Methode nach [D31](10-design-decisions.md#d31-jede-operat
 
 ### G32 — Rohzustand und Fundstelle bei Excel
 
-**Type:** Assumption · **Kind:** verify · **Status:** offen
+**Type:** Assumption · **Kind:** verify · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)
 Excel ist das häufigste Lieferformat ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)), aber [D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) und [D29](10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) sind am Beispiel CSV formuliert. Excel-Zellen sind typisiert: Datum als Seriennummer oder formatierter Text, Formeln mit gespeichertem Wert, Zahlen als `1E+05` oder `100000`. Offen ist, welche Darstellung der Rohzustand ist, ob die Zeilennummer die Sheet-Zeile oder die Datenzeile ist, und dass Byte-Offset und `raw_line` in gezipptem XML keinen Sinn ergeben. Ebenfalls unbelegt: ob Excel-Lesen im Budget aus [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) bleibt (die Tabelle geteilter Strings liegt im Speicher). [T10](30-test-plan.md#t10-unzerlegbare-zeilen-werden-mit-rohbytes-und-richtiger-fundstelle-aussortiert) und [T11](30-test-plan.md#t11-die-fundstelle-bleibt-uber-sortieren-und-filtern-richtig) prüfen nur CSV.
 
 ### G33 — Lieferungen ohne Kopf und aus mehreren Dateien oder Sheets
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle)
 [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird) setzt einen Kopf voraus. JSON und NDJSON haben keinen, und ein neuer oder fehlender Schlüssel kann erst bei Zeile 1 Mio. auftauchen. CSV ohne Kopf ist nicht abgedeckt. Echte Lieferungen bestehen oft aus mehreren Dateien oder Sheets ([D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) kennt `sheet`, [D19](10-design-decisions.md#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) ein fehlendes Sheet), aber kein Use Case beschreibt einen Lauf über mehrere Dateien. Offen: ist jede Datei bzw. jedes Sheet eine Quelle im Sinn von [D13](10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), was passiert, wenn eine von drei Dateien fehlt, und wie wirkt die Schwelle je Quelle.
 
 ### G34 — Laufzeitfehler in Ausdrücken und Vollständigkeit der Fehlercodes

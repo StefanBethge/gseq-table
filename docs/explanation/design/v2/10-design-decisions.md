@@ -233,12 +233,12 @@ sind. Die ist schwer zu schreiben und nachzuverarbeiten.
 
 **Entscheidung:** Die Info-Spalten einer aussortierten Zeile tragen ein reserviertes
 Präfix, standardmäßig `_gseq_`, das pro Pipeline einstellbar ist. Es gibt diese Spalten:
-`reject_id` (verbindet zusammengehörige Einträge), `run_id`, `record_key`, `row_key` nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) und optional
+`reject_id` (verbindet zusammengehörige Einträge), `run_id`, `cell` (betroffene Excel-Zelle nach [D52](#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)), `record_key`, `row_key` nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) und optional
 `error_count` nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler), `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), die Fundstelle nach
 [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)
 (`source`, `sheet`, `line`, `offset`), `step`, `column`, `value` (Wert zum Zeitpunkt des
 Fehlers), `reason` (Text), `prev_reason` (Grund aus dem Hauptweg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg)), `code` (feste Fehlerart, z. B. `parse`, `missing_column`,
-`validation`, `unparseable_line`, `aggregate_failed`; Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
+`validation`, `unparseable_line`, `aggregate_failed`, `missing_field`; Lieferfehler nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error)) und `raw_line` (nur bei Zeilen, die sich nicht zerlegen
 ließen).
 **Begründung:** Das Präfix verhindert Kollisionen mit Datenspalten. Der feste Code erlaubt
 es, ohne Textvergleich zu filtern und Zweige zu bilden
@@ -714,7 +714,7 @@ konfigurierbar und die Reaktion auf ein endgültiges Scheitern liegt beim Entwic
 
 **Entscheidung:** Lieferfehler nach
 [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) sind
-`missing_column`, `missing_sheet`, `unreadable` (Datei fehlt oder ist nicht lesbar bzw.
+`missing_column`, `missing_sheet`, `missing_file` (nach [D53](#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle)), `unreadable` (Datei fehlt oder ist nicht lesbar bzw.
 beschädigt) und `truncated` (Lieferung endet mitten in einer Zeile oder einem Archiv). Jeder
 Lieferfehler setzt den Status `delivery_error` nach
 [D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst),
@@ -880,3 +880,39 @@ Upsert auf `row_key` nach [D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihr
 Library nicht für alle Ziele leisten.
 **Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G40](70-gap-ledger.md#g40-teilweise-geschriebene-blocke-im-modus-stoppen))
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D52 — Bei Excel ist der Rohzustand der angezeigte Zellinhalt, umgewandelt wird der gespeicherte Wert
+
+**Entscheidung:** Bei Excel-Lieferungen ist der Rohzustand einer Zelle nach [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) ihr
+Inhalt, wie Excel ihn anzeigt, also formatiert. Das Umwandeln in einen Typ verwendet den
+gespeicherten Wert, bei Datumszellen also die Seriennummer. Nur Zellen, die in Excel Text
+sind, werden als Text geparst. Bei Formeln gilt der gespeicherte Ergebniswert; die Formel
+kann optional als Info mitgeführt werden. Die Fundstelle besteht aus Datei, Sheet und der
+Zeilennummer, wie Excel sie zeigt (beginnend bei 1, einschließlich Kopfzeile). Die
+Info-Spalte `cell` nennt die betroffene Zelle (z. B. `C17`). Byte-Offset und `raw_line`
+bleiben bei Excel leer. Ob das Lesen großer Excel-Dateien im Budget bleibt, misst der
+Prototyp ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)).
+**Begründung:** Excel ist das häufigste Lieferformat ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)). Der angezeigte Inhalt
+ist das, was der Pipeline-Entwickler in der Datei wiederfindet. Würde der formatierte Text
+umgewandelt, scheiterten echte Datumszellen an Ländereinstellungen. Byte-Offsets ergeben in
+einem gezippten XML-Archiv keinen Sinn.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G32](70-gap-ledger.md#g32-rohzustand-und-fundstelle-bei-excel))
+**Betroffene Use Cases:** [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D53 — Jede Datei und jedes Sheet ist eine Quelle, Gruppen von Dateien wirken als eine Quelle
+
+**Entscheidung:** Jede Datei und jedes Sheet ist eine eigene Quelle im Sinn von
+[D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), mit einem Namen aus Datei und Sheet (z. B. `lieferung.xlsx#Kunden`). Eine
+Gruppe von Dateien nach Muster wirkt als eine logische Quelle; die Datei steht dann in der
+Fundstelle. Fehlt eine erwartete Datei einer Gruppe, ist das der Lieferfehler `missing_file`
+nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error). Bei CSV ohne Kopfzeile kommen die Spaltennamen aus dem erwarteten
+Aufbau nach [D22](#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird) und werden nach Position zugeordnet. Bei JSON und NDJSON ist ein
+fehlendes Feld in einem Datensatz der Datenfehler `missing_field`. Fehlt ein erwartetes Feld
+in der ganzen Lieferung, ergibt das am Ende des Laufs `missing_column`. Neue Felder werden
+beim ersten Auftreten als Befund gemeldet.
+**Begründung:** Lieferungen bestehen oft aus mehreren Teilen. Als eigene Quellen behalten
+sie getrennte Tabellen aussortierter Zeilen mit ihren eigenen Spalten. Die Gruppe deckt
+Teile mit gleichem Aufbau ab. JSON hat keine Kopfzeile, deshalb lässt sich ein fehlendes
+Feld erst am Ende sicher feststellen.
+**Quelle:** Vorschlag im Kickoff, vom Maintainer bestätigt, 2026-09-27 (Auflösung von [G33](70-gap-ledger.md#g33-lieferungen-ohne-kopf-und-aus-mehreren-dateien-oder-sheets))
+**Betroffene Use Cases:** [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets), [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)

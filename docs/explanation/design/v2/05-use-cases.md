@@ -145,3 +145,19 @@ ersten schmutzigen Wert.
 - Welche Typen tauchen in der öffentlichen API auf (eigene Typen der Library, Standardtypen, Typen aus gseq)? → [D33](10-design-decisions.md#d33-die-offentliche-api-verwendet-standard-go-typen-und-eigene-typen-der-library-keine-gseq-typen)
 - Wie viele Wege gibt es, dieselbe Operation auszudrücken (Methode, Pipeline-Schritt, Ausdruck), und welcher ist der naheliegende? → Fehler bei sofortigen Tabellen: [D50](10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler), [D31](10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan), [D32](10-design-decisions.md#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg)
 - Welche Stabilitätszusage gibt v2 gegenüber externen Nutzern? → [D34](10-design-decisions.md#d34-der-prototyp-liegt-unter-experimentalv2-ohne-zusage-v200-ist-ein-eigenes-modul-mit-semver), Umstieg: [D36](10-design-decisions.md#d36-ein-adapter-wandelt-zwischen-v1-und-v2-tabellen)
+
+### UC8 — Eine Lieferung besteht aus mehreren Dateien oder Sheets
+
+**Akteur(e):** Datenlieferant, Scheduler, Pipeline-Entwickler
+**Auslöser:** Eine Lieferung kommt nicht als eine Datei, sondern als mehrere Dateien (z. B.
+eine je Region oder Tag) oder als Excel-Datei mit mehreren Sheets.
+**Ablauf:** Die Pipeline liest alle Teile der Lieferung, verarbeitet sie gemeinsam oder je
+Teil und schreibt das Ergebnis. Fehlt ein erwarteter Teil oder ist einer beschädigt, soll
+das auffallen, ohne dass die übrigen Teile verloren gehen. Aussortierte Zeilen lassen sich
+dem Teil zuordnen, aus dem sie stammen.
+
+**Erzwingt Entscheidungen:**
+- Ist jede Datei bzw. jedes Sheet eine eigene Quelle, oder die ganze Lieferung? → [D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle)
+- Was passiert, wenn einer von mehreren erwarteten Teilen fehlt? → [D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle), [D42](10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error)
+- Wie werden Teile ohne Kopfzeile oder mit wechselnden Feldern (JSON) geprüft? → [D53](10-design-decisions.md#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle)
+- Welche Fundstelle trägt eine Zeile aus einem Excel-Sheet? → [D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)
