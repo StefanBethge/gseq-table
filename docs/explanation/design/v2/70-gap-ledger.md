@@ -64,8 +64,22 @@ selbst umsetzt ([UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)).
 
 ### G7 — Wirkung des harten Schalters für Kopieren und Ändern
 
-**Type:** Gap · **Kind:** design · **Status:** offen
+**Type:** Gap · **Kind:** design · **Status:** geschlossen 2026-09-27 — aufgelöst durch [D8](10-design-decisions.md#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert)
 [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert)
 sieht einen harten Schalter am Anfang der Pipeline vor. Offen ist, was er festlegt: immer
 kopieren (nachvollziehbar, für Debugging), immer an Ort und Stelle ändern (schnell, aber
 nur ohne Zweige sicher), oder die Ausführungsart (Speicher, Streaming, automatisch).
+
+### G8 — "Immer ändern" gegen Zweige und Rohzustand
+
+**Type:** Inconsistency · **Kind:** design · **Status:** offen
+Der Modus "immer an Ort und Stelle ändern" aus [D8](10-design-decisions.md#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert) verträgt sich nicht ohne Weiteres mit
+zwei anderen Zusagen. Erstens garantiert
+[D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert),
+dass ein Zweig nie Daten verändert, die ein anderer Zweig sieht
+([UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)).
+Zweitens verlangt
+[D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten),
+dass aussortierte Zeilen im Rohzustand zurückkommen. Kandidaten: Der Rohzustand wird
+getrennt von den Arbeitsdaten gehalten, sodass Ändern ihn nie berührt. An Verzweigungen
+kopiert die Engine auch in diesem Modus, oder sie lehnt den Plan vor dem Lauf ab.

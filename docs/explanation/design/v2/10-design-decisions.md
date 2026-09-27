@@ -117,3 +117,17 @@ genauso schnell und sparsam ist wie v1 `MutableTable`, prüft der Prototyp
 ([G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht)).
 **Quelle:** Maintainer im Kickoff, 2026-09-27
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D8 — Eine Option legt fest, dass die Engine immer kopiert oder immer an Ort und Stelle ändert
+
+**Entscheidung:** Ohne Angabe entscheidet die Engine nach
+[D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) selbst.
+Eine Option am Anfang der Pipeline setzt einen von zwei festen Modi: **immer kopieren**
+oder **immer an Ort und Stelle ändern**. Der Modus gilt für den ganzen Lauf.
+**Begründung:** Die Automatik ist die sichere Voreinstellung. Der Pipeline-Entwickler
+behält aber die Kontrolle für die Fälle, in denen er es besser weiß: beim Debuggen will
+er jeden Zwischenstand behalten, bei einer großen Lieferung ohne Zweige will er Speicher
+und Zeit sparen. Wie "immer ändern" mit Zweigen und dem Rohzustand verträglich bleibt,
+ist offen ([G8](70-gap-ledger.md#g8-immer-andern-gegen-zweige-und-rohzustand)).
+**Quelle:** Maintainer im Kickoff, 2026-09-27
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-grosse-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
