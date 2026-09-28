@@ -103,14 +103,14 @@ func (o withFuncOp[T]) plan(in schema) (schema, error) {
 	return setField(in, o.name, kindOf[T]()), nil
 }
 
-func (o withFuncOp[T]) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, error) {
+func (o withFuncOp[T]) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []int, error) {
 	b := block.NewBuilder(kindOf[T](), blk.Len())
 	drop := make([]bool, blk.Len())
 	for i := range blk.Len() {
 		v, err := callRow(o.f, Row{in, blk, i})
 		if err != nil {
-			if err := sc.reject(o.name, "", false, err.Error(), customCode(err)); err != nil {
-				return block.Block{}, err
+			if err := sc.reject(i, o.name, "", false, err.Error(), customCode(err)); err != nil {
+				return block.Block{}, nil, err
 			}
 			drop[i] = true
 			b.AppendNull()
@@ -129,7 +129,8 @@ func (o withFuncOp[T]) apply(blk block.Block, in schema, sc *stepCtx) (block.Blo
 			b.AppendTimestamp(x)
 		}
 	}
-	return dropRows(withColumn(blk, in.index(o.name), b.Build()), drop), nil
+	out, keep := dropRows(withColumn(blk, in.index(o.name), b.Build()), drop)
+	return out, keep, nil
 }
 
 // WhereFunc keeps the rows for which f returns true. Errors and panics in f
@@ -149,16 +150,17 @@ func (o whereFuncOp) plan(in schema) (schema, error) {
 	return in, nil
 }
 
-func (o whereFuncOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, error) {
+func (o whereFuncOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []int, error) {
 	drop := make([]bool, blk.Len())
 	for i := range blk.Len() {
 		ok, err := callRow(o.f, Row{in, blk, i})
 		if err != nil {
-			if err := sc.reject("", "", false, err.Error(), customCode(err)); err != nil {
-				return block.Block{}, err
+			if err := sc.reject(i, "", "", false, err.Error(), customCode(err)); err != nil {
+				return block.Block{}, nil, err
 			}
 		}
 		drop[i] = err != nil || !ok
 	}
-	return dropRows(blk, drop), nil
+	out, keep := dropRows(blk, drop)
+	return out, keep, nil
 }

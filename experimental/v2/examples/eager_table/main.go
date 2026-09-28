@@ -91,6 +91,7 @@ func load(path string) (gtable.Table, error) {
 		}
 		cols[j] = gtable.Texts(name, values...)
 	}
-	t := gtable.NewTable(cols...)
+	// Each file is a source of its own, named after the file (D75).
+	t := gtable.NewTable(cols...).AsSource(filepath.Base(path))
 	return t, t.Err()
 }

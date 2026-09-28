@@ -153,11 +153,44 @@ func TestOperationsOnEmptyTables(t *testing.T) {
 	for _, got := range []Table{
 		tbl.Sort(Asc("k")),
 		tbl.GroupBy([]string{"k"}, Sum("v")),
-		tbl.InnerJoin(NewTable(Texts("k", "a")), On("k")),
+		tbl.InnerJoin(NewTable(Texts("k", "a")).AsSource("right"), On("k")),
 		tbl.Cast("v", TypeText),
 	} {
 		if got.Err() != nil || got.Len() != 0 {
 			t.Errorf("Err=%v Len=%d", got.Err(), got.Len())
 		}
 	}
+}
+
+func TestCastIsStrictByDefaultAndLenientLikeV1(t *testing.T) {
+	testutil.Proves(t, "T47")
+
+	tbl := NewTable(
+		Texts("i", " 12", "7", "8"),
+		Texts("d", "27.09.2026", " 2026-09-27 ", "09/27/2026"),
+		Texts("f", " 01.02.2026", "03.04.2026", "03.04.2026"),
+	)
+	// Strict: no trimming, only 2006-01-02 and RFC 3339 (D74).
+	strict := tbl.Cast("i", TypeInt)
+	wantCells(t, strict, "i", "7", "8")
+	if !slices.Equal(codes(strict.Rejects()), []string{CodeParse}) {
+		t.Errorf("rejects = %v", strict.Rejects())
+	}
+	if n := tbl.Cast("d", TypeTimestamp).Len(); n != 0 {
+		t.Errorf("strict date cast kept %d rows", n)
+	}
+	if n := tbl.Cast("f", TypeTimestamp, DateFormat("02.01.2006")).Len(); n != 2 {
+		t.Errorf("strict cast with DateFormat kept %d rows, want 2", n)
+	}
+
+	// Lenient: trims and tries the v1 date layouts.
+	wantCells(t, tbl.Cast("i", TypeInt, Lenient()), "i", "12", "7", "8")
+	wantCells(t, tbl.Cast("d", TypeTimestamp, Lenient()), "d",
+		"2026-09-27T00:00:00Z", "2026-09-27T00:00:00Z", "2026-09-27T00:00:00Z")
+	// An explicit DateFormat still applies, with trimming.
+	wantCells(t, tbl.Cast("f", TypeTimestamp, Lenient(), DateFormat("02.01.2006")), "f",
+		"2026-02-01T00:00:00Z", "2026-04-03T00:00:00Z", "2026-04-03T00:00:00Z")
+	// Text stays as it is, and a blank value is null.
+	wantCells(t, tbl.Cast("i", TypeText, Lenient()), "i", " 12", "7", "8")
+	wantCells(t, NewTable(Texts("n", "  ", " n/a ")).Cast("n", TypeInt, Lenient(), NullTexts("n/a")), "n", "<null>", "<null>")
 }

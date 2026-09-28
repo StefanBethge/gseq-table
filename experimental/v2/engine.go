@@ -44,9 +44,15 @@ func checkPlan(src schema, steps []step) ([]planned, schema, error) {
 	return out, s, nil
 }
 
+// batch is a block with the origin of every row (D9, D11).
+type batch struct {
+	blk  block.Block
+	orig []origin
+}
+
 // stage is one step of a running plan.
 type stage interface {
-	push(ctx context.Context, blk block.Block) error
+	push(ctx context.Context, b batch) error
 	finish(ctx context.Context) error
 }
 
@@ -57,12 +63,17 @@ type streamStage struct {
 	next stage
 }
 
-func (s *streamStage) push(ctx context.Context, blk block.Block) error {
-	out, err := s.op.apply(blk, s.in, s.sc)
+func (s *streamStage) push(ctx context.Context, b batch) error {
+	s.sc.begin(b.blk, b.orig)
+	out, keep, err := s.op.apply(b.blk, s.in, s.sc)
 	if err != nil {
 		return err
 	}
-	return s.next.push(ctx, out)
+	orig := b.orig
+	if keep != nil {
+		orig = pick(orig, keep)
+	}
+	return s.next.push(ctx, batch{out, orig})
 }
 
 func (s *streamStage) finish(ctx context.Context) error { return s.next.finish(ctx) }
@@ -74,28 +85,31 @@ type fullStage struct {
 	blockLen int // 0: pass the result on as one block
 	next     stage
 	buf      []block.Block
+	orig     []origin
 }
 
-func (s *fullStage) push(_ context.Context, blk block.Block) error {
-	s.buf = append(s.buf, blk)
+func (s *fullStage) push(_ context.Context, b batch) error {
+	s.buf = append(s.buf, b.blk)
+	s.orig = append(s.orig, b.orig...)
 	return nil
 }
 
 func (s *fullStage) finish(ctx context.Context) error {
 	if j, ok := s.op.(joinOp); ok {
 		// The rejects of the right side come before the join's own (D69).
-		s.sc.rx.rejects = append(s.sc.rx.rejects, j.rightRejects()...)
+		s.sc.rx.entries = append(s.sc.rx.entries, j.rightRejects()...)
 	}
-	blks := s.buf
-	s.buf = nil
+	blks, orig := s.buf, s.orig
+	s.buf, s.orig = nil, nil
 	if len(blks) == 0 {
 		blks = []block.Block{emptyBlock(s.in)}
 	}
-	out, err := s.op.applyAll(blks, s.in, s.sc)
+	s.sc.begin(block.Block{}, orig)
+	out, outOrig, err := s.op.applyAll(blks, s.in, s.sc)
 	if err != nil {
 		return err
 	}
-	for _, b := range chunk(out, s.blockLen) {
+	for _, b := range chunk(batch{out, outOrig}, s.blockLen) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -108,12 +122,12 @@ func (s *fullStage) finish(ctx context.Context) error {
 
 // collector is the end of a plan: it keeps the output blocks in memory.
 type collector struct {
-	blocks []block.Block
+	batches []batch
 }
 
-func (c *collector) push(_ context.Context, blk block.Block) error {
-	if blk.Len() > 0 || len(c.blocks) == 0 {
-		c.blocks = append(c.blocks, blk)
+func (c *collector) push(_ context.Context, b batch) error {
+	if b.blk.Len() > 0 || len(c.batches) == 0 {
+		c.batches = append(c.batches, b)
 	}
 	return nil
 }
@@ -125,7 +139,7 @@ func build(steps []planned, rx *rejector, blockLen int, c *collector) stage {
 	var next stage = c
 	for i := len(steps) - 1; i >= 0; i-- {
 		st := steps[i]
-		sc := &stepCtx{step: st.name, rx: rx}
+		sc := &stepCtx{step: st.name, ref: &stepRef{st.name}, rx: rx, in: st.in}
 		switch op := st.op.impl.(type) {
 		case streamOp:
 			next = &streamStage{op: op, in: st.in, sc: sc, next: next}
@@ -138,11 +152,11 @@ func build(steps []planned, rx *rejector, blockLen int, c *collector) stage {
 	return next
 }
 
-// run pushes the blocks from src through the planned steps.
-func run(ctx context.Context, src func(yield func(block.Block) error) error, steps []planned, rx *rejector, blockLen int) ([]block.Block, error) {
+// run pushes the batches from src through the planned steps.
+func run(ctx context.Context, src func(yield func(batch) error) error, steps []planned, rx *rejector, blockLen int) ([]batch, error) {
 	c := &collector{}
 	first := build(steps, rx, blockLen, c)
-	err := src(func(b block.Block) error {
+	err := src(func(b batch) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -154,22 +168,22 @@ func run(ctx context.Context, src func(yield func(block.Block) error) error, ste
 	if err := first.finish(ctx); err != nil {
 		return nil, err
 	}
-	return c.blocks, nil
+	return c.batches, nil
 }
 
-// chunk splits b into blocks of at most n rows; n <= 0 keeps it whole.
-func chunk(b block.Block, n int) []block.Block {
-	if n <= 0 || b.Len() <= n {
-		return []block.Block{b}
+// chunk splits b into batches of at most n rows; n <= 0 keeps it whole.
+func chunk(b batch, n int) []batch {
+	if n <= 0 || b.blk.Len() <= n {
+		return []batch{b}
 	}
-	var out []block.Block
-	for start := 0; start < b.Len(); start += n {
-		end := min(start+n, b.Len())
+	var out []batch
+	for start := 0; start < b.blk.Len(); start += n {
+		end := min(start+n, b.blk.Len())
 		idx := make([]int, 0, end-start)
 		for i := start; i < end; i++ {
 			idx = append(idx, i)
 		}
-		out = append(out, b.Take(idx))
+		out = append(out, batch{b.blk.Take(idx), b.orig[start:end:end]})
 	}
 	return out
 }

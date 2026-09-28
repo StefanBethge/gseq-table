@@ -16,9 +16,9 @@ type countingSource struct {
 	read int
 }
 
-func (s *countingSource) blocks(n int, yield func(block.Block) error) error {
-	return s.tableSource.blocks(n, func(b block.Block) error {
-		s.read += b.Len()
+func (s *countingSource) blocks(n int, yield func(batch) error) error {
+	return s.tableSource.blocks(n, func(b batch) error {
+		s.read += b.blk.Len()
 		return yield(b)
 	})
 }
@@ -101,7 +101,7 @@ func TestPipelineMatchesTableMethods(t *testing.T) {
 				t.Errorf("block length %d, column %s: %v, want %v", n, c, a, b)
 			}
 		}
-		if !slices.Equal(got.Rejects(), eager.Rejects()) {
+		if !slices.Equal(withoutIDs(got.Rejects()), withoutIDs(eager.Rejects())) {
 			t.Errorf("block length %d: rejects differ", n)
 		}
 	}
@@ -125,9 +125,20 @@ type probe struct{ sizes *[]int }
 
 func (probe) kind() string                   { return "probe" }
 func (probe) plan(in schema) (schema, error) { return in, nil }
-func (p probe) apply(b block.Block, _ schema, _ *stepCtx) (block.Block, error) {
+func (p probe) apply(b block.Block, _ schema, _ *stepCtx) (block.Block, []int, error) {
 	*p.sizes = append(*p.sizes, b.Len())
-	return b, nil
+	return b, nil, nil
+}
+
+// withoutIDs returns rs without their reject_ids, which differ from run to
+// run (D76).
+func withoutIDs(rs []Reject) []Reject {
+	out := make([]Reject, len(rs))
+	for i, r := range rs {
+		r.ID = ""
+		out[i] = r
+	}
+	return out
 }
 
 func TestPipelineCarriesSourceRejectsAndNamesSteps(t *testing.T) {

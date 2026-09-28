@@ -16,13 +16,23 @@ const (
 	CodeParse  = "parse"  // a value could not be cast (D29)
 	CodeExpr   = "expr"   // an expression failed at run time (D54)
 	CodeCustom = "custom" // a closure returned an error or panicked (D32, D39)
+
+	// Delivery errors (D42). The readers that report them follow in
+	// slice 4 (#48); the error policy already takes them.
+	CodeMissingColumn = "missing_column"
+	CodeMissingSheet  = "missing_sheet"
+	CodeMissingFile   = "missing_file"
+	CodeUnreadable    = "unreadable"
+	CodeTruncated     = "truncated"
 )
 
-// Reject describes one rejected row in the minimal form of this prototype
-// slice: the step that rejected it, the affected column, the value at the
-// time of the error, the reason and the code (D14). The full reject model
-// with raw state and location follows in slice 3 (#47).
+// Reject is one error of a rejected row: the step that rejected it, the
+// affected column, the value at the time of the error, the reason and the
+// code (D14). Errors of one row in one step share the ID, the reject_id
+// (D15). The rejected rows themselves, with raw state and location, are
+// tables; see Table.RejectedRows.
 type Reject struct {
+	ID     string
 	Step   string
 	Column string
 	// Value is the value of Column when the row failed; HasValue is false if
@@ -41,8 +51,9 @@ func (r Reject) String() string {
 	return fmt.Sprintf("step=%s column=%s value=%s code=%s reason=%s", r.Step, r.Column, v, r.Code, r.Reason)
 }
 
-// ErrorMode is the error behavior for data errors (D3): reject the row and
-// go on, or stop at the first data error. The default is ModeReject (D5).
+// ErrorMode is the error behavior for delivery and data errors (D3, D19):
+// reject the rows and go on, or stop at the first error. The default is
+// ModeReject (D5).
 type ErrorMode uint8
 
 const (
@@ -57,6 +68,70 @@ func (m ErrorMode) String() string {
 	return "reject"
 }
 
+// ErrorKind is the kind of an error whose behavior is configurable (D19).
+// Plan errors are not: the run never starts.
+type ErrorKind uint8
+
+const (
+	KindData     ErrorKind = iota // one row: a value that does not parse, a failed expression
+	KindDelivery                  // the build of a delivery, such as a missing column (D42)
+)
+
+func (k ErrorKind) String() string {
+	if k == KindDelivery {
+		return "delivery"
+	}
+	return "data"
+}
+
+// kindOfCode returns the kind of the errors with the given code.
+func kindOfCode(code string) ErrorKind {
+	switch code {
+	case CodeMissingColumn, CodeMissingSheet, CodeMissingFile, CodeUnreadable, CodeTruncated:
+		return KindDelivery
+	}
+	return KindData
+}
+
+// errorPolicy is the error behavior of a pipeline or table: a mode per
+// code, else per kind, else the general mode (D19). It is changed by copy,
+// so tables that share one stay independent.
+type errorPolicy struct {
+	mode  ErrorMode
+	kinds map[ErrorKind]ErrorMode
+	codes map[string]ErrorMode
+}
+
+func (p errorPolicy) modeFor(code string) ErrorMode {
+	if m, ok := p.codes[code]; ok {
+		return m
+	}
+	if m, ok := p.kinds[kindOfCode(code)]; ok {
+		return m
+	}
+	return p.mode
+}
+
+func (p errorPolicy) withKind(k ErrorKind, m ErrorMode) errorPolicy {
+	kinds := make(map[ErrorKind]ErrorMode, len(p.kinds)+1)
+	for kk, mm := range p.kinds {
+		kinds[kk] = mm
+	}
+	kinds[k] = m
+	p.kinds = kinds
+	return p
+}
+
+func (p errorPolicy) withCode(code string, m ErrorMode) errorPolicy {
+	codes := make(map[string]ErrorMode, len(p.codes)+1)
+	for c, mm := range p.codes {
+		codes[c] = mm
+	}
+	codes[code] = m
+	p.codes = codes
+	return p
+}
+
 // PlanError is an error in the pipeline itself: an unknown column, a type
 // conflict or an invalid parameter. It is found before any row is read, and
 // nothing runs (D19).
@@ -68,7 +143,8 @@ type PlanError struct {
 func (e *PlanError) Error() string { return fmt.Sprintf("plan error in step %s: %v", e.Step, e.Err) }
 func (e *PlanError) Unwrap() error { return e.Err }
 
-// DataError is the first data error of a run in ModeStop (D3, D50).
+// DataError is the first error of a run whose code is set to ModeStop (D3,
+// D19, D50).
 type DataError struct {
 	Reject Reject
 }
@@ -100,18 +176,41 @@ func customCode(err error) string {
 	return CodeCustom
 }
 
-// rejector collects the rejects of one run in its error mode. In ModeStop
-// the first reject becomes a DataError.
-type rejector struct {
-	mode    ErrorMode
-	rejects []Reject
+// rejectEntry is one error of a rejected row with what the reject tables
+// need: the run, the origin of the row, the failing step and, for an
+// aggregated row, its values (D77).
+type rejectEntry struct {
+	Reject
+	runID string
+	orig  origin
+	step  *stepRef
+	snap  *snapshot
 }
 
-func (rx *rejector) add(r Reject) error {
-	if rx.mode == ModeStop {
-		return &DataError{Reject: r}
+// stepRef identifies one step of one run; steps of the same name stay
+// apart (D77).
+type stepRef struct{ name string }
+
+// snapshot holds the values of an aggregated row as it went into the
+// failing step: one row with its schema.
+type snapshot struct {
+	s   schema
+	blk block.Block
+}
+
+// rejector collects the rejects of one run under its error policy. An
+// error whose code is set to ModeStop becomes a DataError.
+type rejector struct {
+	policy  errorPolicy
+	run     *runInfo
+	entries []rejectEntry
+}
+
+func (rx *rejector) add(e rejectEntry) error {
+	if rx.policy.modeFor(e.Code) == ModeStop {
+		return &DataError{Reject: e.Reject}
 	}
-	rx.rejects = append(rx.rejects, r)
+	rx.entries = append(rx.entries, e)
 	return nil
 }
 

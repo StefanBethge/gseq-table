@@ -140,9 +140,11 @@ func (o joinOp) plan(in schema) (schema, error) {
 }
 
 // rightRejects are the rejects the right side brings into the result (D69).
-func (o joinOp) rightRejects() []Reject { return o.right.rejects }
+func (o joinOp) rightRejects() []rejectEntry { return o.right.rejects }
 
-func (o joinOp) applyAll(blks []block.Block, in schema, _ *stepCtx) (block.Block, error) {
+// applyAll joins the rows. A join row keeps the source rows of both sides,
+// so that its failure rejects all of them together (D11).
+func (o joinOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
 	lb := concatBlocks(blks, in)
 	rb := concatBlocks(o.right.blocks, o.right.s)
 	lk := make([]*vec, len(o.keys))
@@ -158,7 +160,9 @@ func (o joinOp) applyAll(blks []block.Block, in schema, _ *stepCtx) (block.Block
 			index[key] = append(index[key], i)
 		}
 	}
+	rorig := o.right.origins()
 	var li, ri []int
+	var orig []origin
 	for i := range lb.Len() {
 		var matches []int
 		if key, null := keyOf(lk, i, &sb); !null {
@@ -167,10 +171,12 @@ func (o joinOp) applyAll(blks []block.Block, in schema, _ *stepCtx) (block.Block
 		for _, j := range matches {
 			li = append(li, i)
 			ri = append(ri, j)
+			orig = append(orig, sc.orig[i].join(rorig[j]))
 		}
 		if len(matches) == 0 && o.left {
 			li = append(li, i)
 			ri = append(ri, -1)
+			orig = append(orig, sc.orig[i])
 		}
 	}
 	cols := make([]block.Column, 0, lb.Width()+rb.Width())
@@ -182,7 +188,7 @@ func (o joinOp) applyAll(blks []block.Block, in schema, _ *stepCtx) (block.Block
 			cols = append(cols, rb.Column(i).Take(ri))
 		}
 	}
-	return newBlock(cols, len(li)), nil
+	return newBlock(cols, len(li)), orig, nil
 }
 
 func (o joinOp) isRightKey(name string) bool {
@@ -356,7 +362,10 @@ func (o groupOp) plan(in schema) (schema, error) {
 	return out, nil
 }
 
-func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, error) {
+// applyAll groups the rows. Each group becomes an aggregated row that
+// stands for its input rows (D12). If aggregations fail for a group, its row
+// is rejected once, with an entry per failed aggregation (D15, D77).
+func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
 	b := concatBlocks(blks, in)
 	kv := make([]*vec, len(o.keys))
 	for i, k := range o.keys {
@@ -377,21 +386,24 @@ func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Blo
 	}
 
 	firsts := make([]int, len(groups))
+	orig := make([]origin, len(groups))
 	for g, rows := range groups {
 		firsts[g] = rows[0]
+		for _, r := range rows {
+			orig[g].agg += sc.orig[r].weight()
+		}
 	}
+	type failure struct{ column, reason string }
+	fails := make([][]failure, len(groups))
 	outs := make([]*vec, len(o.aggs))
-	drop := make([]bool, len(groups))
 	for j, a := range o.aggs {
 		src := vecOf(b.Column(in.index(a.col)))
 		k, _ := a.kind(src.kind)
 		outs[j] = newVec(k, len(groups))
 		for g, rows := range groups {
-			if reason := a.reduce(src, rows, outs[j], g); reason != "" && !drop[g] {
-				if err := sc.reject(a.name(), "", false, reason, CodeExpr); err != nil {
-					return block.Block{}, err
-				}
-				drop[g] = true
+			if reason := a.reduce(src, rows, outs[j], g); reason != "" {
+				outs[j].null[g] = true
+				fails[g] = append(fails[g], failure{a.name(), reason})
 			}
 		}
 	}
@@ -402,7 +414,23 @@ func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Blo
 	for _, v := range outs {
 		cols = append(cols, v.column())
 	}
-	return dropRows(newBlock(cols, len(groups)), drop), nil
+	out := newBlock(cols, len(groups))
+	outSchema, _ := o.plan(in)
+	drop := make([]bool, len(groups))
+	for g, fs := range fails {
+		snap := func() snapshot { return snapshot{outSchema, out.Take([]int{g})} }
+		for _, f := range fs {
+			if err := sc.rejectRow(g, orig[g], snap, f.column, "", false, f.reason, CodeExpr); err != nil {
+				return block.Block{}, nil, err
+			}
+			drop[g] = true
+		}
+	}
+	res, keep := dropRows(out, drop)
+	if keep != nil {
+		orig = pick(orig, keep)
+	}
+	return res, orig, nil
 }
 
 // reduce computes the aggregation over the given rows of src into cell g of
@@ -563,7 +591,7 @@ func (o sortOp) plan(in schema) (schema, error) {
 	return in, nil
 }
 
-func (o sortOp) applyAll(blks []block.Block, in schema, _ *stepCtx) (block.Block, error) {
+func (o sortOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
 	b := concatBlocks(blks, in)
 	kv := make([]*vec, len(o.keys))
 	for i, k := range o.keys {
@@ -591,5 +619,5 @@ func (o sortOp) applyAll(blks []block.Block, in schema, _ *stepCtx) (block.Block
 		}
 		return 0
 	})
-	return b.Take(idx), nil
+	return b.Take(idx), pick(sc.orig, idx), nil
 }
