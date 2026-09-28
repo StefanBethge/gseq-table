@@ -360,6 +360,53 @@ ergibt einen Planfehler.
 Aufsteigend und absteigend sortiert stehen Zeilen mit null in der Sortierspalte am Ende.
 Zeilen mit gleichem Schlüssel behalten ihre Reihenfolge.
 
+### T47 — Cast ist ohne Option streng und mit Lenient nachsichtig wie v1
+
+**Beweist:** [D74](10-design-decisions.md#d74-cast-ist-standardmaig-streng-die-option-lenient-verhalt-sich-wie-v1)
+Ohne Option scheitern ` 12` als Ganzzahl und `27.09.2026` als Datum mit `parse`. Mit
+`Lenient` werden beide gelesen, und ein ausdrückliches `DateFormat` gilt weiterhin, mit
+entfernten Leerzeichen.
+
+### T48 — Eine im Code gebaute Tabelle ist eine benannte Quelle, und gleichnamige Quellen in einem Join sind ein Planfehler
+
+**Beweist:** [D75](10-design-decisions.md#d75-eine-im-code-gebaute-tabelle-ist-eine-eigene-quelle-mit-einstellbarem-namen-und-gleichnamige-quellen-sind-ein-planfehler), [D50](10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler)
+Eine Tabelle aus `NewTable` hat die Quelle `code`, mit `AsSource` den gegebenen Namen, in der
+Info-Spalte `source` und als Name ihrer Tabelle aussortierter Zeilen. Die Fundstelle ist der
+Zeilenindex, der Rohzustand sind die Werte beim Erstellen. Ein Join zweier Quellen gleichen
+Namens ergibt sofort und in einer Pipeline einen Planfehler, ebenso `AsSource` nach einer
+Operation.
+
+### T49 — Kennungen sind eindeutig, und row_key verbindet die record_keys eines Joins
+
+**Beweist:** [D76](10-design-decisions.md#d76-kennungen-von-lauf-fehler-und-zeile-haben-eine-feste-form)
+`run_id` hat 16 Hex-Zeichen, und `reject_id` bleibt über zwei verbundene Tabellen und zwei
+Zweige einer Kette eindeutig. `record_key` ist für gleiche Werte gleich und für andere Werte
+verschieden. Der `row_key` einer gescheiterten Join-Zeile verbindet die `record_key`s beider
+Seiten, links zuerst.
+
+### T50 — Aggregierte aussortierte Zeilen stehen je Schritt in einer Tabelle und in der Übersicht
+
+**Beweist:** [D77](10-design-decisions.md#d77-aggregierte-aussortierte-zeilen-stehen-je-schritt-in-einer-tabelle-und-auch-in-der-ubersicht), [D48](10-design-decisions.md#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle)
+Scheitert eine aggregierte Zeile in einem späteren Schritt, steht sie mit ihren Werten,
+ihrem Gruppenschlüssel und `source_rows` in der Tabelle dieses Schritts und mit leerer
+Fundstelle in der Übersicht, aber in keiner Tabelle je Quelle. Scheitern zwei Aggregationen
+einer Gruppe in der Gruppierung selbst, gibt es zwei Einträge mit derselben `reject_id`.
+
+### T51 — CastAll und WithAll werten jede Spalte gegen die Eingangszeile aus und sortieren eine Zeile einmal aus
+
+**Beweist:** [D78](10-design-decisions.md#d78-castall-und-withall-sind-je-ein-schritt-uber-mehrere-spalten), [D15](10-design-decisions.md#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte)
+`WithAll` mit zwei Ausdrücken, von denen einer die Spalte des anderen liest, sieht deren Wert
+vor dem Schritt. Scheitern in `CastAll` zwei Spalten einer Zeile, fehlt die Zeile im Ergebnis
+einmal, und es gibt zwei Einträge mit derselben `reject_id`. Zwei Teiloperationen auf
+dieselbe Spalte und eine fremde Teiloperation sind Planfehler.
+
+### T52 — Eine Tabelle mit haftendem Fehler behält die Daten vor der gescheiterten Operation
+
+**Beweist:** [D73](10-design-decisions.md#d73-eine-tabelle-mit-haftendem-fehler-behalt-die-daten-vor-der-gescheiterten-operation)
+Nach einer Operation mit unbekannter Spalte hat die Tabelle den haftenden Fehler, und Zeilen,
+Spalten und aussortierte Zeilen sind die von vorher. Eine weitere Operation ändert daran
+nichts.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -421,3 +468,9 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T44](#t44-ein-join-tragt-die-aussortierten-zeilen-und-haftenden-fehler-beider-tabellen-und-gleichnamige-spalten-sind-ein-planfehler) | `TestJoinCarriesRejectsAndErrorsOfBothTables` |
 | [T45](#t45-ganzzahl-und-gleitkomma-werden-erweitert-die-division-ergibt-gleitkomma) | `TestNumbersWidenAndDivisionIsFloat` |
 | [T46](#t46-nullwerte-stehen-beim-sortieren-hinten-und-das-sortieren-ist-stabil) | `TestSortPutsNullsLastAndIsStable` |
+| [T47](#t47-cast-ist-ohne-option-streng-und-mit-lenient-nachsichtig-wie-v1) | ausstehend |
+| [T48](#t48-eine-im-code-gebaute-tabelle-ist-eine-benannte-quelle-und-gleichnamige-quellen-in-einem-join-sind-ein-planfehler) | ausstehend |
+| [T49](#t49-kennungen-sind-eindeutig-und-row_key-verbindet-die-record_keys-eines-joins) | ausstehend |
+| [T50](#t50-aggregierte-aussortierte-zeilen-stehen-je-schritt-in-einer-tabelle-und-in-der-ubersicht) | ausstehend |
+| [T51](#t51-castall-und-withall-werten-jede-spalte-gegen-die-eingangszeile-aus-und-sortieren-eine-zeile-einmal-aus) | ausstehend |
+| [T52](#t52-eine-tabelle-mit-haftendem-fehler-behalt-die-daten-vor-der-gescheiterten-operation) | ausstehend |

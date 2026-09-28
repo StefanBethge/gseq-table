@@ -1214,3 +1214,95 @@ greifen dann auf die falsche Spalte zu. Ein Planfehler fällt vor dem Lauf auf u
 ein `Rename`.
 **Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #46)
 **Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D73 — Eine Tabelle mit haftendem Fehler behält die Daten vor der gescheiterten Operation
+
+**Entscheidung:** Setzt eine Operation den haftenden Fehler einer `Table` nach [D50](#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler), trägt das
+Ergebnis die Daten und die aussortierten Zeilen aus der Zeit vor der gescheiterten Operation,
+wie in v1. Die folgenden Operationen der Kette laufen nicht und ändern daran nichts. Das
+präzisiert [D50](#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler).
+**Begründung:** Der Entwickler sieht so, wie weit die Kette gekommen ist, und kann den
+letzten guten Stand untersuchen. Eine leere Tabelle neben dem Fehler würde diesen Stand
+wegwerfen, ohne etwas zu gewinnen. Das Verhalten kennt er aus v1.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #47, bestätigt eine Wahl aus #46)
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D74 — Cast ist standardmäßig streng, die Option Lenient verhält sich wie v1
+
+**Entscheidung:** Ohne Option ist `Cast` streng: Ohne `DateFormat` gelten nur die Datumsformen
+`2006-01-02` und RFC 3339, und Leerzeichen am Rand werden nicht entfernt, ein Wert wie
+` 12` scheitert also mit `parse`. Die Option `Lenient` lässt `Cast` wie v1 arbeiten: Sie
+entfernt Leerzeichen am Rand und probiert ohne `DateFormat` die gängigen Datumsformate aus
+v1 (`internal/cell`, `DateLayouts`) in deren Reihenfolge. Mit `DateFormat` gilt dieses Format,
+Leerzeichen werden auch dann entfernt. Das präzisiert [D29](#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) und [D32](#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg).
+**Begründung:** Streng passt zum Fehlermodell, weil nichts still falsch gelesen wird: Ein
+Wert, der nicht genau der erwarteten Form entspricht, wird aussortiert und bleibt sichtbar.
+`Lenient` hält schnelle Pipelines über schmutzige Daten einfach.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #47, bestätigt und erweitert eine Wahl aus #46)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D75 — Eine im Code gebaute Tabelle ist eine eigene Quelle mit einstellbarem Namen, und gleichnamige Quellen sind ein Planfehler
+
+**Entscheidung:** Jeder Aufruf von `NewTable` ergibt eine eigene Quelle im Sinn von
+[D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen). Ihr Name ist standardmäßig `code` nach [D50](#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler). `AsSource(name)`, direkt nach
+`NewTable` aufgerufen, setzt einen anderen Namen. Der Name steht in der Info-Spalte `source`
+und benennt die Tabelle aussortierter Zeilen der Quelle; die Fundstelle bleibt der
+Zeilenindex. `AsSource` auf einer Tabelle, auf die schon eine Operation angewandt wurde, ist
+ein Planfehler nach [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler). Bringen die beiden Seiten eines Joins, sofort oder in einer
+Pipeline, Zeilen oder aussortierte Zeilen aus zwei verschiedenen Quellen gleichen Namens
+zusammen, ist das ein Planfehler vor dem Join.
+**Begründung:** Zwei im Code gebaute Tabellen haben verschiedene Spalten und brauchen nach
+[D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen) je eine eigene Tabelle aussortierter Zeilen. Ein Name, den der Entwickler wählt,
+macht sie unterscheidbar, wo automatisch vergebene Nummern nichts aussagen würden. Der
+Planfehler verhindert, dass zwei Quellen still unter einem Namen landen.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #47)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D76 — Kennungen von Lauf, Fehler und Zeile haben eine feste Form
+
+**Entscheidung:** `run_id` besteht aus 16 zufälligen Hex-Zeichen und wird je `Pipeline.Run`
+und je `NewTable` neu vergeben. Eine Kette von Tabellen behält die `run_id` ihrer ersten
+Tabelle, und mitgetragene aussortierte Zeilen nach [D69](#d69-ein-join-zweier-tabellen-tragt-die-aussortierten-zeilen-und-den-haftenden-fehler-beider-seiten) behalten ihre. `reject_id` hat die
+Form `<run_id>-<n>`, wobei `n` je Lauf ab 1 zählt, auch über Verzweigungen einer Kette hinweg.
+`record_key` einer im Code gebauten Quelle hat die Form `<fingerprint>:<zeilenindex>`; der
+Fingerabdruck besteht aus den ersten 16 Hex-Zeichen von SHA-256 über die Spaltennamen und die
+Werte beim Erstellen, analog zu [D61](#d61-die-kennung-einer-lieferung-ist-ein-fingerabdruck-der-beim-offnen-feststeht). `row_key` verbindet die `record_key`s der Quellzeilen nach
+[D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen) mit `+`, die der linken Seite vor denen der rechten; ohne Join ist er gleich dem `record_key`.
+**Begründung:** Die Zählung unter der `run_id` hält `reject_id` eindeutig, auch wenn die
+aussortierten Zeilen zweier Tabellen in einem Join zusammenkommen. Ein Fingerabdruck aus dem
+Inhalt hält `record_key` für dieselben Werte stabil ([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)).
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #47)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D77 — Aggregierte aussortierte Zeilen stehen je Schritt in einer Tabelle und auch in der Übersicht
+
+**Entscheidung:** Die aggregierten aussortierten Zeilen nach [D48](#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle) stehen je Schritt, in dem sie
+scheitern, in einer eigenen Tabelle; Schritte gleichen Namens bleiben getrennt. Die Tabelle
+enthält die Werte der Zeile, typisiert und so, wie sie in den scheiternden Schritt
+hineingegangen ist. Scheitert die Gruppierung selbst (zum Beispiel am Überlauf einer Summe),
+sind es die Werte der Ergebniszeile, mit null in der gescheiterten Aggregation. Der
+Gruppenschlüssel steht in den Schlüsselspalten unter diesen Werten. Dazu kommen die
+Info-Spalten `reject_id`, `run_id`, `step`, `column`, `value`, `reason`, `code`,
+`error_count` und `source_rows`, die Anzahl der Zeilen, die in die Gruppe eingegangen sind;
+eine aggregierte Eingangszeile zählt mit ihrer eigenen Anzahl. Aggregierte Fehler stehen auch
+in der Übersicht nach [D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), mit leerer Fundstelle und leeren Schlüsseln. Den Rohwert des
+Gruppenschlüssels lässt der Prototyp weg ([G63](70-gap-ledger.md#g63-rohwert-des-gruppenschlussels-einer-aggregierten-aussortierten-zeile)).
+**Begründung:** Zeilen verschiedener Schritte haben verschiedene Spalten, eine Tabelle je
+Schritt hält die Werte typisiert und ohne Auffüllen lesbar. In der Übersicht bleiben alle
+Fehler eines Laufs an einer Stelle, auch die ohne Quellzeile.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #47)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D78 — CastAll und WithAll sind je ein Schritt über mehrere Spalten
+
+**Entscheidung:** `CastAll` nimmt mehrere `Cast`-Operationen, `WithAll` mehrere
+`With`-Operationen, und führt sie als einen Schritt aus. Jede Teiloperation wird gegen die
+Spalten vor dem Schritt geprüft und ausgewertet, nicht gegen das Ergebnis einer anderen.
+Zwei Teiloperationen auf dieselbe Spalte, eine leere Liste und eine Teiloperation anderer Art
+sind Planfehler nach [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler). Scheitern mehrere Spalten einer Zeile, wird die Zeile einmal
+aussortiert, mit einem Übersichtseintrag je Spalte und derselben `reject_id` nach [D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte).
+**Begründung:** Eine Lieferung wird meist in einem Schritt typisiert. Der Entwickler sieht
+dann alle Probleme einer Zeile auf einmal, wie [D15](#d15-eine-zeile-wird-im-ersten-scheiternden-schritt-aussortiert-mit-einem-ubersichtseintrag-je-betroffener-spalte) es will, und nicht nur das der
+ersten scheiternden Spalte. Das Vorbild für `WithAll` ist `with_columns` in Polars.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #47)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
