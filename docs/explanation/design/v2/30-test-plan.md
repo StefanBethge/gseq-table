@@ -338,6 +338,28 @@ Mit der Option zum sofortigen Abbruch bricht ein überschrittener Anteil den Lau
 der Mindestzahl gelesener Zeilen ab, eine überschrittene absolute Grenze sofort. Sind beide
 angegeben, genügt eine. Der Abbruch ergibt den Status `failed_threshold`.
 
+### T44 — Ein Join trägt die aussortierten Zeilen und haftenden Fehler beider Tabellen, und gleichnamige Spalten sind ein Planfehler
+
+**Beweist:** [D69](10-design-decisions.md#d69-ein-join-zweier-tabellen-tragt-die-aussortierten-zeilen-und-den-haftenden-fehler-beider-seiten), [D72](10-design-decisions.md#d72-gleichnamige-spalten-beider-seiten-eines-joins-sind-ein-planfehler)
+Zwei Tabellen mit je einer aussortierten Zeile werden verbunden. Das Ergebnis trägt beide,
+die der linken Seite zuerst. Hat die rechte Tabelle einen haftenden Fehler, läuft der Join
+nicht, und das Ergebnis trägt diesen Fehler. Eine Spalte, die auf beiden Seiten gleich heißt
+und kein Schlüssel ist, und Schlüssel verschiedener Typen ergeben einen Planfehler. Ein
+Nullwert im Schlüssel findet keinen Partner.
+
+### T45 — Ganzzahl und Gleitkomma werden erweitert, die Division ergibt Gleitkomma
+
+**Beweist:** [D71](10-design-decisions.md#d71-ganzzahl-und-gleitkomma-werden-in-ausdrucken-erweitert-und-die-division-ergibt-gleitkomma)
+Ganzzahl mal Gleitkomma ergibt Gleitkomma, Ganzzahl plus Ganzzahl Ganzzahl, und `7 / 2`
+ergibt `3.5`. Ein Überlauf einer Ganzzahl sortiert die Zeile mit `expr` aus. Text plus Zahl
+ergibt einen Planfehler.
+
+### T46 — Nullwerte stehen beim Sortieren hinten, und das Sortieren ist stabil
+
+**Beweist:** [D70](10-design-decisions.md#d70-beim-sortieren-stehen-nullwerte-in-beiden-richtungen-hinten)
+Aufsteigend und absteigend sortiert stehen Zeilen mit null in der Sortierspalte am Ende.
+Zeilen mit gleichem Schlüssel behalten ihre Reihenfolge.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -379,8 +401,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | ausstehend |
 | [T25](#t25-kein-zweig-sieht-anderungen-eines-anderen-in-jedem-modus) | ausstehend |
 | [T26](#t26-die-modi-fur-kopieren-und-andern-liefern-dasselbe-ergebnis) | ausstehend |
-| [T27](#t27-nullwerte-sind-vom-leeren-text-getrennt-und-verhalten-sich-wie-in-sql) | ausstehend |
-| [T28](#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus) | ausstehend |
+| [T27](#t27-nullwerte-sind-vom-leeren-text-getrennt-und-verhalten-sich-wie-in-sql) | `TestNullsAreSeparateFromEmptyTextAndBehaveLikeSQL` |
+| [T28](#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus) | `TestClosureErrorRejectsRowWithCodeCustom` |
 | [T29](#t29-der-datenbank-writer-ist-bei-nachverarbeitung-idempotent) | ausstehend |
 | [T30](#t30-der-http-writer-liefert-jede-zeile-trotz-vorubergehender-fehler-aus) | ausstehend |
 | [T31](#t31-die-offentliche-api-enthalt-keine-gseq-typen) | `TestPublicAPIHasNoGseqTypes` |
@@ -393,6 +415,9 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | ausstehend |
 | [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
 | [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | ausstehend |
-| [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | ausstehend |
+| [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | `TestTableCarriesRejectsAndStickyError` |
 | [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | ausstehend |
 | [T43](#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort) | ausstehend |
+| [T44](#t44-ein-join-tragt-die-aussortierten-zeilen-und-haftenden-fehler-beider-tabellen-und-gleichnamige-spalten-sind-ein-planfehler) | `TestJoinCarriesRejectsAndErrorsOfBothTables` |
+| [T45](#t45-ganzzahl-und-gleitkomma-werden-erweitert-die-division-ergibt-gleitkomma) | `TestNumbersWidenAndDivisionIsFloat` |
+| [T46](#t46-nullwerte-stehen-beim-sortieren-hinten-und-das-sortieren-ist-stabil) | `TestSortPutsNullsLastAndIsStable` |

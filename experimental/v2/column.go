@@ -1,6 +1,7 @@
 package gtable
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
@@ -64,3 +65,65 @@ func (c Column) Bool(i int) (v bool, ok bool) { return c.col.Bool(i) }
 
 // Timestamp returns cell i of a TypeTimestamp column; ok is false for null.
 func (c Column) Timestamp(i int) (v time.Time, ok bool) { return c.col.Timestamp(i) }
+
+// Texts returns a text column with the given values. Empty text is a value,
+// not null (D30); use WithNulls for null cells.
+func Texts(name string, values ...string) Column {
+	b := block.NewBuilder(block.Text, len(values))
+	for _, v := range values {
+		b.AppendText(v)
+	}
+	return newColumn(name, b.Build())
+}
+
+// Ints returns an integer column with the given values.
+func Ints(name string, values ...int64) Column {
+	b := block.NewBuilder(block.Int, len(values))
+	for _, v := range values {
+		b.AppendInt(v)
+	}
+	return newColumn(name, b.Build())
+}
+
+// Floats returns a floating-point column with the given values.
+func Floats(name string, values ...float64) Column {
+	b := block.NewBuilder(block.Float, len(values))
+	for _, v := range values {
+		b.AppendFloat(v)
+	}
+	return newColumn(name, b.Build())
+}
+
+// Bools returns a boolean column with the given values.
+func Bools(name string, values ...bool) Column {
+	b := block.NewBuilder(block.Bool, len(values))
+	for _, v := range values {
+		b.AppendBool(v)
+	}
+	return newColumn(name, b.Build())
+}
+
+// Timestamps returns a timestamp column with the given values.
+func Timestamps(name string, values ...time.Time) Column {
+	b := block.NewBuilder(block.Timestamp, len(values))
+	for _, v := range values {
+		b.AppendTimestamp(v)
+	}
+	return newColumn(name, b.Build())
+}
+
+// WithNulls returns a copy of c in which the given cells are null. It panics
+// if a row is out of range.
+func (c Column) WithNulls(rows ...int) Column {
+	all := make([]int, c.Len())
+	for i := range all {
+		all[i] = i
+	}
+	for _, r := range rows {
+		if r < 0 || r >= len(all) {
+			panic(fmt.Sprintf("gtable: WithNulls: row %d out of range [0, %d)", r, len(all)))
+		}
+		all[r] = -1
+	}
+	return newColumn(c.name, c.col.Take(all))
+}

@@ -408,6 +408,7 @@ Eine unvollständige letzte Zeile lässt sich nicht sicher von einer gültigen D
 
 **Type:** Gap · **Kind:** design · **Status:** offen
 [D50](10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler) sagt nicht, wie eine aus einem Reader gebaute `Table` Lieferfehler meldet, wann ihr Rohzustand freigegeben wird (sie verlässt keinen Plan, [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)), welchen Rohzustand eine Tabelle aus einem Laufergebnis trägt, und wie sich aussortierte Zeilen und haftende Fehler zweier Tabellen bei einem Join verbinden. Der Rohzustand einer im Code gebauten Tabelle sind typisierte Werte, [D29](10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) sieht Text vor.
+**Teilauflösung (2026-09-28):** Wie sich aussortierte Zeilen und haftende Fehler zweier Tabellen bei einem Join verbinden, legt [D69](10-design-decisions.md#d69-ein-join-zweier-tabellen-tragt-die-aussortierten-zeilen-und-den-haftenden-fehler-beider-seiten) fest. Die übrigen Fragen bleiben offen.
 
 ### G59 — Vergleichbarkeit der Bestehkriterien
 

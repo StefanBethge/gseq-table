@@ -20,13 +20,13 @@ missing and renamed columns, broken lines), following [D60](../../../docs/explan
 files such as the 1BRC measurements are never committed; the example takes their path from
 an environment variable or a flag.
 
-## Planned examples
+## Examples
 
 API names below are sketches. The behavior follows the linked decisions.
 
 | Example | Status | Runnable with |
 |---|---|---|
-| `eager_table` | planned | slice 2 (#46) |
+| `eager_table` | runnable | slice 2 (#46) |
 | `inspect_rejects` | planned | slice 4 (#48) |
 | `fail_branch` | planned | slice 6 (#50) |
 | `onebrc_budget` | planned | slice 7 (#51), Docker runs in slice 9 (#53) |
@@ -37,6 +37,8 @@ API names below are sketches. The behavior follows the linked decisions.
 
 A `Table` used directly, without a pipeline: operations applied one after another, the
 rows the table rejected, and the sticky error that stops the chain after an unknown column.
+Run it with `go run ./examples/eager_table` in `experimental/v2`. Until the CSV reader of
+slice 4 (#48) exists, it reads its delivery with `encoding/csv` into raw text columns.
 Design: [D31](../../../docs/explanation/design/v2/10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan), [D50](../../../docs/explanation/design/v2/10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler).
 
 ### inspect_rejects
