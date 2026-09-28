@@ -50,6 +50,7 @@ var noUseCaseDecisions = []string{"D37", "D68"}
 // links are checked too, relative to the repository root.
 var extraFiles = []string{
 	"experimental/v2/CLAUDE.md",
+	"experimental/v2/examples/README.md",
 }
 
 func TestDocsIDConsistency(t *testing.T) {
