@@ -1157,3 +1157,60 @@ erspart es, sie einzeln aufzurufen. Einen Linter mit eigener Konfiguration hat d
 Maintainer nicht gewählt.
 **Quelle:** Maintainer bei der Umsetzung von #44, 2026-09-27
 **Betroffene Use Cases:** keine. Die Decision betrifft die Werkzeuge des Repos, nicht Abläufe der Library ([G62](70-gap-ledger.md#g62-d68-nennt-keinen-use-case-fallt-aber-nicht-unter-die-ausnahme-von-d37)).
+
+### D69 — Ein Join zweier Tabellen trägt die aussortierten Zeilen und den haftenden Fehler beider Seiten
+
+**Entscheidung:** Verbindet ein Join zwei sofortige Tabellen nach [D50](#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler), trägt das Ergebnis die
+aussortierten Zeilen der linken Tabelle, danach die der rechten und danach die des Joins
+selbst. Hat eine der beiden Tabellen einen haftenden Fehler, läuft der Join nicht, und das
+Ergebnis trägt diesen Fehler, bei zwei Fehlern den der linken Seite. In einer Pipeline ist die
+rechte Seite eines Joins eine `Table`, die nach [P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren) in den Speicher passt; hat sie einen
+haftenden Fehler, ist das ein Planfehler nach [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler). Das beantwortet die Join-Frage aus
+[G58](70-gap-ledger.md#g58-lucken-bei-sofortigen-tabellen); die übrigen Fragen dort bleiben offen.
+**Begründung:** Aussortierte Zeilen einer Seite dürfen nicht verschwinden, nur weil die
+Tabelle in einen Join geht, sonst verlöre die Kette still Fehler. Der haftende Fehler hält
+Ketten wie in [D50](#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler) lesbar, auch über zwei Tabellen. Die feste Reihenfolge macht das Ergebnis
+reproduzierbar. Die volle Herkunft der Quellzeilen nach [D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert) kommt mit dem Modell der
+aussortierten Zeilen hinzu.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #46, Teilauflösung von [G58](70-gap-ledger.md#g58-lucken-bei-sofortigen-tabellen))
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D70 — Beim Sortieren stehen Nullwerte in beiden Richtungen hinten
+
+**Entscheidung:** Sortieren ordnet Nullwerte nach [D30](#d30-es-gibt-echte-nullwerte-getrennt-vom-leeren-text) hinter alle Werte, aufsteigend wie
+absteigend. Das Sortieren ist stabil: Zeilen mit gleichen Schlüsseln behalten ihre
+Reihenfolge.
+**Begründung:** Die Werte, nach denen der Entwickler sortiert, stehen so immer vorn, und
+fehlende Werte sammeln sich an einer vorhersehbaren Stelle. Das entspricht der Voreinstellung
+von DuckDB. Stabilität kennt der Entwickler aus v1 (`Sort`, `SortMulti`).
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #46)
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D71 — Ganzzahl und Gleitkomma werden in Ausdrücken erweitert, und die Division ergibt Gleitkomma
+
+**Entscheidung:** Treffen in einem Ausdruck nach [D32](#d32-ausdrucke-sind-der-standard-fur-berechnungen-closures-der-ausweg) Ganzzahl und Gleitkomma
+zusammen, wird die Ganzzahl zu Gleitkomma erweitert. Addition, Subtraktion, Multiplikation
+und Summe zweier Ganzzahlen bleiben Ganzzahl. Die Division ergibt immer Gleitkomma, auch bei
+zwei Ganzzahlen. Division durch null und Überlauf einer Ganzzahl sortieren die Zeile nach
+[D54](#d54-laufzeitfehler-in-ausdrucken-sortieren-die-zeile-mit-dem-code-expr-aus) mit `expr` aus. Jede andere Mischung von Typen ist ein Planfehler nach
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler).
+**Begründung:** Rechnen mit Beträgen und Mengen mischt oft beide Zahlentypen, ein
+ausdrückliches Umwandeln bei jeder Rechnung wäre lästig und brächte keine Sicherheit. Eine
+abschneidende Ganzzahl-Division würde dagegen still Werte verfälschen, gegen den Zweck des
+Fehlermodells. v1 rechnete ohnehin mit Gleitkomma.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #46)
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D72 — Gleichnamige Spalten beider Seiten eines Joins sind ein Planfehler
+
+**Entscheidung:** Ein Join verbindet Schlüsselspalten, die auf beiden Seiten gleich heißen
+oder als Paar angegeben sind. Die Schlüsselspalte der rechten Seite fällt wie in v1 weg.
+Haben danach Spalten beider Seiten denselben Namen, ist das ein Planfehler nach
+[D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler); der Entwickler benennt vorher um. Haben die Schlüssel beider Seiten verschiedene
+Typen, ist das ebenfalls ein Planfehler. Nullwerte im Schlüssel finden nach [D30](#d30-es-gibt-echte-nullwerte-getrennt-vom-leeren-text) keinen
+Partner.
+**Begründung:** Die Nummern-Suffixe aus v1 benennen Spalten still um, und spätere Schritte
+greifen dann auf die falsche Spalte zu. Ein Planfehler fällt vor dem Lauf auf und kostet nur
+ein `Rename`.
+**Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #46)
+**Betroffene Use Cases:** [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
