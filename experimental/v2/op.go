@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
@@ -28,27 +29,68 @@ type opImpl interface {
 
 type streamOp interface {
 	opImpl
-	apply(blk block.Block, in schema, sc *stepCtx) (block.Block, error)
+	// apply returns the output block and, for every output row, the input
+	// row it comes from; nil means row for row.
+	apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []int, error)
 }
 
 type fullOp interface {
 	opImpl
-	applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, error)
+	// applyAll returns the output block and the origin of every output row
+	// (D11, D12). sc.orig holds the origins of the input rows in order.
+	applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error)
 }
 
-// stepCtx is what a step needs while it runs: its name for rejects and the
-// rejector of the run.
+// stepCtx is what a step needs while it runs: its name for rejects, the
+// rejector of the run, and the input rows with their origins.
 type stepCtx struct {
 	step string
+	ref  *stepRef
 	rx   *rejector
+	in   schema
+	blk  block.Block
+	orig []origin
+	ids  map[int]string // reject_id per failed row of the current input
 }
 
-func (sc *stepCtx) reject(column, value string, hasValue bool, reason, code string) error {
-	return sc.rx.add(Reject{Step: sc.step, Column: column, Value: value, HasValue: hasValue, Reason: reason, Code: code})
+// begin sets the input rows of the next apply.
+func (sc *stepCtx) begin(blk block.Block, orig []origin) {
+	sc.blk, sc.orig, sc.ids = blk, orig, nil
 }
 
-// dropRows returns blk without the rows marked in drop.
-func dropRows(blk block.Block, drop []bool) block.Block {
+// reject rejects input row i. Errors of one row share its reject_id (D15).
+func (sc *stepCtx) reject(i int, column, value string, hasValue bool, reason, code string) error {
+	snap := func() snapshot { return snapshot{sc.in, sc.blk.Take([]int{i})} }
+	return sc.rejectRow(i, sc.orig[i], snap, column, value, hasValue, reason, code)
+}
+
+// rejectRow rejects the row with the given key and origin; snap returns
+// its values if it is an aggregated row (D77).
+func (sc *stepCtx) rejectRow(key int, o origin, snap func() snapshot, column, value string, hasValue bool, reason, code string) error {
+	if sc.ids == nil {
+		sc.ids = make(map[int]string)
+	}
+	id, ok := sc.ids[key]
+	if !ok {
+		id = sc.rx.run.nextID()
+		sc.ids[key] = id
+	}
+	e := rejectEntry{
+		Reject: Reject{ID: id, Step: sc.step, Column: column, Value: value, HasValue: hasValue, Reason: reason, Code: code},
+		runID:  sc.rx.run.id,
+		orig:   o,
+		step:   sc.ref,
+	}
+	if o.agg > 0 {
+		s := snap()
+		e.snap = &s
+	}
+	return sc.rx.add(e)
+}
+
+// dropRows returns blk without the rows marked in drop, and the kept rows;
+// nil if none is dropped.
+func dropRows(blk block.Block, drop []bool) (block.Block, []int) {
 	keep := make([]int, 0, len(drop))
 	for i, d := range drop {
 		if !d {
@@ -56,9 +98,9 @@ func dropRows(blk block.Block, drop []bool) block.Block {
 		}
 	}
 	if len(keep) == len(drop) {
-		return blk
+		return blk, nil
 	}
-	return blk.Take(keep)
+	return blk.Take(keep), keep
 }
 
 // shareColumns returns a block of the given columns of blk, sharing their
@@ -127,12 +169,12 @@ func (o selectOp) plan(in schema) (schema, error) {
 	return out, nil
 }
 
-func (o selectOp) apply(blk block.Block, in schema, _ *stepCtx) (block.Block, error) {
+func (o selectOp) apply(blk block.Block, in schema, _ *stepCtx) (block.Block, []int, error) {
 	idx := make([]int, len(o.cols))
 	for i, c := range o.cols {
 		idx[i] = in.index(c)
 	}
-	return shareColumns(blk, idx), nil
+	return shareColumns(blk, idx), nil, nil
 }
 
 // Rename renames column old to new. An unknown column, or a new name that
@@ -159,8 +201,8 @@ func (o renameOp) plan(in schema) (schema, error) {
 	return out, nil
 }
 
-func (o renameOp) apply(blk block.Block, _ schema, _ *stepCtx) (block.Block, error) {
-	return shareColumns(blk, allIndexes(blk.Width())), nil
+func (o renameOp) apply(blk block.Block, _ schema, _ *stepCtx) (block.Block, []int, error) {
+	return shareColumns(blk, allIndexes(blk.Width())), nil, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -186,21 +228,22 @@ func (o whereOp) plan(in schema) (schema, error) {
 	return in, nil
 }
 
-func (o whereOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, error) {
+func (o whereOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []int, error) {
 	c := newEvalCtx(blk, in)
 	v := o.cond.n.eval(c)
 	drop := make([]bool, c.n)
 	for i := range c.n {
 		if r := c.reasons[i]; r != "" {
-			if err := sc.reject("", "", false, r, CodeExpr); err != nil {
-				return block.Block{}, err
+			if err := sc.reject(i, "", "", false, r, CodeExpr); err != nil {
+				return block.Block{}, nil, err
 			}
 			drop[i] = true
 			continue
 		}
 		drop[i] = v.null[i] || !v.bools[i]
 	}
-	return dropRows(blk, drop), nil
+	out, keep := dropRows(blk, drop)
+	return out, keep, nil
 }
 
 // With sets column name to the value of e, replacing a column of that name
@@ -235,29 +278,64 @@ func setField(in schema, name string, k block.Kind) schema {
 	return append(out, field{name, k})
 }
 
-func (o withOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, error) {
-	c := newEvalCtx(blk, in)
-	v := o.e.n.eval(c)
-	drop, err := rejectFailed(c.reasons, o.name, sc, CodeExpr)
-	if err != nil {
-		return block.Block{}, err
-	}
-	return dropRows(withColumn(blk, in.index(o.name), v.column()), drop), nil
+func (o withOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []int, error) {
+	return applyParts(blk, sc, []part{o.part(blk, in)})
 }
 
-// rejectFailed rejects every row with a reason and marks it for dropping.
-func rejectFailed(reasons []string, column string, sc *stepCtx, code string) ([]bool, error) {
-	drop := make([]bool, len(reasons))
-	for i, r := range reasons {
-		if r == "" {
-			continue
+// part evaluates e over blk.
+func (o withOp) part(blk block.Block, in schema) part {
+	c := newEvalCtx(blk, in)
+	v := o.e.n.eval(c)
+	return part{name: o.name, idx: in.index(o.name), col: v.column(), reasons: c.reasons, code: CodeExpr}
+}
+
+// part is the result of an operation for one column: the new column, a
+// reason for every row that failed, and how to show the failed value.
+type part struct {
+	name    string
+	idx     int // column to replace, or -1 to append
+	col     block.Column
+	reasons []string
+	value   func(i int) (string, bool) // nil: no value
+	code    string
+}
+
+// applyParts rejects every row for which a part failed, one entry per
+// failed column under one reject_id (D15), sets the columns of the parts
+// and drops the rejected rows.
+func applyParts(blk block.Block, sc *stepCtx, parts []part) (block.Block, []int, error) {
+	drop := make([]bool, blk.Len())
+	for i := range blk.Len() {
+		for _, p := range parts {
+			r := p.reasons[i]
+			if r == "" {
+				continue
+			}
+			var val string
+			var ok bool
+			if p.value != nil {
+				val, ok = p.value(i)
+			}
+			if err := sc.reject(i, p.name, val, ok, r, p.code); err != nil {
+				return block.Block{}, nil, err
+			}
+			drop[i] = true
 		}
-		if err := sc.reject(column, "", false, r, code); err != nil {
-			return nil, err
-		}
-		drop[i] = true
 	}
-	return drop, nil
+	out := shareColumns(blk, allIndexes(blk.Width()))
+	for _, p := range parts {
+		var err error
+		if p.idx < 0 {
+			err = out.AppendColumn(p.col)
+		} else {
+			err = out.SetColumn(p.idx, p.col)
+		}
+		if err != nil {
+			panic("gtable: " + err.Error())
+		}
+	}
+	res, keep := dropRows(out, drop)
+	return res, keep, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -268,8 +346,27 @@ type CastOption func(*castOp)
 
 // DateFormat sets the Go time layout for casting text to a timestamp, or a
 // timestamp to text. Without it, text in the forms 2006-01-02 and RFC 3339
-// is accepted and timestamps are formatted in RFC 3339.
+// is accepted and timestamps are formatted in RFC 3339; see Lenient for
+// more layouts.
 func DateFormat(layout string) CastOption { return func(o *castOp) { o.layout = layout } }
+
+// Lenient makes the cast behave like v1 (D74): it trims surrounding
+// whitespace before parsing and, without a DateFormat, tries the common
+// date layouts of v1 in order. Without it, Cast is strict.
+func Lenient() CastOption { return func(o *castOp) { o.lenient = true } }
+
+// lenientDateLayouts are the date layouts of v1 (internal/cell,
+// DateLayouts), in the order v1 tries them. The v1 package is internal to
+// the root module, so the list is repeated here.
+var lenientDateLayouts = []string{
+	time.RFC3339,
+	"2006-01-02T15:04:05",
+	"2006-01-02",
+	"02.01.2006",
+	"01/02/2006",
+	"02 Jan 2006",
+	"Jan 02, 2006",
+}
 
 // NullTexts sets texts that become null when cast from text, in addition to
 // empty text, such as "NULL", "n/a" or "-" (D30).
@@ -282,7 +379,8 @@ func NullTexts(texts ...string) CastOption {
 // (D30), and a text that does not parse rejects the row with code "parse".
 // Integers widen to floats; a float casts to an integer only if it is
 // integral and in range. Every type casts to text. Other conversions are a
-// plan error.
+// plan error. Cast is strict: it does not trim whitespace; see Lenient
+// (D74).
 func Cast(col string, to Type, opts ...CastOption) Op {
 	o := castOp{col: col, to: block.Kind(to)}
 	for _, opt := range opts {
@@ -296,6 +394,7 @@ type castOp struct {
 	to        block.Kind
 	layout    string
 	nullTexts []string
+	lenient   bool
 }
 
 func (castOp) kind() string { return "cast" }
@@ -319,31 +418,33 @@ func (o castOp) plan(in schema) (schema, error) {
 	return out, nil
 }
 
-func (o castOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, error) {
+func (o castOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []int, error) {
+	return applyParts(blk, sc, []part{o.part(blk, in)})
+}
+
+// part casts the column of blk.
+func (o castOp) part(blk block.Block, in schema) part {
 	ci := in.index(o.col)
 	src := vecOf(blk.Column(ci))
 	out := newVec(o.to, src.n)
-	drop := make([]bool, src.n)
+	reasons := make([]string, src.n)
 	for i := range src.n {
 		if src.null[i] {
 			out.null[i] = true
 			continue
 		}
-		if reason := o.cell(src, i, out); reason != "" {
-			val, _ := src.format(i)
-			if err := sc.reject(o.col, val, true, reason, CodeParse); err != nil {
-				return block.Block{}, err
-			}
-			drop[i] = true
-		}
+		reasons[i] = o.cell(src, i, out)
 	}
-	return dropRows(withColumn(blk, ci, out.column()), drop), nil
+	return part{name: o.col, idx: ci, col: out.column(), reasons: reasons, value: src.format, code: CodeParse}
 }
 
 // cell casts cell i of src into out and returns a reason if it fails.
 func (o castOp) cell(src *vec, i int, out *vec) string {
 	if src.kind == block.Text {
 		s := src.texts[i]
+		if o.lenient && o.to != block.Text {
+			s = strings.TrimSpace(s)
+		}
 		if o.to != block.Text && s == "" {
 			out.null[i] = true
 			return ""
@@ -408,6 +509,9 @@ func (o castOp) parse(s string, i int, out *vec) string {
 		out.bools[i] = v
 	case block.Timestamp:
 		layouts := []string{"2006-01-02", time.RFC3339Nano}
+		if o.lenient {
+			layouts = lenientDateLayouts
+		}
 		if o.layout != "" {
 			layouts = []string{o.layout}
 		}

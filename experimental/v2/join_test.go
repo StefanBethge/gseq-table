@@ -13,9 +13,9 @@ func TestJoinCarriesRejectsAndErrorsOfBothTables(t *testing.T) {
 	testutil.Proves(t, "T44")
 
 	left := NewTable(Texts("cid", "1", "2", "x", ""), Texts("item", "a", "b", "c", "d")).
-		Cast("cid", TypeInt) // "x" is rejected, "" becomes null
+		AsSource("orders").Cast("cid", TypeInt) // "x" is rejected, "" becomes null
 	right := NewTable(Texts("id", "1", "2", "?"), Texts("name", "Ada", "Bo", "Cy")).
-		Cast("id", TypeInt) // "?" is rejected
+		AsSource("customers").Cast("id", TypeInt) // "?" is rejected
 
 	j := left.LeftJoin(right, OnPair("cid", "id"))
 	wantCells(t, j, "item", "a", "b", "d")
@@ -42,17 +42,17 @@ func TestJoinCarriesRejectsAndErrorsOfBothTables(t *testing.T) {
 	}
 
 	// Clashing columns and keys of different types are plan errors (D72).
-	other := NewTable(Ints("id", 1), Texts("item", "z"))
+	other := NewTable(Ints("id", 1), Texts("item", "z")).AsSource("other")
 	pe := wantPlanError(t, left.InnerJoin(other, OnPair("cid", "id")).Err())
 	if !strings.Contains(pe.Error(), `"item" exists on both sides`) {
 		t.Errorf("plan error = %v", pe)
 	}
-	wantPlanError(t, left.InnerJoin(NewTable(Texts("id", "1")), OnPair("cid", "id")).Err())
+	wantPlanError(t, left.InnerJoin(NewTable(Texts("id", "1")).AsSource("ids"), OnPair("cid", "id")).Err())
 }
 
 func TestInnerJoinOneToMany(t *testing.T) {
 	orders := NewTable(Texts("cust", "a", "b", "c"), Ints("n", 1, 2, 3))
-	lines := NewTable(Texts("cust", "b", "a", "b"), Texts("sku", "s1", "s2", "s3"))
+	lines := NewTable(Texts("cust", "b", "a", "b"), Texts("sku", "s1", "s2", "s3")).AsSource("lines")
 	j := orders.InnerJoin(lines, On("cust"))
 	wantCells(t, j, "cust", "a", "b", "b")
 	wantCells(t, j, "sku", "s2", "s1", "s3")
