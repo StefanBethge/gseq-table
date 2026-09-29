@@ -29,7 +29,7 @@ API names below are sketches. The behavior follows the linked decisions.
 | `eager_table` | runnable | slice 2 (#46) |
 | `inspect_rejects` | runnable | slice 4 (#48) |
 | `fail_branch` | runnable | slice 6 (#50) |
-| `onebrc_budget` | planned | slice 7 (#51), Docker runs in slice 9 (#53) |
+| `onebrc_budget` | runnable | slice 7 (#51), Docker runs in slice 9 (#53) |
 | `scheduled_excel` | runnable | slice 8 (#52) |
 | `reprocess_rejects` | runnable | slice 8 (#52) |
 
@@ -64,11 +64,13 @@ Design: [UC5](../../../docs/explanation/design/v2/05-use-cases.md#uc5-nicht-vera
 ### onebrc_budget
 
 The 1BRC file (CSV with `;`, no header, station and measurement) grouped with
-min/mean/max via `GroupByAgg` and sorted, under a memory budget, with `WithManagedMemory`
+min/mean/max via `GroupBy` and sorted, under a memory budget, with `WithManagedMemory`
 to opt in to `GOMEMLIMIT`. In CI it runs on a small generated file in the same format. The
-real file is not committed; its path comes from an environment variable or a flag, and the
+real file is not committed; its path comes from `-data` or `ONEBRC_FILE`, and the
 README of the example documents running it in Docker with `--memory=1g`, `2g` and `4g`.
-Design: [UC6](../../../docs/explanation/design/v2/05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [D6](../../../docs/explanation/design/v2/10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](../../../docs/explanation/design/v2/10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D60](../../../docs/explanation/design/v2/10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), [D65](../../../docs/explanation/design/v2/10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess).
+Run it with `go run ./examples/onebrc_budget` in `experimental/v2`; `testdata/gen.go`
+writes the test data.
+Design: [UC6](../../../docs/explanation/design/v2/05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [D6](../../../docs/explanation/design/v2/10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](../../../docs/explanation/design/v2/10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D60](../../../docs/explanation/design/v2/10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), [D65](../../../docs/explanation/design/v2/10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess), [D101](../../../docs/explanation/design/v2/10-design-decisions.md#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits), [D102](../../../docs/explanation/design/v2/10-design-decisions.md#d102-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist).
 
 ### scheduled_excel
 

@@ -93,6 +93,9 @@ type Result struct {
 	// at branches and at the first change of a column the raw state or a
 	// table holds (D9, D64, D93).
 	Trace []TraceEntry
+
+	mem    *runMem
+	closer *resultCloser // spilled rejected rows until Close (D49)
 }
 
 // Close releases the rejected rows the result holds (D49, D98). After
@@ -103,6 +106,10 @@ type Result struct {
 func (r Result) Close() error {
 	if r.Table.rs != nil {
 		r.Table.rs.close(r.Table.rejects)
+	}
+	// The spilled copies go with the run's spill directory (D28, D103).
+	if r.closer != nil {
+		return r.closer.close()
 	}
 	return nil
 }
@@ -345,6 +352,7 @@ type tally struct {
 	stepLimits map[string][]Limit
 	abort      bool
 	min        int
+	mem        *runMem // memory of the run (D28); nil for a Table method
 }
 
 func newTally() *tally {
@@ -497,6 +505,34 @@ func (t *tally) left(sc *counter, orig []origin, release bool) {
 			}
 		}
 	}
+}
+
+// release releases the raw state of the rows without counting them, for
+// rows that go into a step that summarizes them and are spilled (D43).
+func (t *tally) release(orig []origin) {
+	for _, o := range orig {
+		for _, r := range o.refs {
+			if t.owns(r) {
+				r.src.drop(r.row)
+			}
+		}
+	}
+}
+
+// spillRaw spills the chunks of the raw state that the rows need, when the
+// rows themselves are spilled (D55).
+func (t *tally) spillRaw(orig []origin) error {
+	for _, o := range orig {
+		for _, r := range o.refs {
+			if !t.owns(r) {
+				continue
+			}
+			if err := r.src.spillChunk(r.src.chunkOf(r.row), t.mem); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // checkSteps checks the run and every step.

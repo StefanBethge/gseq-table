@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+
+	"github.com/stefanbethge/gseq-table/experimental/v2/internal/spill"
 )
 
 // Pipeline is a plan (D6): a source and named steps that take the same Op
@@ -12,8 +15,9 @@ import (
 //
 // Run checks the whole plan first: an unknown column, a type conflict or an
 // invalid parameter is a PlanError before any row is read (D19, D32). The
-// engine then runs the plan block by block, in memory in this prototype
-// slice.
+// engine then runs the plan block by block. Over the memory budget, sort and
+// group by spill to disk, and so does the left side of a join; its right
+// side must fit in the budget (D6, D28, P1).
 //
 // Delivery and data errors reject the affected rows by default (D5). The
 // behavior is set per pipeline, per error kind and per code (D19). A
@@ -34,6 +38,11 @@ type Pipeline struct {
 	copyMode   CopyMode
 
 	sinks sinks
+
+	memCap    int64
+	managed   bool
+	spillRoot string
+	pool      *memPool // nil: the budget of the process
 }
 
 // source is the input of a pipeline: a table, or a delivery read by a
@@ -197,6 +206,34 @@ func (p *Pipeline) FormatChangeLimitFor(column string, share float64) *Pipeline 
 	return p
 }
 
+// MemoryBudget caps the memory the run may count, in bytes, within the
+// budget of the process (D101). The run spills when it reaches its cap or
+// when all runs of the process reach the budget of the process; see
+// SetMemoryBudget. 0 means no cap of its own.
+func (p *Pipeline) MemoryBudget(bytes int64) *Pipeline {
+	p.memCap = bytes
+	return p
+}
+
+// WithManagedMemory lets the engine set GOMEMLIMIT for the process to 90 %
+// of the detected memory limit, unless the environment or the program has
+// set it already. The engine never resets it (D65, D102).
+func (p *Pipeline) WithManagedMemory() *Pipeline {
+	p.managed = true
+	return p
+}
+
+// SpillDir sets the directory the run spills to; the default is the
+// system's temporary directory. The run spills into a subdirectory of its
+// own, only accessible to the running user, and removes it at the end of
+// the run, or at Close of the result if it holds spilled rejected rows. At
+// its start a run removes the subdirectories of runs that ended without
+// cleaning up (D28, D38, D56, D103).
+func (p *Pipeline) SpillDir(path string) *Pipeline {
+	p.spillRoot = path
+	return p
+}
+
 // Check checks the plan without reading a row and returns a *PlanError, or
 // nil (D19). A source read by a Reader is opened to read its header; if it
 // cannot be read, Check returns a *DeliveryError.
@@ -237,6 +274,9 @@ func (p *Pipeline) checkParams() error {
 	}
 	if p.copyMode > CopyInPlace {
 		return &PlanError{Step: "source", Err: fmt.Errorf("unknown copy mode %d", p.copyMode)}
+	}
+	if p.memCap < 0 {
+		return &PlanError{Step: "source", Err: fmt.Errorf("memory budget of %d bytes is negative", p.memCap)}
 	}
 	return nil
 }
@@ -328,12 +368,31 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 		return failed(err, o.findingList())
 	}
 
+	pool := p.pool
+	if pool == nil {
+		pool = procPool
+	}
+	root := p.spillRoot
+	if root == "" {
+		root = os.TempDir()
+	}
+	mem := newRunMem(pool, p.memCap, root)
+	if err := p.checkJoins(steps, mem); err != nil {
+		return failed(err, nil)
+	}
+	if p.managed {
+		manageMemory()
+	}
+	spill.CleanOrphans(root)
+
 	t := newTally()
+	t.mem = mem
 	t.run.limits, t.stepLimits = p.limits, p.stepLimits
 	t.abort, t.min = p.abort, p.abortMin
 	for _, src := range o.sources() {
 		if src.rel != nil && src.rel.owner == nil {
 			src.rel.owner = t
+			mem.srcs = append(mem.srcs, src)
 		}
 	}
 	rx := &rejector{policy: p.policy, run: newRun(), tally: t, prefix: p.prefix, mode: p.copyMode, trace: &tracer{}}
@@ -358,6 +417,12 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 	if runErr == nil {
 		runErr = flush()
 	}
+	// The writers of rejected rows have read the copies of the raw state
+	// before the spilled part of the run is removed (D49).
+	closer, err := mem.finish()
+	if runErr == nil && err != nil {
+		runErr = err
+	}
 	srcs, finds := o.sources(), o.findingList()
 	for _, st := range steps {
 		if j, ok := st.op.impl.(joinOp); ok {
@@ -373,6 +438,8 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 			err: runErr, policy: p.policy, prefix: p.prefix, run: rx.run},
 		Counts: t.run.counts(),
 		Trace:  rx.trace.entries,
+		mem:    mem,
+		closer: closer,
 	}
 	res.Report = append(append(append(res.Report, finds...), unreadable(runErr)...), formatChanges(rx.entries, t.byStep, p.formats)...)
 	for _, c := range t.steps {
@@ -392,6 +459,23 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 	}
 	res.Status = status(res.Causes)
 	return res, runErr
+}
+
+// checkJoins returns a *MemoryError if the right side of a join does not
+// fit in the budget (P1, D58).
+func (p *Pipeline) checkJoins(steps []planned, m *runMem) error {
+	b := m.budget()
+	if b <= 0 {
+		return nil
+	}
+	for _, st := range steps {
+		if j, ok := st.op.impl.(joinOp); ok {
+			if need := tableBytes(j.right); need > b {
+				return &MemoryError{Step: st.name, Need: need, Budget: b}
+			}
+		}
+	}
+	return nil
 }
 
 // failed is the result of a run that ended before any row was read.

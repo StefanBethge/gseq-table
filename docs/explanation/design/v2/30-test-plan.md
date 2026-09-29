@@ -515,6 +515,29 @@ Eine geschriebene Datei hat Zahlen-, Wahrheitswert- und Datumszellen, ein Text `
 als Text in seiner Zelle und nicht als Formel, und ein Nullwert ist eine leere Zelle. Mit dem
 Excel-Reader gelesen, ergeben die Zellen die Textformen nach [D80](10-design-decisions.md#d80-jeder-zelltyp-einer-excel-lieferung-hat-eine-feste-textform).
 
+### T67 — Ein Lauf lagert an seiner eigenen Obergrenze aus, und ohne Angabe folgt das Budget dem Limit der cgroup
+
+**Beweist:** [D101](10-design-decisions.md#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits), [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)
+Ein Lauf mit einer Obergrenze weit unter dem Budget des Prozesses lagert beim Sortieren aus, und
+seine gezählte Spitze bleibt an seiner Obergrenze. Ohne Angabe ist das Budget ein Viertel des
+Limits der cgroup (v2 und v1), und ohne gesetztes Limit ein Viertel des physischen Speichers. Ein
+fest gesetztes Budget des Prozesses ersetzt die Voreinstellung.
+
+### T68 — Auf Wunsch steht GOMEMLIMIT bei 90 % des erkannten Limits, und ein gesetzter Wert bleibt
+
+**Beweist:** [D102](10-design-decisions.md#d102-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist), [D65](10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess)
+Ohne gesetzten Wert setzt die Option `GOMEMLIMIT` auf 90 % des erkannten Limits. Ist die
+Umgebungsvariable gesetzt oder hat das Programm `debug.SetMemoryLimit` aufgerufen, bleibt der
+Wert unverändert. Nach dem Lauf wird der Wert nicht zurückgesetzt.
+
+### T69 — Ein späterer Lauf entfernt das Verzeichnis eines beendeten Laufs, nicht das eines offenen Ergebnisses
+
+**Beweist:** [D103](10-design-decisions.md#d103-ein-lauf-markiert-sein-verzeichnis-zum-auslagern-mit-einer-dateisperre-die-das-ergebnis-bis-close-halt), [D38](10-design-decisions.md#d38-ein-spaterer-lauf-entfernt-verwaiste-ausgelagerte-daten)
+Ein Unterverzeichnis ohne gehaltene Sperre entfernt der nächste Lauf. Das Verzeichnis eines
+Ergebnisses mit ausgelagerten aussortierten Zeilen, das noch nicht geschlossen ist, bleibt
+stehen und lesbar. Nach `Close` entfernt es der nächste Lauf, falls `Close` es nicht schon selbst
+entfernt hat.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -538,7 +561,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T6](#t6-eine-im-schritt-scheiternde-zeile-steht-einmal-in-ihrer-tabelle-je-quelle-hat-einen-ubersichtseintrag-je-spalte-und-erreicht-spatere-schritte-nicht) | `TestRowFailingInOneStepIsRejectedOnceWithAnEntryPerColumn` |
 | [T7](#t7-aussortierte-zeilen-gibt-es-je-quelle-und-die-ubersicht-stimmt-mit-ihnen-uberein) | `TestRejectsPerSourceAndOverviewAgree` |
 | [T8](#t8-scheitert-eine-ergebniszeile-nach-einem-join-sind-ihre-quellzeilen-mit-gemeinsamer-kennung-aussortiert) | `TestFailedJoinRowRejectsItsSourceRowsTogether` |
-| [T9](#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) | ausstehend |
+| [T9](#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) | `TestGroupByRejectsAggregatedRowsAndStaysInTheBudget` |
 | [T10](#t10-unzerlegbare-zeilen-werden-mit-rohbytes-und-richtiger-fundstelle-aussortiert) | `TestUnparseableLinesAreRejectedWithRawBytes` |
 | [T11](#t11-die-fundstelle-bleibt-uber-sortieren-und-filtern-richtig) | `TestLocationStaysRightOverSortAndFilter` |
 | [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | `TestReprocessingKeepsTheOriginalLocationAndKeys` |
@@ -551,9 +574,9 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T19](#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck) | `TestFailBranchSeesTheStateBeforeTheStep` |
 | [T20](#t20-zweige-werden-nach-namen-zusammengefuhrt-und-typkonflikte-fallen-vor-dem-lauf-auf) | `TestBranchesMergeByNameAndTypeConflictsArePlanErrors` |
 | [T21](#t21-eine-im-zweig-erneut-scheiternde-zeile-behalt-kennung-weg-und-vorigen-grund-und-zahlt-einmal) | `TestRowFailingAgainInTheBranchKeepsIDPathAndReasonAndCountsOnce` |
-| [T22](#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) | ausstehend |
+| [T22](#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) | `TestSamePipelineGivesTheSameResultInMemoryBlockwiseAndSpilled` |
 | [T23](#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) | ausstehend |
-| [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | ausstehend |
+| [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | `TestNothingIsLeftNextToTheTargets` |
 | [T25](#t25-kein-zweig-sieht-anderungen-eines-anderen-in-jedem-modus) | `TestNoBranchSeesTheChangesOfAnotherInAnyMode` |
 | [T26](#t26-die-modi-fur-kopieren-und-andern-liefern-dasselbe-ergebnis) | `TestCopyModesGiveTheSameResult` |
 | [T27](#t27-nullwerte-sind-vom-leeren-text-getrennt-und-verhalten-sich-wie-in-sql) | `TestNullsAreSeparateFromEmptyTextAndBehaveLikeSQL` |
@@ -564,11 +587,11 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T32](#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert) | ausstehend |
 | [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | `TestSinkThatRejectsABlockEndsTheRunWithSinkError` |
 | [T34](#t34-excel-zellen-tragen-den-gespeicherten-wert-in-fester-textform-aussortierte-zeilen-auch-den-angezeigten-text) | `TestExcelCellsCarryStoredValueAndDisplay` |
-| [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | ausstehend |
+| [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | `TestFieldSizeLimit`, `TestExcelArchiveLimitsAreDeliveryErrors`, `TestSpilledFilesAreOnlyForTheRunningUser` |
 | [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | `TestHighestStatusAppliesAndTheResultNamesAllCauses` |
 | [T37](#t37-die-kennung-einer-lieferung-steht-beim-offnen-fest-und-andert-sich-mit-der-datei) | `TestDeliveryIDIsFixedAtOpen` |
 | [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | `TestInPlaceCopiesARawColumnOnce` |
-| [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
+| [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | `TestGOMEMLIMITOnlyOnRequestAndRunsShareOneBudget` |
 | [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | `TestRejectWritersWriteDuringTheRunElseTheResultHoldsTheRejectsUntilClose` |
 | [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | `TestTableCarriesRejectsAndStickyError` |
 | [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | `TestTwoSheetsAreTwoSourcesAndAMissingSheetIsADeliveryError` |
@@ -596,3 +619,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T64](#t64-ein-fachlicher-schlussel-ergibt-record_key-aus-den-werten-unzerlegbare-zeilen-behalten-den-positionsschlussel) | `TestBusinessKeyFormsRecordKeyFromTheValues` |
 | [T65](#t65-nach-close-tragen-die-tabellen-aussortierter-zeilen-einen-haftenden-fehler-zahlungen-und-status-bleiben) | `TestCloseReleasesTheRejectedRowsAndKeepsTheCounts` |
 | [T66](#t66-der-excel-writer-schreibt-zahlen-wahrheitswerte-und-datumswerte-als-typisierte-zellen-und-text-nie-als-formel) | `TestExcelWriterWritesTypedCellsAndTextNeverAsFormula` |
+| [T67](#t67-ein-lauf-lagert-an-seiner-eigenen-obergrenze-aus-und-ohne-angabe-folgt-das-budget-dem-limit-der-cgroup) | `TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup` |
+| [T68](#t68-auf-wunsch-steht-gomemlimit-bei-90-des-erkannten-limits-und-ein-gesetzter-wert-bleibt) | `TestManagedMemorySetsGOMEMLIMITToNinetyPercent` |
+| [T69](#t69-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) | `TestLaterRunRemovesEndedRunsButNotOpenResults` |
