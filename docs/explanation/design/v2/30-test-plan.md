@@ -488,7 +488,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T31](#t31-die-offentliche-api-enthalt-keine-gseq-typen) | `TestPublicAPIHasNoGseqTypes` |
 | [T32](#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert) | ausstehend |
 | [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | ausstehend |
-| [T34](#t34-excel-zellen-tragen-den-gespeicherten-wert-in-fester-textform-aussortierte-zeilen-auch-den-angezeigten-text) | ausstehend |
+| [T34](#t34-excel-zellen-tragen-den-gespeicherten-wert-in-fester-textform-aussortierte-zeilen-auch-den-angezeigten-text) | `TestExcelCellsCarryStoredValueAndDisplay` |
 | [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | ausstehend |
 | [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | ausstehend |
 | [T37](#t37-die-kennung-einer-lieferung-steht-beim-offnen-fest-und-andert-sich-mit-der-datei) | `TestDeliveryIDIsFixedAtOpen` |
@@ -507,7 +507,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T50](#t50-aggregierte-aussortierte-zeilen-stehen-je-schritt-in-einer-tabelle-und-in-der-ubersicht) | `TestAggregatedRejectsStandPerStepAndInTheOverview` |
 | [T51](#t51-castall-und-withall-werten-jede-spalte-gegen-die-eingangszeile-aus-und-sortieren-eine-zeile-einmal-aus) | `TestCastAllAndWithAllAreOneStep` |
 | [T52](#t52-eine-tabelle-mit-haftendem-fehler-behalt-die-daten-vor-der-gescheiterten-operation) | `TestStickyErrorKeepsTheDataBeforeTheFailedOperation` |
-| [T53](#t53-excel-zellen-jedes-typs-tragen-ihre-feste-textform) | ausstehend |
+| [T53](#t53-excel-zellen-jedes-typs-tragen-ihre-feste-textform) | `TestExcelCellTypesHaveAFixedTextForm` |
 | [T54](#t54-fundstelle-und-record_key-einer-csv-zeile-folgen-ihrer-physischen-zeile) | `TestLocationAndKeyFollowThePhysicalLine` |
 | [T55](#t55-eine-vermutliche-umbenennung-wird-nach-normalisierung-und-distanz-erkannt) | `TestProbablyRenamedColumns` |
 | [T56](#t56-die-quelle-aus-aussortierten-zeilen-behalt-schlussel-und-fundstelle) | `TestRejectsAsSourceKeepKeysAndLocation` |
