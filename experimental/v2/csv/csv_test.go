@@ -83,11 +83,11 @@ func run(t *testing.T, src gtable.Source, blockLen int, ops ...gtable.Op) gtable
 	for _, op := range ops {
 		p.Then(op)
 	}
-	tbl, err := p.Run(ctx)
+	res, err := p.Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tbl
+	return res.Table
 }
 
 func offsetOf(t *testing.T, content, line string) string {

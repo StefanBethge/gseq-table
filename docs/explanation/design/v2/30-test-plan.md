@@ -482,8 +482,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T1](#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) | `TestRejectsCarryRawStateNotWorkingState` |
 | [T2](#t2-aussortierte-zeilen-lassen-sich-mit-den-datei-writern-schreiben-und-mit-dem-passenden-reader-wieder-lesen) | ausstehend |
 | [T3](#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht) | ausstehend |
-| [T4](#t4-die-schwelle-markiert-den-lauf-als-fehlgeschlagen-und-lasst-ihn-standardmaig-zu-ende-laufen) | ausstehend |
-| [T5](#t5-ohne-angaben-kommt-ein-lauf-uber-eine-schmutzige-lieferung-durch) | ausstehend |
+| [T4](#t4-die-schwelle-markiert-den-lauf-als-fehlgeschlagen-und-lasst-ihn-standardmaig-zu-ende-laufen) | `TestThresholdFailsTheRunAndRunsToTheEnd` |
+| [T5](#t5-ohne-angaben-kommt-ein-lauf-uber-eine-schmutzige-lieferung-durch) | `TestDirtyDeliveryRunsThroughWithDefaults` |
 | [T6](#t6-eine-im-schritt-scheiternde-zeile-steht-einmal-in-ihrer-tabelle-je-quelle-hat-einen-ubersichtseintrag-je-spalte-und-erreicht-spatere-schritte-nicht) | `TestRowFailingInOneStepIsRejectedOnceWithAnEntryPerColumn` |
 | [T7](#t7-aussortierte-zeilen-gibt-es-je-quelle-und-die-ubersicht-stimmt-mit-ihnen-uberein) | `TestRejectsPerSourceAndOverviewAgree` |
 | [T8](#t8-scheitert-eine-ergebniszeile-nach-einem-join-sind-ihre-quellzeilen-mit-gemeinsamer-kennung-aussortiert) | `TestFailedJoinRowRejectsItsSourceRowsTogether` |
@@ -492,10 +492,10 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T11](#t11-die-fundstelle-bleibt-uber-sortieren-und-filtern-richtig) | `TestLocationStaysRightOverSortAndFilter` |
 | [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | ausstehend |
 | [T13](#t13-record_key-ist-innerhalb-einer-lieferung-stabil-ein-fachlicher-schlussel-daruber-hinaus) | ausstehend |
-| [T14](#t14-die-prufung-des-kopfs-erkennt-fehlende-neue-und-umbenannte-spalten) | ausstehend |
-| [T15](#t15-planfehler-verhindern-den-lauf-liefer-und-datenfehler-folgen-der-konfiguration-je-code) | ausstehend |
-| [T16](#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) | ausstehend |
-| [T17](#t17-gehaufte-formatfehler-erscheinen-im-anderungsbericht-mit-beispielen) | ausstehend |
+| [T14](#t14-die-prufung-des-kopfs-erkennt-fehlende-neue-und-umbenannte-spalten) | `TestHeaderCheckFindsMissingNewAndRenamedColumns` |
+| [T15](#t15-planfehler-verhindern-den-lauf-liefer-und-datenfehler-folgen-der-konfiguration-je-code) | `TestPlanErrorsStopTheRunAndOtherErrorsFollowTheirCode` |
+| [T16](#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) | `TestStatusAndCountsAreConsistent` |
+| [T17](#t17-gehaufte-formatfehler-erscheinen-im-anderungsbericht-mit-beispielen) | `TestFormatChangesAppearInTheChangeReport` |
 | [T18](#t18-der-profilvergleich-meldet-eine-abweichung-ohne-dass-eine-zeile-scheitert) | ausstehend |
 | [T19](#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck) | ausstehend |
 | [T20](#t20-zweige-werden-nach-namen-zusammengefuhrt-und-typkonflikte-fallen-vor-dem-lauf-auf) | ausstehend |
@@ -520,8 +520,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
 | [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | ausstehend |
 | [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | `TestTableCarriesRejectsAndStickyError` |
-| [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | ausstehend |
-| [T43](#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort) | ausstehend |
+| [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | `TestTwoSheetsAreTwoSourcesAndAMissingSheetIsADeliveryError` |
+| [T43](#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort) | `TestThresholdAbortsAfterTheMinimumForAShareAndAtOnceForAnAbsoluteLimit` |
 | [T44](#t44-ein-join-tragt-die-aussortierten-zeilen-und-haftenden-fehler-beider-tabellen-und-gleichnamige-spalten-sind-ein-planfehler) | `TestJoinCarriesRejectsAndErrorsOfBothTables` |
 | [T45](#t45-ganzzahl-und-gleitkomma-werden-erweitert-die-division-ergibt-gleitkomma) | `TestNumbersWidenAndDivisionIsFloat` |
 | [T46](#t46-nullwerte-stehen-beim-sortieren-hinten-und-das-sortieren-ist-stabil) | `TestSortPutsNullsLastAndIsStable` |
@@ -535,6 +535,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T54](#t54-fundstelle-und-record_key-einer-csv-zeile-folgen-ihrer-physischen-zeile) | `TestLocationAndKeyFollowThePhysicalLine` |
 | [T55](#t55-eine-vermutliche-umbenennung-wird-nach-normalisierung-und-distanz-erkannt) | `TestProbablyRenamedColumns` |
 | [T56](#t56-die-quelle-aus-aussortierten-zeilen-behalt-schlussel-und-fundstelle) | `TestRejectsAsSourceKeepKeysAndLocation` |
-| [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | ausstehend |
-| [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | ausstehend |
-| [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | ausstehend |
+| [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | `TestSourceRowCountsOnce` |
+| [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | `TestDroppedRowsReleaseTheRawState` |
+| [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |

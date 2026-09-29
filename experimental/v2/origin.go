@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,9 +23,11 @@ type rawSource struct {
 	name   string // location source; "code" for a table built in code (D50, D75)
 	sheet  string
 	s      schema
-	chunks [][]block.Column
+	chunks [][]block.Column // nil once released (D87)
+	starts []int            // first row of every chunk
 	n      int
 	loc    *readLoc // nil for a table built in code
+	rel    *release // nil unless the raw state is released during a run
 
 	fpOnce sync.Once
 	fp     string
@@ -52,7 +55,114 @@ func newRawSource(name string, s schema, cols []block.Column) *rawSource {
 		shared[i] = c.Share()
 		n = c.Len()
 	}
-	return &rawSource{name: name, s: s, chunks: [][]block.Column{shared}, n: n}
+	return &rawSource{name: name, s: s, chunks: [][]block.Column{shared}, starts: []int{0}, n: n}
+}
+
+// release tracks which rows of a source read in a run are still in the
+// plan, so that a chunk of the raw state no row needs is freed (D43, D87).
+// A rejected row keeps a copy of its raw state.
+type release struct {
+	owner     *tally  // the run that read the rows
+	live      []int32 // working rows per source row
+	chunkLive []int   // source rows still in the plan per chunk
+	kept      map[int][]keptCell
+}
+
+type keptCell struct {
+	s  string
+	ok bool
+}
+
+// addChunk stores cols as the raw state of the next rows. With release, the
+// rows count as in the plan.
+func (r *rawSource) addChunk(cols []block.Column, rows int) {
+	r.chunks = append(r.chunks, cols)
+	r.starts = append(r.starts, r.n)
+	r.n += rows
+	if r.rel != nil {
+		for range rows {
+			r.rel.live = append(r.rel.live, 1)
+		}
+		r.rel.chunkLive = append(r.rel.chunkLive, rows)
+	}
+}
+
+// chunkOf returns the chunk that holds row.
+func (r *rawSource) chunkOf(row int) int {
+	return sort.Search(len(r.starts), func(i int) bool { return r.starts[i] > row }) - 1
+}
+
+// acquire notes one more working row of source row row.
+func (r *rawSource) acquire(row int) {
+	if r.rel != nil {
+		r.rel.live[row]++
+	}
+}
+
+// drop notes that a working row of row left the plan. When no working row
+// of any row of a chunk is left, the chunk is freed (D43).
+func (r *rawSource) drop(row int) {
+	if r.rel == nil || r.rel.live[row] <= 0 {
+		return
+	}
+	r.rel.live[row]--
+	if r.rel.live[row] > 0 {
+		return
+	}
+	c := r.chunkOf(row)
+	r.rel.chunkLive[c]--
+	if r.rel.chunkLive[c] == 0 {
+		r.chunks[c] = nil
+	}
+}
+
+// keep copies the raw state of a rejected row, so that the row keeps it
+// after its chunk is freed (D87).
+func (r *rawSource) keep(row int) {
+	if r.rel == nil {
+		return
+	}
+	if _, ok := r.rel.kept[row]; ok {
+		return
+	}
+	c := r.chunkOf(row)
+	if r.chunks[c] == nil {
+		return
+	}
+	cells := make([]keptCell, len(r.s))
+	for j, col := range r.chunks[c] {
+		cells[j].s, cells[j].ok = col.Text(row - r.starts[c])
+	}
+	if r.rel.kept == nil {
+		r.rel.kept = map[int][]keptCell{}
+	}
+	r.rel.kept[row] = cells
+}
+
+// text returns the raw value of column j in row as text.
+func (r *rawSource) text(row, j int) (string, bool) {
+	c := r.chunkOf(row)
+	if cols := r.chunks[c]; cols != nil {
+		return cols[j].Text(row - r.starts[c])
+	}
+	k := r.rel.kept[row][j]
+	return k.s, k.ok
+}
+
+// rawColumn returns raw column j for the given rows.
+func (r *rawSource) rawColumn(j int, rows []int) block.Column {
+	if r.rel == nil {
+		return r.column(j).Take(rows)
+	}
+	b := block.NewBuilder(block.Text, len(rows))
+	for _, row := range rows {
+		if s, ok := r.text(row, j); ok {
+			b.AppendText(s)
+		} else {
+			b.AppendNull()
+		}
+	}
+	return b.Build()
 }
 
 // rows returns the number of rows of the raw state.
@@ -132,8 +242,7 @@ func (r *rawSource) cell(row int, col string) (addr, display string, ok bool) {
 	if d, ok := r.loc.display[row][j]; ok {
 		return addr, d, true
 	}
-	c := r.column(j)
-	display, _ = c.Text(row)
+	display, _ = r.text(row, j)
 	return addr, display, true
 }
 
@@ -145,10 +254,22 @@ type srcRef struct {
 
 // origin says where a working row comes from: its source rows, more than
 // one after a join (D11), or, for a row that a step over all rows computed
-// from others, the number of rows that went into it (D12).
+// from others, the number of rows that went into it (D12). members are the
+// source rows an aggregated row stands for; they are counted with it but
+// have no raw state in its rejects (D84, P6).
 type origin struct {
-	refs []srcRef
-	agg  int
+	refs    []srcRef
+	agg     int
+	members []srcRef
+}
+
+// rows returns the source rows the row stands for: its own and those that
+// went into it (D84).
+func (o origin) rows() []srcRef {
+	if len(o.members) == 0 {
+		return o.refs
+	}
+	return append(append(make([]srcRef, 0, len(o.refs)+len(o.members)), o.refs...), o.members...)
 }
 
 // rowKey is the row_key of the row: the record_keys of its source rows,
@@ -175,7 +296,11 @@ func (o origin) weight() int {
 func (o origin) join(r origin) origin {
 	refs := make([]srcRef, 0, len(o.refs)+len(r.refs))
 	refs = append(append(refs, o.refs...), r.refs...)
-	return origin{refs: refs, agg: o.agg + r.agg}
+	var members []srcRef
+	if len(o.members)+len(r.members) > 0 {
+		members = append(append(members, o.members...), r.members...)
+	}
+	return origin{refs: refs, agg: o.agg + r.agg, members: members}
 }
 
 // sourceOrigins returns the origins of the rows of src, row by row.

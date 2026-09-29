@@ -172,10 +172,11 @@ func TestSourceRejectsWhatTheReaderCannotSplit(t *testing.T) {
 			{Fields: []string{"5", "6"}, Line: 5, Offset: 17, Raw: []byte("5,6")},
 		},
 	}
-	tbl, err := FromSource(NewSource(r).WithRecordHash(), 2).Run(context.Background())
+	res, err := FromSource(NewSource(r).WithRecordHash(), 2).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	tbl := res.Table
 	wantCells(t, tbl, "a", "1", "5")
 	if r.opened != 1 || r.closed != 1 {
 		t.Errorf("opened %d, closed %d, want 1 and 1", r.opened, r.closed)

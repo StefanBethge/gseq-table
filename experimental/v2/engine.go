@@ -65,6 +65,11 @@ type streamStage struct {
 
 func (s *streamStage) push(ctx context.Context, b batch) error {
 	s.sc.begin(b.blk, b.orig)
+	for _, o := range b.orig {
+		for _, r := range o.rows() {
+			s.sc.cnt.see(r)
+		}
+	}
 	out, keep, err := s.op.apply(b.blk, s.in, s.sc)
 	if err != nil {
 		return err
@@ -72,6 +77,20 @@ func (s *streamStage) push(ctx context.Context, b batch) error {
 	orig := b.orig
 	if keep != nil {
 		orig = pick(orig, keep)
+		kept := make([]bool, len(b.orig))
+		for _, k := range keep {
+			kept[k] = true
+		}
+		var gone []origin
+		for i, o := range b.orig {
+			if !kept[i] {
+				gone = append(gone, o)
+			}
+		}
+		s.sc.rx.tally.passed(s.sc.cnt, orig, false)
+		s.sc.rx.tally.left(s.sc.cnt, gone, true)
+	} else {
+		s.sc.rx.tally.passed(s.sc.cnt, orig, false)
 	}
 	return s.next.push(ctx, batch{out, orig})
 }
@@ -89,15 +108,30 @@ type fullStage struct {
 }
 
 func (s *fullStage) push(_ context.Context, b batch) error {
+	for _, o := range b.orig {
+		for _, r := range o.rows() {
+			s.sc.cnt.see(r)
+		}
+	}
 	s.buf = append(s.buf, b.blk)
 	s.orig = append(s.orig, b.orig...)
 	return nil
 }
 
 func (s *fullStage) finish(ctx context.Context) error {
+	t := s.sc.rx.tally
+	var right []origin
 	if j, ok := s.op.(joinOp); ok {
 		// The rejects of the right side come before the join's own (D69).
-		s.sc.rx.entries = append(s.sc.rx.entries, j.rightRejects()...)
+		// Its rows go into the join and count as read (D43).
+		s.sc.rx.carry(j.rightRejects())
+		right = j.right.origins()
+		t.see(right)
+		for _, o := range right {
+			for _, r := range o.rows() {
+				s.sc.cnt.see(r)
+			}
+		}
 	}
 	blks, orig := s.buf, s.orig
 	s.buf, s.orig = nil, nil
@@ -109,6 +143,11 @@ func (s *fullStage) finish(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// The output rows hold their raw state before the input rows let go
+	// of it; rows that are in no output row are dropped (D43, D84).
+	t.passed(s.sc.cnt, outOrig, true)
+	t.left(s.sc.cnt, orig, true)
+	t.left(s.sc.cnt, right, false)
 	for _, b := range chunk(batch{out, outOrig}, s.blockLen) {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -121,11 +160,20 @@ func (s *fullStage) finish(ctx context.Context) error {
 }
 
 // collector is the end of a plan: it keeps the output blocks in memory.
+// Its rows have passed the run (D43) and keep their raw state (D87).
 type collector struct {
+	t       *tally
 	batches []batch
 }
 
 func (c *collector) push(_ context.Context, b batch) error {
+	if c.t != nil {
+		for _, o := range b.orig {
+			for _, r := range o.rows() {
+				c.t.run.mark(r, stPassed)
+			}
+		}
+	}
 	if b.blk.Len() > 0 || len(c.batches) == 0 {
 		c.batches = append(c.batches, b)
 	}
@@ -136,10 +184,14 @@ func (c *collector) finish(context.Context) error { return nil }
 
 // build links the stages of the planned steps, ending in c.
 func build(steps []planned, rx *rejector, blockLen int, c *collector) stage {
+	scs := make([]*stepCtx, len(steps))
+	for i, st := range steps {
+		ref := &stepRef{st.name}
+		scs[i] = &stepCtx{step: st.name, ref: ref, rx: rx, in: st.in, cnt: rx.tally.step(ref)}
+	}
 	var next stage = c
 	for i := len(steps) - 1; i >= 0; i-- {
-		st := steps[i]
-		sc := &stepCtx{step: st.name, ref: &stepRef{st.name}, rx: rx, in: st.in}
+		st, sc := steps[i], scs[i]
 		switch op := st.op.impl.(type) {
 		case streamOp:
 			next = &streamStage{op: op, in: st.in, sc: sc, next: next}
@@ -152,23 +204,25 @@ func build(steps []planned, rx *rejector, blockLen int, c *collector) stage {
 	return next
 }
 
-// run pushes the batches from src through the planned steps.
+// run pushes the batches from src through the planned steps. If it ends
+// early, it returns the batches that passed until then with the error.
 func run(ctx context.Context, src func(yield func(batch) error) error, steps []planned, rx *rejector, blockLen int) ([]batch, error) {
-	c := &collector{}
+	c := &collector{t: rx.tally}
 	first := build(steps, rx, blockLen, c)
 	err := src(func(b batch) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return first.push(ctx, b)
+		rx.tally.see(b.orig)
+		if err := first.push(ctx, b); err != nil {
+			return err
+		}
+		return rx.tally.checkSteps()
 	})
-	if err != nil {
-		return nil, err
+	if err == nil {
+		err = first.finish(ctx)
 	}
-	if err := first.finish(ctx); err != nil {
-		return nil, err
-	}
-	return c.batches, nil
+	return c.batches, err
 }
 
 // chunk splits b into batches of at most n rows; n <= 0 keeps it whole.

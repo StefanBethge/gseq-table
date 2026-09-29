@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Pipeline is a plan (D6): a source and named steps that take the same Op
@@ -16,7 +17,8 @@ import (
 // slice.
 //
 // Delivery and data errors reject the affected rows by default (D5). The
-// behavior is set per pipeline, per error kind and per code (D19).
+// behavior is set per pipeline, per error kind and per code (D19). A
+// threshold fails the run if too many rows are rejected (D4, D20).
 type Pipeline struct {
 	src       source
 	blockLen  int
@@ -24,6 +26,12 @@ type Pipeline struct {
 	policy    errorPolicy
 	prefix    string
 	hasPrefix bool
+
+	limits     []Limit
+	stepLimits map[string][]Limit
+	abort      bool
+	abortMin   int
+	formats    formatLimits
 }
 
 // source is the input of a pipeline: a table, or a delivery read by a
@@ -42,8 +50,8 @@ type opened interface {
 	// code is set to ModeStop (D19).
 	stopAtOpen(p errorPolicy) error
 	// blocks yields batches of at most n rows; rows rejected while reading
-	// go to rx.
-	blocks(n int, rx *rejector, yield func(batch) error) error
+	// are rejected in the step "read" of sc.
+	blocks(n int, sc *stepCtx, yield func(batch) error) error
 	close() error
 }
 
@@ -98,6 +106,61 @@ func (p *Pipeline) InfoPrefix(prefix string) *Pipeline {
 	return p
 }
 
+// Threshold sets the threshold of the run (D4, D20): the run fails with
+// StatusFailedThreshold if any of the limits is exceeded, counted in
+// source rows (D84). By default the run runs to the end; see
+// AbortOnThreshold.
+func (p *Pipeline) Threshold(limits ...Limit) *Pipeline {
+	p.limits = append(p.limits, limits...)
+	return p
+}
+
+// StepThreshold sets a threshold for the steps with the given name, or for
+// "read", the rows a Reader rejects while reading. A share is over the rows
+// that went into the step (D45). A name that no step has is a plan error.
+func (p *Pipeline) StepThreshold(step string, limits ...Limit) *Pipeline {
+	if p.stepLimits == nil {
+		p.stepLimits = map[string][]Limit{}
+	}
+	p.stepLimits[step] = append(p.stepLimits[step], limits...)
+	return p
+}
+
+// AbortOnThreshold ends the run as soon as a threshold is exceeded, with
+// StatusFailedThreshold and a *ThresholdError (D20, D45). An absolute limit
+// aborts at once; a share only once minRows rows are read, or went into
+// the step (D89).
+func (p *Pipeline) AbortOnThreshold(minRows int) *Pipeline {
+	p.abort, p.abortMin = true, minRows
+	return p
+}
+
+// FormatChangeLimit sets the share of the rows that went into a step from
+// which failed values of a column with the same code are reported as a
+// format change (D59, D85). The default is DefaultFormatChangeLimit.
+func (p *Pipeline) FormatChangeLimit(share float64) *Pipeline {
+	if checkFormatLimit(share) != nil {
+		p.formats.bad = append(p.formats.bad, share)
+	}
+	p.formats.all = share
+	return p
+}
+
+// FormatChangeLimitFor sets the limit for a format change of one column,
+// in place of FormatChangeLimit (D59).
+func (p *Pipeline) FormatChangeLimitFor(column string, share float64) *Pipeline {
+	if checkFormatLimit(share) != nil {
+		p.formats.bad = append(p.formats.bad, share)
+	}
+	cols := make(map[string]float64, len(p.formats.cols)+1)
+	for c, v := range p.formats.cols {
+		cols[c] = v
+	}
+	cols[column] = share
+	p.formats.cols = cols
+	return p
+}
+
 // Check checks the plan without reading a row and returns a *PlanError, or
 // nil (D19). A source read by a Reader is opened to read its header; if it
 // cannot be read, Check returns a *DeliveryError.
@@ -121,6 +184,21 @@ func (p *Pipeline) checkParams() error {
 	if p.hasPrefix && p.prefix == "" {
 		return &PlanError{Step: "source", Err: errors.New("empty info prefix")}
 	}
+	limits := append([]Limit(nil), p.limits...)
+	for _, ls := range p.stepLimits {
+		limits = append(limits, ls...)
+	}
+	for _, l := range limits {
+		if err := l.check(); err != nil {
+			return &PlanError{Step: "threshold", Err: err}
+		}
+	}
+	if p.abort && p.abortMin < 0 {
+		return &PlanError{Step: "threshold", Err: fmt.Errorf("minimum of %d rows is negative", p.abortMin)}
+	}
+	if len(p.formats.bad) > 0 {
+		return &PlanError{Step: "format_change", Err: checkFormatLimit(p.formats.bad[0])}
+	}
 	return nil
 }
 
@@ -142,34 +220,58 @@ func (p *Pipeline) check(o opened) ([]planned, schema, error) {
 			return nil, nil, &PlanError{Step: "source", Err: err}
 		}
 	}
+	for name := range p.stepLimits {
+		_, reads := o.(*openedReader)
+		if !(reads && name == "read") && !slices.ContainsFunc(p.steps, func(st step) bool { return st.name == name }) {
+			return nil, nil, &PlanError{Step: "threshold", Err: fmt.Errorf("no step named %q", name)}
+		}
+	}
 	return checkPlan(o.schema(), p.steps)
 }
 
-// Run checks the plan and runs it. It returns a *PlanError before any row is
-// read, a *DeliveryError if the source cannot be read or a delivery error
-// is set to ModeStop, or the context's error if ctx ends. The result carries
-// the rejects of the source, then those of the reading and the steps, and
-// the findings of the header check.
-func (p *Pipeline) Run(ctx context.Context) (Table, error) {
+// Run checks the plan and runs it, and returns its result (D21, D88). The
+// result always holds the status and the counts, also after a plan error.
+// Run also returns an error if the run did not run to the end: a
+// *PlanError before any row is read, a *DeliveryError if the source cannot
+// be read or a delivery error is set to ModeStop, a *DataError for a data
+// error set to ModeStop, a *ThresholdError with AbortOnThreshold, or the
+// context's error. The result table carries the rejects of the source,
+// then those of the reading and the steps, and the findings of the header
+// check.
+func (p *Pipeline) Run(ctx context.Context) (Result, error) {
 	if err := p.checkParams(); err != nil {
-		return Table{}, err
+		return failed(err, nil)
 	}
 	o, err := p.src.open()
 	if err != nil {
-		return Table{}, err
+		return failed(err, nil)
 	}
 	defer o.close()
 	steps, out, err := p.check(o)
 	if err != nil {
-		return Table{}, err
+		return failed(err, nil)
 	}
 	if err := o.stopAtOpen(p.policy); err != nil {
-		return Table{}, err
+		return failed(err, o.findingList())
 	}
-	rx := &rejector{policy: p.policy, run: newRun()}
-	bs, err := run(ctx, func(yield func(batch) error) error {
+
+	t := newTally()
+	t.run.limits, t.stepLimits = p.limits, p.stepLimits
+	t.abort, t.min = p.abort, p.abortMin
+	for _, src := range o.sources() {
+		if src.rel != nil && src.rel.owner == nil {
+			src.rel.owner = t
+		}
+	}
+	rx := &rejector{policy: p.policy, run: newRun(), tally: t}
+	read := &stepCtx{step: "read", ref: &stepRef{"read"}, rx: rx}
+	if _, ok := o.(*openedReader); ok {
+		read.cnt = t.step(read.ref)
+	}
+	rx.carry(o.rejects())
+	bs, runErr := run(ctx, func(yield func(batch) error) error {
 		n := 0
-		err := o.blocks(p.blockLen, rx, func(b batch) error {
+		err := o.blocks(p.blockLen, read, func(b batch) error {
 			n++
 			return yield(b)
 		})
@@ -178,9 +280,6 @@ func (p *Pipeline) Run(ctx context.Context) (Table, error) {
 		}
 		return err
 	}, steps, rx, p.blockLen)
-	if err != nil {
-		return Table{}, err
-	}
 	srcs, finds := o.sources(), o.findingList()
 	for _, st := range steps {
 		if j, ok := st.op.impl.(joinOp); ok {
@@ -188,9 +287,83 @@ func (p *Pipeline) Run(ctx context.Context) (Table, error) {
 			finds = append(finds, j.right.finds...)
 		}
 	}
-	rejects := append(o.rejects(), rx.entries...)
-	return Table{s: out, blocks: blocksOf(bs), orig: originsOf(bs), srcs: srcs, rejects: rejects, finds: finds,
-		policy: p.policy, prefix: p.prefix, run: rx.run}, nil
+	if len(bs) == 0 {
+		bs = []batch{{emptyBlock(out), nil}}
+	}
+	res := Result{
+		Table: Table{s: out, blocks: blocksOf(bs), orig: originsOf(bs), srcs: srcs, rejects: rx.entries, finds: finds,
+			err: runErr, policy: p.policy, prefix: p.prefix, run: rx.run},
+		Counts: t.run.counts(),
+	}
+	res.Report = append(append(append(res.Report, finds...), unreadable(runErr)...), formatChanges(rx.entries, t.byStep, p.formats)...)
+	for _, c := range t.steps {
+		res.Steps = append(res.Steps, StepCounts{Step: c.name, Counts: c.counts()})
+	}
+	if runErr != nil {
+		res.Causes = append(res.Causes, causeOf(runErr))
+	}
+	res.Causes = append(res.Causes, deliveryCauses(runErr, finds, rx.entries)...)
+	var te *ThresholdError
+	if !errors.As(runErr, &te) {
+		for _, c := range append([]*counter{t.run}, t.steps...) {
+			if l, ok := c.over(0); ok {
+				res.Causes = append(res.Causes, Cause{StatusFailedThreshold, c.thresholdError(l)})
+			}
+		}
+	}
+	res.Status = status(res.Causes)
+	return res, runErr
+}
+
+// failed is the result of a run that ended before any row was read.
+func failed(err error, finds []Finding) (Result, error) {
+	c := causeOf(err)
+	report := append(append([]Finding(nil), finds...), unreadable(err)...)
+	return Result{Table: Table{err: err}, Status: c.Status, Causes: []Cause{c}, Report: report}, err
+}
+
+// unreadable returns the finding for a delivery that could not be read
+// (D42).
+func unreadable(err error) []Finding {
+	var de *DeliveryError
+	if errors.As(err, &de) && de.Code == CodeUnreadable {
+		return []Finding{{Kind: FindingUnreadable, Source: de.Source, Detail: de.Err.Error()}}
+	}
+	return nil
+}
+
+// deliveryCauses returns a delivery error for every source and code of a
+// missing column or of a rejected row with a delivery error code, beyond
+// the one that ended the run (D42).
+func deliveryCauses(runErr error, finds []Finding, entries []rejectEntry) []Cause {
+	type key struct{ src, code string }
+	seen := map[key]bool{}
+	var de *DeliveryError
+	if errors.As(runErr, &de) {
+		seen[key{de.Source, de.Code}] = true
+	}
+	var out []Cause
+	add := func(src, code string, err error) {
+		if k := (key{src, code}); !seen[k] {
+			seen[k] = true
+			out = append(out, Cause{StatusDeliveryError, &DeliveryError{Source: src, Code: code, Err: err}})
+		}
+	}
+	for _, f := range finds {
+		if f.Kind == FindingMissingColumn {
+			add(f.Source, CodeMissingColumn, fmt.Errorf("column %q is missing from the delivery", f.Column))
+		}
+	}
+	for _, e := range entries {
+		if kindOfCode(e.Code) == KindDelivery {
+			src := ""
+			if len(e.orig.refs) > 0 {
+				src = e.orig.refs[0].src.name
+			}
+			add(src, e.Code, errors.New(e.Reason))
+		}
+	}
+	return out
 }
 
 type tableSource struct{ t Table }
@@ -209,7 +382,7 @@ func (s tableSource) findingList() []Finding       { return append([]Finding(nil
 func (s tableSource) stopAtOpen(errorPolicy) error { return nil }
 func (s tableSource) close() error                 { return nil }
 
-func (s tableSource) blocks(n int, _ *rejector, yield func(batch) error) error {
+func (s tableSource) blocks(n int, _ *stepCtx, yield func(batch) error) error {
 	for _, b := range s.t.batches() {
 		for _, c := range chunk(b, n) {
 			if c.blk.Len() == 0 {

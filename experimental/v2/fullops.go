@@ -391,6 +391,7 @@ func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Blo
 		firsts[g] = rows[0]
 		for _, r := range rows {
 			orig[g].agg += sc.orig[r].weight()
+			orig[g].members = append(orig[g].members, sc.orig[r].rows()...)
 		}
 	}
 	type failure struct{ column, reason string }
