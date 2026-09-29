@@ -407,6 +407,39 @@ Nach einer Operation mit unbekannter Spalte hat die Tabelle den haftenden Fehler
 Spalten und aussortierte Zeilen sind die von vorher. Eine weitere Operation ändert daran
 nichts.
 
+### T53 — Excel-Zellen jedes Typs tragen ihre feste Textform
+
+**Beweist:** [D80](10-design-decisions.md#d80-jeder-zelltyp-einer-excel-lieferung-hat-eine-feste-textform)
+Eine Excel-Lieferung enthält ein Datum mit Uhrzeit, eine reine Uhrzeit, eine große Zahl, einen
+Wahrheitswert, eine Fehlerzelle, eine Formel und eine leere Zeile. Rohzustand und Arbeitsspalte
+tragen `2026-09-27T14:30:00`, `14:30:00`, `100000`, `true`, `#DIV/0!` und das Ergebnis der
+Formel, die leere Zeile fehlt, und die Zeilennummern der folgenden Zeilen zählen sie mit. Eine
+aussortierte Zeile, deren Spalte ein Schritt abgeleitet hat, hat leere `cell` und `display`.
+
+### T54 — Fundstelle und record_key einer CSV-Zeile folgen ihrer physischen Zeile
+
+**Beweist:** [D81](10-design-decisions.md#d81-eine-gelesene-zeile-wird-uber-ihre-physische-zeile-gefunden-und-record_key-besteht-aus-fingerabdruck-und-zeile)
+In einer CSV-Lieferung mit einer Leerzeile und einem Feld über zwei Zeilen tragen die Zeilen
+danach die Zeilennummer, die ein Editor zeigt, und den Byte-Offset ihres Anfangs. Ihr
+`record_key` ist der Fingerabdruck mit dieser Zeilennummer. Dieselben Zellwerte unter anderem
+Dateinamen ergeben denselben `record_hash`. Ein Kopf mit doppeltem Spaltennamen ergibt
+`unreadable`.
+
+### T55 — Eine vermutliche Umbenennung wird nach Normalisierung und Distanz erkannt
+
+**Beweist:** [D79](10-design-decisions.md#d79-eine-fehlende-und-eine-neue-spalte-gelten-als-vermutlich-umbenannt-wenn-ihre-namen-normalisiert-gleich-oder-nah-beieinander-sind), [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird)
+`Kunden Nr` und `kunden_nr` sowie `Kundennr` und `Kundenr` gelten als vermutlich umbenannt,
+`id` und `nr` nicht. Zwei neue Spalten mit derselben kleinsten Distanz ergeben keine Meldung.
+Fehlende und neue Spalte werden in jedem Fall gemeldet.
+
+### T56 — Die Quelle aus aussortierten Zeilen behält Schlüssel und Fundstelle
+
+**Beweist:** [D82](10-design-decisions.md#d82-die-quelle-aus-aussortierten-zeilen-ubernimmt-schlussel-und-fundstelle-aus-den-info-spalten), [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle)
+Die aussortierten Zeilen eines Laufs über eine CSV-Lieferung werden als Quelle gelesen. Eine
+erneut scheiternde Zeile trägt `record_key`, `source`, `line` und `offset` aus dem ersten Lauf,
+eine durchlaufende Zeile denselben `record_key`, und die Info-Spalten sind keine Datenspalten.
+Eine unzerlegbare Zeile wird mit geänderter Reader-Konfiguration gelesen.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -474,3 +507,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T50](#t50-aggregierte-aussortierte-zeilen-stehen-je-schritt-in-einer-tabelle-und-in-der-ubersicht) | `TestAggregatedRejectsStandPerStepAndInTheOverview` |
 | [T51](#t51-castall-und-withall-werten-jede-spalte-gegen-die-eingangszeile-aus-und-sortieren-eine-zeile-einmal-aus) | `TestCastAllAndWithAllAreOneStep` |
 | [T52](#t52-eine-tabelle-mit-haftendem-fehler-behalt-die-daten-vor-der-gescheiterten-operation) | `TestStickyErrorKeepsTheDataBeforeTheFailedOperation` |
+| [T53](#t53-excel-zellen-jedes-typs-tragen-ihre-feste-textform) | ausstehend |
+| [T54](#t54-fundstelle-und-record_key-einer-csv-zeile-folgen-ihrer-physischen-zeile) | ausstehend |
+| [T55](#t55-eine-vermutliche-umbenennung-wird-nach-normalisierung-und-distanz-erkannt) | ausstehend |
+| [T56](#t56-die-quelle-aus-aussortierten-zeilen-behalt-schlussel-und-fundstelle) | ausstehend |

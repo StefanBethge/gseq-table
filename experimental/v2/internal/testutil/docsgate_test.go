@@ -34,11 +34,11 @@ const designDir = "docs/explanation/design/v2"
 // in the same commit.
 var familyFloors = map[string]int{
 	"UC": 8,
-	"D":  78,
+	"D":  83,
 	"F":  24,
-	"T":  52,
+	"T":  56,
 	"P":  8,
-	"G":  63,
+	"G":  64,
 }
 
 // noUseCaseDecisions lists the decisions that deliberately name no use case

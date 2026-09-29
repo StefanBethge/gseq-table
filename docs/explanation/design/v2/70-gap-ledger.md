@@ -363,6 +363,7 @@ Nach [D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-we
 
 **Type:** Inconsistency · **Kind:** design · **Status:** offen
 [D16](10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) lässt die Info-Spalten weg, damit würden `record_key`, `record_hash` und `row_key` neu gebildet, entgegen [D18](10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash). Die übrigen Quellen "normal lesen" setzt voraus, dass die Original-Lieferung der anderen Seite noch vorliegt, was [D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) für HTTP- und Streaming-Quellen ausschließt. Eine linke Zeile mit vier angekommenen und einer gescheiterten Ergebniszeile erzeugt bei der Nachverarbeitung alle fünf erneut, was bei Zielen ohne Upsert Duplikate gibt.
+**Teilauflösung (2026-09-29):** Dass die Quelle aus aussortierten Zeilen `record_key`, `record_hash` und die Fundstelle aus den Info-Spalten übernimmt, legt [D82](10-design-decisions.md#d82-die-quelle-aus-aussortierten-zeilen-ubernimmt-schlussel-und-fundstelle-aus-den-info-spalten) fest. Die übrigen Fragen bleiben offen.
 
 ### G50 — field_too_large hat keinen brauchbaren Rohzustand
 
@@ -434,3 +435,8 @@ Die Maskierung nach [D56](10-design-decisions.md#d56-die-library-begrenzt-feldla
 
 **Type:** Gap · **Kind:** design · **Status:** offen
 [D48](10-design-decisions.md#d48-nach-einer-gruppierung-aussortierte-zeilen-stehen-in-einer-eigenen-tabelle) verlangt den Gruppenschlüssel "wo vorhanden" auch als Rohwert. Wurde die Schlüsselspalte vor der Gruppierung umgewandelt, können verschiedene Rohtexte (`01`, `1`, ` 1`) in denselben Schlüssel eingehen, und nach [D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert) ist der Rohzustand der Quellzeilen dort schon freigegeben. [D77](10-design-decisions.md#d77-aggregierte-aussortierte-zeilen-stehen-je-schritt-in-einer-tabelle-und-auch-in-der-ubersicht) lässt den Rohwert im Prototyp deshalb weg. Optionen: der Rohwert der ersten Zeile der Gruppe; alle verschiedenen Rohwerte; nur, wenn die Schlüsselspalte unverändert eine Rohspalte ist.
+
+### G64 — Excel-Zeilen mit Werten rechts vom Kopf
+
+**Type:** Gap · **Kind:** design · **Status:** offen
+Eine Excel-Zeile kann Werte in Spalten haben, über denen keine Kopfzelle steht. [D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) nennt eine falsche Spaltenzahl bei CSV eine unzerlegbare Zeile, [D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert) lässt `raw_line` bei Excel leer. Der Prototyp sortiert eine solche Zeile mit `unparseable_line` aus, ohne `raw_line` und mit den Werten der Spalten unter dem Kopf als Rohzustand, damit keine Werte still verloren gehen. Optionen: so lassen; die Werte als neue Spalten melden wie nach [D22](10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird); die Werte verwerfen und zählen.
