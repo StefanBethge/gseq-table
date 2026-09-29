@@ -302,3 +302,27 @@ func TestTwoSheetsAreTwoSourcesAndAMissingSheetIsADeliveryError(t *testing.T) {
 		t.Errorf("status %v, exit %d", res.Status, res.ExitCode())
 	}
 }
+
+// An archive over the limit for its unpacked size or for the ratio of
+// unpacked to packed size is unreadable, and the run ends with
+// delivery_error (D56, D83).
+func TestExcelArchiveLimitsAreDeliveryErrors(t *testing.T) {
+	testutil.Proves(t, "T35")
+	path := book(t, x.Book{Sheets: []x.Sheet{{Name: "S", Rows: []x.Row{
+		header("a"),
+		{Num: 2, Cells: []x.Cell{x.Text("A2", "1")}},
+	}}}})
+	for name, opt := range map[string]excel.Option{
+		"unpacked size": excel.MaxUnpackedSize(100),
+		"ratio":         excel.MaxRatio(1),
+	} {
+		res, err := gtable.FromSource(excel.Sheet(path, "S", opt), 10).Run(ctx)
+		var de *gtable.DeliveryError
+		if !errors.As(err, &de) || de.Code != gtable.CodeUnreadable || res.Status != gtable.StatusDeliveryError {
+			t.Errorf("%s: err %v, status %v, want unreadable and delivery_error", name, err, res.Status)
+		}
+	}
+	if _, err := gtable.FromSource(excel.Sheet(path, "S"), 10).Run(ctx); err != nil {
+		t.Errorf("within the default limits: %v", err)
+	}
+}

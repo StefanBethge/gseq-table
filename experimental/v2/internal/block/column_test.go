@@ -252,3 +252,55 @@ func TestColumnSetters(t *testing.T) {
 	check(Bool, func(c *Column) { c.SetBool(0, false) }, func(c Column) bool { v, ok := c.Bool(0); return ok && !v })
 	check(Timestamp, func(c *Column) { c.SetTimestamp(0, ts) }, func(c Column) bool { v, ok := c.Timestamp(0); return ok && v.Equal(ts) })
 }
+
+func TestColumnBytesCountsValuesAndNulls(t *testing.T) {
+	b := NewBuilder(Text, 0)
+	b.AppendText("abc")
+	b.AppendNull()
+	c := b.Build()
+	want := int64(2*stringHeader + 3 + 8)
+	if got := c.Bytes(); got != want {
+		t.Errorf("Bytes() = %d, want %d", got, want)
+	}
+	ib := NewBuilder(Int, 0)
+	ib.AppendInt(1)
+	if got := ib.Build().Bytes(); got != 8 {
+		t.Errorf("int Bytes() = %d, want 8", got)
+	}
+}
+
+func TestAppendFromCopiesCellsAndNulls(t *testing.T) {
+	ts := time.Date(2026, 9, 29, 8, 0, 0, 0, time.UTC)
+	src := []Column{}
+	for _, k := range []Kind{Text, Int, Float, Bool, Timestamp} {
+		b := NewBuilder(k, 2)
+		switch k {
+		case Text:
+			b.AppendText("x")
+		case Int:
+			b.AppendInt(3)
+		case Float:
+			b.AppendFloat(2.5)
+		case Bool:
+			b.AppendBool(true)
+		case Timestamp:
+			b.AppendTimestamp(ts)
+		}
+		b.AppendNull()
+		src = append(src, b.Build())
+	}
+	for _, c := range src {
+		b := NewBuilder(c.Kind(), 2)
+		b.AppendFrom(c, 1)
+		b.AppendFrom(c, 0)
+		got := b.Build()
+		if !got.IsNull(0) || got.IsNull(1) {
+			t.Errorf("%v: nulls not copied", c.Kind())
+		}
+	}
+	b := NewBuilder(Timestamp, 1)
+	b.AppendFrom(src[4], 0)
+	if v, _ := b.Build().Timestamp(0); !v.Equal(ts) {
+		t.Errorf("timestamp = %v, want %v", v, ts)
+	}
+}
