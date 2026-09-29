@@ -1745,3 +1745,76 @@ liegt ([G67](70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-b
 [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange), der nach dem Anteil des Speichers fragt.
 **Quelle:** Maintainer, 2026-09-29 (Auftrag bei der Umsetzung von #53: Voreinstellungen aus den Messungen festlegen)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D109 — Buchführung gibt es nur für Zeilen im Plan, höchstens 50 Bytes je Zeile, und die 1BRC-Datei läuft bei 1 GiB durch
+
+**Entscheidung:** Der Umbau der Buchführung je Quellzeile ([G67](70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets), #66) ist bestanden, wenn drei Bedingungen gelten.
+Erstens hält die Engine Buchführung je Zeile nur für Zeilen, die gerade im Plan sind: in einem Block,
+in einem Schritt über alle Zeilen gesammelt oder mit ihm ausgelagert. Hat eine Zeile den Plan verlassen
+([D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)), bleibt von ihr nichts im Speicher, außer bei aussortierten Zeilen ([D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)) und nach
+[D110](#d110-zahlungen-entstehen-an-den-ausgangen-des-plans-einen-zustand-je-quellzeile-gibt-es-nur-fur-quellzeilen-in-mehreren-arbeitszeilen). Zweitens beträgt sie je gehaltener Zeile höchstens 50 Bytes über die Daten hinaus. Drittens läuft
+`examples/onebrc_budget` (Gruppieren mit Minimum, Mittelwert und Maximum, dann Sortieren) über die volle
+1BRC-Datei in Docker mit `--memory=1g` ohne Swap durch ([D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein)). Die ersten beiden Bedingungen prüft
+ein Unit-Test am Wachstum des Heaps zwischen einer kleinen und einer großen Lieferung ([T71](30-test-plan.md#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung)), die
+dritte der Lauf in Docker.
+**Begründung:** Im Profil über 20 Mio. Zeilen der 1BRC-Datei lag der Heap an der Spitze bei 1,04 GB, rund
+52 Bytes je Quellzeile: Zeile und Offset der Fundstelle (16 Bytes), die Kennungen der Quellzeilen je Gruppe
+(16 Bytes), der Zähler für die Freigabe des Rohzustands (4 Bytes) und die Kategorie je Zählung (1 Byte je
+Zählung und Zeile). Alles wuchs mit der Lieferung; bei 1 Mrd. Zeilen wären das rund 50 GB. Eine Grenze je
+gelesener Zeile trüge deshalb kein Limit; nur Buchführung für die Zeilen im Plan hält den Speicher
+unabhängig von der Größe der Lieferung ([UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)). 1 GiB ist das kleinste Limit aus [D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), bei dem vor dem
+Umbau keine Lieferung ab 20 Mio. Zeilen durchlief.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag in #66; die Lesart als Grenze je gehaltener Zeile bei der Umsetzung bestätigt)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D110 — Zählungen entstehen an den Ausgängen des Plans, einen Zustand je Quellzeile gibt es nur für Quellzeilen in mehreren Arbeitszeilen
+
+**Entscheidung:** Jede Arbeitszeile verlässt jeden Schritt und den Plan genau einmal: sie läuft weiter
+oder ins Ziel, wird aussortiert, verworfen oder geht in eine aggregierte Zeile ein. An diesem Ausgang
+zählen ihre Quellzeilen nach [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) und [D84](#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen), ohne Tabelle je Quellzeile. Eine aggregierte Zeile trägt die Zahl
+ihrer Quellzeilen je Quelle, nicht deren Kennungen ([D12](#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)). Der Rohzustand eines Blocks wird frei, wenn keine
+Arbeitszeile ihn mehr braucht; gezählt wird dafür je Block, nicht je Zeile. Einen Zustand je Quellzeile
+hält die Engine nur für Quellzeilen, die in mehreren Arbeitszeilen stecken können: die Zeilen der rechten
+Seite eines Joins und linke Zeilen mit mehr als einem Partner ([D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen)). Für sie gilt der Vorrang aus
+[D84](#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen) über einen Zustand von einem Byte je Zählung. Diese Zustände liegen in Seiten, zählen im Budget
+([D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)) und werden im Prototyp nicht ausgelagert ([G73](70-gap-ledger.md#g73-zustande-je-quellzeile-nach-1n-joins-werden-nicht-ausgelagert)). Die Regeln aus [D84](#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen) gelten unverändert. Das
+präzisiert [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) und [D84](#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen).
+**Begründung:** Ohne Join steckt jede Quellzeile in genau einer Arbeitszeile, und der Ausgang genügt, um
+sie einmal zu zählen. Erst ein 1:n-Join verteilt eine Quellzeile auf mehrere Arbeitszeilen, deren
+Kategorien sich nach dem Vorrang verbinden. Die rechte Seite liegt im Prototyp ohnehin im Budget ([P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren)).
+Die Zustände auszulagern lohnt erst für Lieferungen mit sehr vielen linken Mehrfachtreffern, die keine
+Lieferung aus [D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt) hat.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag in #66; Umfang für 1:n-Joins bei der Umsetzung bestätigt)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D111 — Fundstelle, Schlüssel und Hash einer gelesenen Zeile liegen beim Block ihres Rohzustands
+
+**Entscheidung:** Zeile und Offset der Fundstelle ([D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle), [D81](#d81-eine-gelesene-zeile-wird-uber-ihre-physische-zeile-gefunden-und-record_key-besteht-aus-fingerabdruck-und-zeile)), ein fachlicher `record_key` ([D97](#d97-ein-fachlicher-schlussel-bildet-record_key-als-hash-uber-die-namen-und-werte-seiner-spalten)), `record_hash`
+([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)) und der angezeigte Text von Excel-Zellen ([D62](#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform)) liegen als Spalten beim Block des Rohzustands, aus
+dem die Zeile gelesen wurde. Sie werden mit ihm freigegeben und ausgelagert ([D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben), [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)). Eine aussortierte
+Zeile behält sie mit der Kopie ihres Rohzustands. `record_key` und `row_key` entstehen als Text erst, wenn
+eine Zeile aussortiert oder in ein Ziel geschrieben wird. Das präzisiert [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) und [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie).
+**Begründung:** Die Fundstelle wird nur für aussortierte Zeilen gebraucht, und für die bleibt die Kopie.
+Als Liste je Quellzeile wuchs sie mit der Lieferung ([D109](#d109-buchfuhrung-gibt-es-nur-fur-zeilen-im-plan-hochstens-50-bytes-je-zeile-und-die-1brc-datei-lauft-bei-1-gib-durch)); beim Rohzustand wächst sie nur mit den Blöcken im
+Plan und lagert mit ihnen aus.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag in #66)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D112 — GroupBy rechnet Summe, Anzahl, Mittelwert, Minimum, Maximum, erster und letzter Wert fortlaufend und bitgleich
+
+**Entscheidung:** Hat eine Gruppierung nur die Aggregationen Count, Sum, Mean, Min, Max, First und Last,
+geht jede Zeile beim Eintreffen in den Zwischenstand ihrer Gruppe ein, in der Reihenfolge der Eingabe. Die
+Werte sind damit bitgleich zum Lauf im Speicher ([D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)), auch Summen über Gleitkommazahlen; Teilergebnisse werden
+nie kombiniert. Die Zwischenstände zählen im Budget. Ist das Budget erreicht, nimmt der Schritt keine
+neuen Gruppen mehr auf: Die Zeilen neuer Schlüssel gehen den Weg über Sortieren nach Schlüssel und
+Auslagern ([G68](70-gap-ledger.md#g68-beim-ausgelagerten-gruppieren-muss-jede-einzelne-gruppe-in-den-speicher-passen)), die bestehenden Gruppen rechnen weiter. Eine Gruppierung mit Median, Quantile, Var,
+StdDev, CountDistinct oder StringJoin läuft ganz über diesen Weg. In beiden Fällen stehen die Gruppen in
+der Reihenfolge ihrer ersten Zeilen, und der Rohzustand endet an der Gruppierung ([D12](#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)). Löst [G68](70-gap-ledger.md#g68-beim-ausgelagerten-gruppieren-muss-jede-einzelne-gruppe-in-den-speicher-passen) für
+diese Aggregationen.
+**Begründung:** Gruppieren sammelte alle Zeilen, bevor es rechnete, und lagerte bei der 1BRC-Datei alle
+Zeilen aus, obwohl sie nur rund 400 Gruppen hat. Im Profil über 20 Mio. Zeilen war das der größte Teil der
+Allokationen und der Laufzeit. Fortlaufend gerechnet braucht eine Gruppe nur ihren Zwischenstand, auch
+wenn sie mehr Zeilen hat, als das Budget fasst. Teilergebnisse ausgelagerter Läufe zu kombinieren wurde
+verworfen, weil Gleitkomma-Summen dann in den letzten Bits vom Lauf im Speicher abweichen.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag in #66; bitgleiche Werte ohne Teilergebnisse bei der Umsetzung bestätigt)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
