@@ -115,7 +115,7 @@ func TestPipelineRunsBlockByBlock(t *testing.T) {
 	var sizes []int
 	p := &Pipeline{src: src, blockLen: 4}
 	p.Then(WhereFunc(func(r Row) (bool, error) { return true, nil }))
-	p.steps = append(p.steps, step{"probe", Op{probe{&sizes}}})
+	p.steps = append(p.steps, step{name: "probe", op: Op{probe{&sizes}}})
 	if _, err := p.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -214,7 +214,7 @@ func (t Table) Apply(op Op) Table {
 		srcs = unionSources(t.srcs, j.right.srcs)
 		finds = append(append([]Finding(nil), t.finds...), j.right.finds...)
 	}
-	steps, out, err := checkPlan(t.s, []step{{name, op}})
+	steps, out, err := checkPlan(t.s, []step{{name: name, op: op}}, infoPrefix(t.prefix))
 	if err != nil {
 		t.err = err
 		return t
@@ -222,8 +222,13 @@ func (t Table) Apply(op Op) Table {
 	if t.run == nil {
 		t.run = newRun()
 	}
-	rx := &rejector{policy: t.policy, run: t.run}
+	rx := &rejector{policy: t.policy, run: t.run, prefix: t.prefix}
+	// The table keeps its blocks; the operation changes none of them (D5,
+	// D93).
 	bs := t.batches()
+	for i := range bs {
+		bs[i].blk = bs[i].blk.Share()
+	}
 	if len(bs) == 0 {
 		bs = []batch{{emptyBlock(t.s), nil}}
 	}

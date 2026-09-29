@@ -510,14 +510,14 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T16](#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) | `TestStatusAndCountsAreConsistent` |
 | [T17](#t17-gehaufte-formatfehler-erscheinen-im-anderungsbericht-mit-beispielen) | `TestFormatChangesAppearInTheChangeReport` |
 | [T18](#t18-der-profilvergleich-meldet-eine-abweichung-ohne-dass-eine-zeile-scheitert) | ausstehend |
-| [T19](#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck) | ausstehend |
-| [T20](#t20-zweige-werden-nach-namen-zusammengefuhrt-und-typkonflikte-fallen-vor-dem-lauf-auf) | ausstehend |
-| [T21](#t21-eine-im-zweig-erneut-scheiternde-zeile-behalt-kennung-weg-und-vorigen-grund-und-zahlt-einmal) | ausstehend |
+| [T19](#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck) | `TestFailBranchSeesTheStateBeforeTheStep` |
+| [T20](#t20-zweige-werden-nach-namen-zusammengefuhrt-und-typkonflikte-fallen-vor-dem-lauf-auf) | `TestBranchesMergeByNameAndTypeConflictsArePlanErrors` |
+| [T21](#t21-eine-im-zweig-erneut-scheiternde-zeile-behalt-kennung-weg-und-vorigen-grund-und-zahlt-einmal) | `TestRowFailingAgainInTheBranchKeepsIDPathAndReasonAndCountsOnce` |
 | [T22](#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) | ausstehend |
 | [T23](#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) | ausstehend |
 | [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | ausstehend |
-| [T25](#t25-kein-zweig-sieht-anderungen-eines-anderen-in-jedem-modus) | ausstehend |
-| [T26](#t26-die-modi-fur-kopieren-und-andern-liefern-dasselbe-ergebnis) | ausstehend |
+| [T25](#t25-kein-zweig-sieht-anderungen-eines-anderen-in-jedem-modus) | `TestNoBranchSeesTheChangesOfAnotherInAnyMode` |
+| [T26](#t26-die-modi-fur-kopieren-und-andern-liefern-dasselbe-ergebnis) | `TestCopyModesGiveTheSameResult` |
 | [T27](#t27-nullwerte-sind-vom-leeren-text-getrennt-und-verhalten-sich-wie-in-sql) | `TestNullsAreSeparateFromEmptyTextAndBehaveLikeSQL` |
 | [T28](#t28-eine-closure-die-einen-fehler-meldet-sortiert-die-zeile-mit-codecustom-aus) | `TestClosureErrorRejectsRowWithCodeCustom` |
 | [T29](#t29-der-datenbank-writer-ist-bei-nachverarbeitung-idempotent) | ausstehend |
@@ -529,7 +529,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | ausstehend |
 | [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | ausstehend |
 | [T37](#t37-die-kennung-einer-lieferung-steht-beim-offnen-fest-und-andert-sich-mit-der-datei) | `TestDeliveryIDIsFixedAtOpen` |
-| [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | ausstehend |
+| [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | `TestInPlaceCopiesARawColumnOnce` |
 | [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
 | [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | ausstehend |
 | [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | `TestTableCarriesRejectsAndStickyError` |
@@ -551,5 +551,5 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | `TestSourceRowCountsOnce` |
 | [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | `TestDroppedRowsReleaseTheRawState` |
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
-| [T60](#t60-nach-einem-zweig-stehen-die-zeilen-in-eingangsreihenfolge-und-operationen-uber-alle-zeilen-im-zweig-sind-planfehler) | ausstehend |
-| [T61](#t61-der-modus-immer-andern-andert-keine-tabelle-die-quelle-der-pipeline-ist) | ausstehend |
+| [T60](#t60-nach-einem-zweig-stehen-die-zeilen-in-eingangsreihenfolge-und-operationen-uber-alle-zeilen-im-zweig-sind-planfehler) | `TestBranchesKeepTheInputOrderAndHoldOnlyBlockSteps` |
+| [T61](#t61-der-modus-immer-andern-andert-keine-tabelle-die-quelle-der-pipeline-ist) | `TestInPlaceDoesNotChangeASourceTable` |
