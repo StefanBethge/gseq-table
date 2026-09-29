@@ -34,7 +34,7 @@ const designDir = "docs/explanation/design/v2"
 // in the same commit.
 var familyFloors = map[string]int{
 	"UC": 8,
-	"D":  105,
+	"D":  108,
 	"F":  24,
 	"T":  70,
 	"P":  8,
@@ -51,6 +51,7 @@ var noUseCaseDecisions = []string{"D37", "D68"}
 var extraFiles = []string{
 	"experimental/v2/CLAUDE.md",
 	"experimental/v2/examples/README.md",
+	"experimental/v2/bench/RESULTS.md",
 }
 
 func TestDocsIDConsistency(t *testing.T) {

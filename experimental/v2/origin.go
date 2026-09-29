@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/stefanbethge/gseq-table/experimental/v2/internal/benchknob"
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
 
@@ -78,7 +79,11 @@ type keptCell struct {
 
 // addChunk stores cols as the raw state of the next rows. With release, the
 // rows count as in the plan.
+// Under the switch of D106 the chunk is not kept.
 func (r *rawSource) addChunk(cols []block.Column, rows int) {
+	if r.rel != nil && benchknob.NoRawState.Load() {
+		cols = nil
+	}
 	r.chunks = append(r.chunks, cols)
 	r.starts = append(r.starts, r.n)
 	r.n += rows
@@ -87,7 +92,7 @@ func (r *rawSource) addChunk(cols []block.Column, rows int) {
 			r.rel.live = append(r.rel.live, 1)
 		}
 		r.rel.chunkLive = append(r.rel.chunkLive, rows)
-		var n int64
+		var n int64 // 0 for a chunk not kept
 		for _, c := range cols {
 			n += c.Bytes()
 		}

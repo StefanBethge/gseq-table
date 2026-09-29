@@ -40,7 +40,7 @@ func main() {
 	}
 	cfg := config{}
 	flag.StringVar(&cfg.path, "data", path, "delivery in 1BRC format (default $ONEBRC_FILE or the test data)")
-	flag.Int64Var(&cfg.budget, "budget", 0, "memory cap of the run in bytes (0: a quarter of the memory limit)")
+	flag.Int64Var(&cfg.budget, "budget", 0, "memory cap of the run in bytes (0: a tenth of the memory limit)")
 	flag.IntVar(&cfg.blockLen, "block", 1<<14, "rows per block")
 	flag.BoolVar(&cfg.managed, "managed", true, "let the engine set GOMEMLIMIT to 90 % of the memory limit")
 	flag.StringVar(&cfg.spillDir, "spill", "", "directory to spill to (default: the temporary directory)")

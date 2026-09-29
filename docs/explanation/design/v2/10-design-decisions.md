@@ -1705,3 +1705,43 @@ einstellbar.
 **Quelle:** Maintainer, 2026-09-29 (Review der Beispiel-Lieferungen in #54, zu [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
 **Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
 
+### D106 — Ein interner Mess-Schalter lässt den Rohzustand für die Benchmarks weg
+
+**Entscheidung:** Für die Messungen zu [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) hat die Engine einen Schalter, der den Rohzustand gelesener
+Zeilen nicht hält: Die Blöcke eines Readers werden nicht als Rohzustand gespeichert, nicht im
+Budget gezählt und gelten nicht als geteilt. Fundstelle und Zählungen bleiben. Der Schalter liegt
+in einem Paket unter `internal/` und ist keine öffentliche API. Nur Benchmark- und Testcode des
+Moduls setzt ihn. Aussortierte Zeilen eines Laufs mit diesem Schalter tragen keine Rohwerte.
+**Begründung:** [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) verlangt Spitzenspeicher und Auslagern mit und ohne Rohzustand. [D9](#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert), [D55](#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) und
+[D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie) halten ihn immer. Ohne Schalter ließen sich seine Kosten nicht von denen der Blöcke
+trennen. Als Option für Pipelines würde er das Fehlermodell aus [D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) aushebeln.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #53)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D107 — Die Blocklänge ist standardmäßig 16384 Zeilen, 0 wählt sie
+
+**Entscheidung:** Die Voreinstellung der Blocklänge nach [D29](#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) ist 16384 Zeilen. Eine Pipeline mit
+Blocklänge 0 läuft mit ihr, eine negative Blocklänge ist ein Planfehler. Auch eine auf einmal gelesene
+Tabelle nutzt sie.
+**Begründung:** Im Speicher lagen Lesen, Filter, Umwandeln, Sortieren und Gruppieren von 10 Mio.
+zahlenlastigen Zeilen mit Blocklängen von 4096 bis 262144 innerhalb weniger Prozent bei Laufzeit und
+Spitzenspeicher, 1024 war beim Filtern und Umwandeln etwas langsamer (`experimental/v2/bench/RESULTS.md`).
+16384 liegt in der Mitte dieses Bereichs und hält die Blöcke beim Auslagern klein genug für kleine
+Budgets. Löst den Teil von [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange), der nach der Blocklänge fragt.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag bei der Umsetzung von #53: Voreinstellungen aus den Messungen festlegen)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D108 — Der Anteil des Speichers für das Budget ist ein Zehntel des erkannten Limits
+
+**Entscheidung:** Die Voreinstellung des Budgets nach [D101](#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits) ist 10 % des erkannten Limits statt
+vorläufig 25 %. Alles andere an [D101](#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits) bleibt.
+**Begründung:** Sortieren von 10 Mio. zahlenlastigen Zeilen mit Ziel in Docker (`experimental/v2/bench/RESULTS.md`):
+Ohne `GOMEMLIMIT` endete jeder Lauf mit 25 % bei 1, 2 und 4 GiB durch das Speicherlimit, weil der
+Prozess auf ein Mehrfaches des Budgets wuchs. Mit 10 % liefen 2 und 4 GiB durch, mit einer Spitze
+von 69 % und 51 % des Limits. Mit von der Engine gesetztem `GOMEMLIMIT` nach [D102](#d102-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist) liefen auch 25 % bei
+allen drei Limits durch, aber [D65](#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess) setzt es nur auf Wunsch, und die Voreinstellung muss ohne es
+tragen. Bei 1 GiB reichte kein Anteil, weil die Buchführung je Quellzeile außerhalb des Budgets
+liegt ([G67](70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets)). Nach deren Umbau (#66) wird der Anteil neu gemessen. Löst den Teil von
+[G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange), der nach dem Anteil des Speichers fragt.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag bei der Umsetzung von #53: Voreinstellungen aus den Messungen festlegen)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)

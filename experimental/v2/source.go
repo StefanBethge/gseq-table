@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/stefanbethge/gseq-table/experimental/v2/internal/benchknob"
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
 
@@ -188,20 +189,17 @@ func (s Source) Key(cols ...string) Source {
 	return s
 }
 
-// eagerBlockLen is the block length of a table read at once.
-const eagerBlockLen = 1 << 14
-
 // Table reads the whole delivery into a table (D31). The table carries the
 // rows rejected while reading and the findings of the header check. It
 // returns a *DeliveryError if the delivery cannot be read, or a *PlanError
 // if the source has no column names.
 func (s Source) Table(ctx context.Context) (Table, error) {
-	res, err := FromSource(s, eagerBlockLen).Run(ctx)
+	res, err := FromSource(s, DefaultBlockLen).Run(ctx)
 	return res.Table, err
 }
 
 // FromSource returns a pipeline over the rows of src, run in blocks of
-// blockLen rows (see From).
+// blockLen rows; 0 means DefaultBlockLen (see From).
 func FromSource(src Source, blockLen int) *Pipeline {
 	return &Pipeline{src: readerSource{src}, blockLen: blockLen}
 }
@@ -491,7 +489,10 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 			cols[i] = b.Build()
 			continue
 		}
-		col := c.cols[j].Share()
+		col := c.cols[j]
+		if !benchknob.NoRawState.Load() {
+			col = col.Share() // with the raw state (D55)
+		}
 		if len(keep) < len(c.recs) {
 			col = col.Take(keep)
 		}

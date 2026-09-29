@@ -506,9 +506,9 @@ func TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup(t *testing.T) {
 		limit int64
 		want  int64
 	}{
-		{"cgroup v2", memlimit.DetectFrom(root, "", 64<<30), 512 << 20},
-		{"cgroup v1", memlimit.DetectFrom(v1, "", 64<<30), 1 << 30},
-		{"physical", memlimit.DetectFrom(t.TempDir(), "", 64<<30), 16 << 30},
+		{"cgroup v2", memlimit.DetectFrom(root, "", 64<<30), (2 << 30) / 10},
+		{"cgroup v1", memlimit.DetectFrom(v1, "", 64<<30), (4 << 30) / 10},
+		{"physical", memlimit.DetectFrom(t.TempDir(), "", 64<<30), (64 << 30) / 10},
 	} {
 		withDetectedLimit(t, c.limit)
 		if got := newMemPool(0).budget(); got != c.want {
@@ -522,7 +522,7 @@ func TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup(t *testing.T) {
 		t.Errorf("set budget = %d", got)
 	}
 	SetMemoryBudget(0)
-	if got := procPool.budget(); got != 16<<30 {
+	if got := procPool.budget(); got != (64<<30)/10 {
 		t.Errorf("budget after reset = %d, want the default", got)
 	}
 }
@@ -581,4 +581,73 @@ func TestLaterRunRemovesEndedRunsButNotOpenResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantEmpty(t, root)
+}
+
+// T23 in the scope of P1: sort and group by over a delivery many times the
+// budget come through, the result is the one of a run in memory, and the
+// peak the engine counts stays within the budget plus 10 % (D58, D104).
+// The peak of the process is measured in Docker with the 1BRC file (D60,
+// bench/RESULTS.md).
+func TestSortAndGroupByOverMoreDataThanTheBudgetKeepTheBudget(t *testing.T) {
+	testutil.Proves(t, "T23")
+	const budget = 128 << 10
+	plans := map[string]func() *Pipeline{
+		"sort": func() *Pipeline {
+			return FromSource(NewSource(measurements(30000, 300)), 64).
+				Then(Cast("value", TypeFloat)).
+				Then(Sort(Desc("value"), Asc("station")))
+		},
+		"group by and sort": func() *Pipeline {
+			return FromSource(NewSource(measurements(30000, 300)), 64).
+				Then(Cast("value", TypeFloat)).
+				Then(GroupBy([]string{"station"}, Min("value"), Mean("value").As("mean"), Max("value").As("max"))).
+				Then(Sort(Asc("station")))
+		},
+	}
+	for name, plan := range plans {
+		t.Run(name, func(t *testing.T) {
+			inMem, err := isolated(t, plan(), 0).Run(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer inMem.Close()
+			res, err := isolated(t, plan(), budget).Run(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Close()
+			if res.Status != StatusOK {
+				t.Fatalf("status %s: %v", res.Status, res.Causes)
+			}
+			if res.mem.read < 10*budget {
+				t.Fatalf("the delivery holds %d bytes, not a multiple of the budget", res.mem.read)
+			}
+			if res.mem.spills == 0 {
+				t.Error("the run did not spill")
+			}
+			t.Logf("read %d bytes, peak %d bytes, budget %d, %d spills", res.mem.read, res.mem.peak, budget, res.mem.spills)
+			if peak := res.mem.peak; peak > budget*11/10 {
+				t.Errorf("peak %d bytes, over the budget of %d plus 10 %%", peak, budget)
+			}
+			if got, want := rowsOf(t, res.Table, false), rowsOf(t, inMem.Table, false); got != want {
+				t.Errorf("the spilled run differs from the run in memory")
+			}
+			if !countsEqual(res.Counts, inMem.Counts) {
+				t.Errorf("counts %+v, want %+v", res.Counts, inMem.Counts)
+			}
+		})
+	}
+}
+
+func countsEqual(a, b Counts) bool {
+	if a.Read != b.Read || a.Passed != b.Passed || a.Rejected != b.Rejected || a.Dropped != b.Dropped ||
+		a.Unprocessed != b.Unprocessed || a.Rescued != b.Rescued || len(a.ByCode) != len(b.ByCode) {
+		return false
+	}
+	for k, v := range a.ByCode {
+		if b.ByCode[k] != v {
+			return false
+		}
+	}
+	return true
 }

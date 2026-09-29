@@ -42,7 +42,7 @@ den Prototyp geklärt werden.
 
 ### G5 — Ob es eine veränderbare Tabelle braucht
 
-**Type:** Assumption · **Kind:** verify · **Status:** offen
+**Type:** Assumption · **Kind:** verify · **Status:** offen (nicht bestanden in der Messung vom 2026-09-29, Neumessung nach #66)
 Annahme: Unveränderliche Tabellen mit geteilten Spalten erreichen bei Laufzeit und
 Speicher dieselben Ergebnisse wie eine veränderbare Tabelle. Dann entfällt die
 veränderbare Variante. Der Maintainer braucht sie nicht, wenn es ohne sie gleich gut geht
@@ -54,6 +54,8 @@ entscheidet die Engine über Kopieren oder Ändern. Die Annahme lautet damit: Ä
 und Stelle, wo Daten nicht geteilt sind, erreicht Laufzeit und Speicher von v1
 `MutableTable`. Fällt die Messung negativ aus, wird [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) über eine neue Decision
 wieder aufgemacht.
+
+Nachtrag 2026-09-29 (#53, [Messung](../../../../experimental/v2/bench/RESULTS.md)): Gegen v1 `MutableTable` brauchte v2 mit automatischer Wahl und Rohzustand bei Lesen, Filter, abgeleiteten Spalten, Gruppieren und Join das 1,3- bis 2,2-Fache der Laufzeit. Nur Sortieren und das Umwandeln zahlenlastiger Lieferungen lagen unter dem 1,2-Fachen. Den Spitzenspeicher hielt v2 nur bei abgeleiteten Spalten ein, beim Sortieren brauchte es das 2,4- bis 2,9-Fache. Das Kriterium aus [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) ist nicht erfüllt. [D7](10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) wird erst nach der Neumessung wieder aufgemacht, wenn der Umbau der Buchführung je Quellzeile ([G67](#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets), #66) die Ursachen nicht behebt.
 
 ### G6 — Writer für Datenbank und HTTP
 
@@ -122,7 +124,7 @@ erprobt werden.
 
 ### G13 — Vorteil spaltenorientierter Blöcke und Voreinstellungen für Budget und Blocklänge
 
-**Type:** Assumption · **Kind:** verify · **Status:** offen
+**Type:** Assumption · **Kind:** verify · **Status:** offen (Blocklänge durch [D107](10-design-decisions.md#d107-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie) und Anteil durch [D108](10-design-decisions.md#d108-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits) festgelegt; Vorteil der Blöcke nicht bestanden am 2026-09-29, Neumessung nach #66)
 Annahme: Blöcke typisierter Spalten nach [D29](10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) sind bei Laufzeit und Speicher messbar
 besser als die zeilenbasierte Speicherung aus v1. Offen sind außerdem die Voreinstellungen
 für den Anteil des Speichers ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)) und die Blockgröße. Ebenfalls offen: ob das Lesen großer Excel-Dateien im Budget bleibt ([D52](10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert)). Soll im Prototyp mit Benchmarks
@@ -131,6 +133,8 @@ gegen v1 geklärt werden
 Zusätzlich zu messen: Spitzenspeicher und Auslagern mit und ohne Rohzustand ([D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert)).
 Zusätzlich zu messen: Spitzenspeicher des Prozesses im Verhältnis zum Budget, mit und ohne
 von der Engine gesetztes `GOMEMLIMIT`.
+
+Nachtrag 2026-09-29 (#53, [Messung](../../../../experimental/v2/bench/RESULTS.md)): Auf zahlenlastigen Lieferungen mit 1 und 10 Mio. Zeilen war v2 nur beim Umwandeln schneller als v1 `Table` und sparsamer als 70 % seines Spitzenspeichers. Bei Lesen, Filter, abgeleiteten Spalten, Gruppieren und Join war v2 langsamer, beim Sortieren schneller, aber mit dem Doppelten an Speicher. Das Kriterium aus [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) ist nicht erfüllt. Ohne Rohzustand ([D106](10-design-decisions.md#d106-ein-interner-mess-schalter-lasst-den-rohzustand-fur-die-benchmarks-weg)) sank der Spitzenspeicher beim Filtern um rund 40 %, sonst um höchstens 27 %, meist um weniger als 10 %, und die Laufzeit blieb gleich. Der Rohzustand erklärt den Abstand zu v1 also nicht. Eine Excel-Lieferung mit 1 Mio. Zeilen las v2 mit Ziel in 136 MiB. Ohne `GOMEMLIMIT` wuchs der Prozess in Docker auf ein Mehrfaches des Budgets, mit `GOMEMLIMIT` nach [D102](10-design-decisions.md#d102-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist) blieb er unter dem Limit.
 
 ### G14 — Docs-Gates aus dem Archivar-Repo übernehmen
 
@@ -417,6 +421,8 @@ Eine unvollständige letzte Zeile lässt sich nicht sicher von einer gültigen D
 **Type:** Assumption · **Kind:** verify · **Status:** offen (der Bezug der 10 % ist durch [D104](10-design-decisions.md#d104-die-unit-tests-messen-das-budget-an-der-zahlung-der-engine-den-speicher-des-prozesses-misst-t23-in-docker) aufgelöst)
 v2 führt Rohzustand und aussortierte Zeilen mit ([D9](10-design-decisions.md#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert), [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert)), v1 `MutableTable` nicht. [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) muss festlegen, ob beim Vergleich der Rohzustand mitgeführt wird, und was eine zahlenlastige Lieferung ist. Ob sich "höchstens 10 % über dem Budget" auf den Speicher des Prozesses oder nur auf die Blöcke der Engine bezieht, ist ebenfalls offen ([D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)).
 
+Nachtrag 2026-09-29 (#53, [Messung](../../../../experimental/v2/bench/RESULTS.md)): Die Messung führt den Rohzustand mit, wie [D64](10-design-decisions.md#d64-mit-dem-rohzustand-geteilte-spalten-gelten-als-geteilt-auch-im-modus-immer-andern) verlangt, und misst ihn zusätzlich abgeschaltet. Als zahlenlastig gilt dort eine Lieferung aus fünf Gleitkomma- und zwei Ganzzahlspalten neben einem Textschlüssel, als textlastig eine aus fünf Text-, einer Gleitkomma- und einer Ganzzahlspalte neben dem Schlüssel. Ob das als Festlegung für [D58](10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) taugt, entscheidet der Maintainer mit der Neumessung.
+
 ### G60 — Formel-Maskierung bricht die Nachverarbeitung
 
 **Type:** Inconsistency · **Kind:** design · **Status:** offen
@@ -454,8 +460,10 @@ Schreibt eine Pipeline aussortierte Zeilen nach [D2](10-design-decisions.md#d2-a
 
 ### G67 — Buchführung je Quellzeile liegt außerhalb des Budgets
 
-**Type:** Assumption · **Kind:** verify · **Status:** offen
+**Type:** Assumption · **Kind:** verify · **Status:** offen (bestätigt am 2026-09-29, Umbau in #66)
 Das Budget nach [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) zählt die Blöcke der Engine, den Rohzustand und die Kopien aussortierter Zeilen ([D104](10-design-decisions.md#d104-die-unit-tests-messen-das-budget-an-der-zahlung-der-engine-den-speicher-des-prozesses-misst-t23-in-docker)). Der Prototyp hält daneben je Quellzeile Daten im Speicher, die mit der Lieferung wachsen: die Kategorie der Zählung nach [D84](10-design-decisions.md#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen) für den Lauf und je Schritt, Zeile und Offset der Fundstelle ([D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle)), die Kennungen der Quellzeilen einer aggregierten Zeile ([D12](10-design-decisions.md#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)) und die Einträge der Übersicht aussortierter Zeilen. Nach [D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) lagert der Prototyp nur die Kopien des Rohzustands aussortierter Zeilen aus. Bei 1 Mrd. Zeilen der 1BRC-Datei sind das mehrere GB. [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) zeigt in Docker, ob das trägt. Optionen: Zählung über Bereiche statt je Zeile; Fundstellen auslagern; Kennungen aggregierter Zeilen nur als Anzahl.
+
+Nachtrag 2026-09-29 (#53, [Messung](../../../../experimental/v2/bench/RESULTS.md)): Bestätigt. Die volle 1BRC-Datei endete in Docker bei 1, 2 und 4 GiB durch das Speicherlimit, nach 14, 33 und 66 s, obwohl die Engine rechtzeitig auslagerte. Ausschnitte mit 20 Mio. Zeilen liefen ab 2 GiB durch, mit 50 Mio. Zeilen nur bei 4 GiB, mit 100 Mio. Zeilen bei keinem Limit. Beim Lesen von 10 Mio. Zeilen in ein Ziel brauchte der Prozess rund 700 MiB, ohne dass die Engine mehr als einen Block hielt. [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) ist deshalb nur im Umfang des Unit-Tests belegt, die Docker-Läufe über die volle Datei werden nach #66 wiederholt.
 
 ### G68 — Beim ausgelagerten Gruppieren muss jede einzelne Gruppe in den Speicher passen
 
