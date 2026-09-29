@@ -464,6 +464,44 @@ Filtert ein Schritt vorher die Hälfte der Zeilen weg, meldet ein Schritt, in de
 Spalte unterdrückt den Befund. `missing_column` ergibt keinen `format_change`. Der Befund zeigt
 höchstens fünf verschiedene Werte.
 
+### T60 — Mit einem Ziel hält das Ergebnis keine Zeilen, und das Ziel wird auch nach einem Abbruch geschlossen
+
+**Beweist:** [D90](10-design-decisions.md#d90-mit-einem-ziel-fur-ergebnisse-halt-die-ergebnistabelle-keine-zeilen), [D96](10-design-decisions.md#d96-run-beendet-jedes-ziel-des-plans-mit-close-auch-nach-einem-abbruch)
+Ein Lauf mit Ziel liefert eine Ergebnistabelle mit den Spalten des Plans und ohne Zeilen, und
+die Zeilen stehen im Ziel. Ein Lauf ohne Ergebniszeilen schreibt einen leeren Block. Nach einem
+Stopp und nach einem Schreibfehler ist jedes Ziel geschlossen, und ein Fehler aus `Close` ergibt
+`sink_error`. Die Zeilen eines abgelehnten Blocks zählen als nicht verarbeitet.
+
+### T61 — Writer je Quelle bekommen Tabellen mit festen Spalten, und nach einem vorzeitigen Ende bleiben nicht geschriebene aussortierte Zeilen im Ergebnis
+
+**Beweist:** [D91](10-design-decisions.md#d91-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht), [D92](10-design-decisions.md#d92-nach-einem-vorzeitigen-ende-wird-in-kein-ziel-mehr-geschrieben-und-nicht-geschriebene-aussortierte-zeilen-bleiben-im-ergebnis)
+Die Fabrik liefert je Quelle einen Writer, ein Writer für eine benannte Quelle geht ihr vor,
+und eine Quelle ohne Writer bleibt im Ergebnis. Die Übersicht bleibt im Ergebnis. Nach einem
+Stopp bekommt kein Ziel mehr einen Block, und die aussortierten Zeilen des scheiternden Blocks
+stehen im Ergebnis, auch für eine Quelle mit Writer.
+
+### T62 — Ein fachlicher Schlüssel ergibt record_key aus den Werten, unzerlegbare Zeilen behalten den Positionsschlüssel
+
+**Beweist:** [D93](10-design-decisions.md#d93-ein-fachlicher-schlussel-bildet-record_key-als-hash-uber-die-namen-und-werte-seiner-spalten)
+Zwei Lieferungen mit verschiedenem Namen und verschiedener Zeilenfolge ergeben für dieselben
+Schlüsselwerte denselben `record_key` aus 16 Hex-Zeichen. Eine unzerlegbare Zeile trägt
+`<fingerprint>:<zeile>`. Eine Schlüsselspalte, die weder im Kopf noch im erwarteten Aufbau steht,
+ist ein Planfehler.
+
+### T63 — Nach Close tragen die Tabellen aussortierter Zeilen einen haftenden Fehler, Zählungen und Status bleiben
+
+**Beweist:** [D94](10-design-decisions.md#d94-close-gibt-die-aussortierten-zeilen-eines-ergebnisses-frei-danach-tragen-ihre-tabellen-einen-haftenden-fehler)
+Vor `Close` sind die aussortierten Zeilen lesbar. Danach tragen Tabelle je Quelle, Übersicht
+und Tabellen aggregierter Zeilen einen haftenden Fehler, während Status, Zählungen und
+Änderungsbericht gleich bleiben. Ein zweites `Close` gibt keinen Fehler.
+
+### T64 — Der Excel-Writer schreibt Zahlen, Wahrheitswerte und Datumswerte als typisierte Zellen und Text nie als Formel
+
+**Beweist:** [D95](10-design-decisions.md#d95-der-excel-writer-schreibt-typisierte-zellen-text-nie-als-formel)
+Eine geschriebene Datei hat Zahlen-, Wahrheitswert- und Datumszellen, ein Text `=1+1` steht
+als Text in seiner Zelle und nicht als Formel, und ein Nullwert ist eine leere Zelle. Mit dem
+Excel-Reader gelesen, ergeben die Zellen die Textformen nach [D80](10-design-decisions.md#d80-jeder-zelltyp-einer-excel-lieferung-hat-eine-feste-textform).
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -538,3 +576,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | `TestSourceRowCountsOnce` |
 | [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | `TestDroppedRowsReleaseTheRawState` |
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
+| [T60](#t60-mit-einem-ziel-halt-das-ergebnis-keine-zeilen-und-das-ziel-wird-auch-nach-einem-abbruch-geschlossen) | ausstehend |
+| [T61](#t61-writer-je-quelle-bekommen-tabellen-mit-festen-spalten-und-nach-einem-vorzeitigen-ende-bleiben-nicht-geschriebene-aussortierte-zeilen-im-ergebnis) | ausstehend |
+| [T62](#t62-ein-fachlicher-schlussel-ergibt-record_key-aus-den-werten-unzerlegbare-zeilen-behalten-den-positionsschlussel) | ausstehend |
+| [T63](#t63-nach-close-tragen-die-tabellen-aussortierter-zeilen-einen-haftenden-fehler-zahlungen-und-status-bleiben) | ausstehend |
+| [T64](#t64-der-excel-writer-schreibt-zahlen-wahrheitswerte-und-datumswerte-als-typisierte-zellen-und-text-nie-als-formel) | ausstehend |

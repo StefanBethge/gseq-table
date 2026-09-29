@@ -34,9 +34,9 @@ const designDir = "docs/explanation/design/v2"
 // in the same commit.
 var familyFloors = map[string]int{
 	"UC": 8,
-	"D":  89,
+	"D":  96,
 	"F":  24,
-	"T":  59,
+	"T":  64,
 	"P":  8,
 	"G":  64,
 }
