@@ -518,7 +518,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | T-Fall | Tests |
 |---|---|
 | [T1](#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) | `TestRejectsCarryRawStateNotWorkingState` |
-| [T2](#t2-aussortierte-zeilen-lassen-sich-mit-den-datei-writern-schreiben-und-mit-dem-passenden-reader-wieder-lesen) | ausstehend |
+| [T2](#t2-aussortierte-zeilen-lassen-sich-mit-den-datei-writern-schreiben-und-mit-dem-passenden-reader-wieder-lesen) | `TestRejectsWrittenWithTheCSVWriterReadBack`, `TestRejectsWrittenWithTheExcelWriterReadBack` |
 | [T3](#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht) | `TestStopEndsTheRunAtTheFirstDataErrorAndRejectDoesNot` |
 | [T4](#t4-die-schwelle-markiert-den-lauf-als-fehlgeschlagen-und-lasst-ihn-standardmaig-zu-ende-laufen) | `TestThresholdFailsTheRunAndRunsToTheEnd` |
 | [T5](#t5-ohne-angaben-kommt-ein-lauf-uber-eine-schmutzige-lieferung-durch) | `TestDirtyDeliveryRunsThroughWithDefaults` |
@@ -528,8 +528,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T9](#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) | ausstehend |
 | [T10](#t10-unzerlegbare-zeilen-werden-mit-rohbytes-und-richtiger-fundstelle-aussortiert) | `TestUnparseableLinesAreRejectedWithRawBytes` |
 | [T11](#t11-die-fundstelle-bleibt-uber-sortieren-und-filtern-richtig) | `TestLocationStaysRightOverSortAndFilter` |
-| [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | ausstehend |
-| [T13](#t13-record_key-ist-innerhalb-einer-lieferung-stabil-ein-fachlicher-schlussel-daruber-hinaus) | ausstehend |
+| [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | `TestReprocessingKeepsTheOriginalLocationAndKeys` |
+| [T13](#t13-record_key-ist-innerhalb-einer-lieferung-stabil-ein-fachlicher-schlussel-daruber-hinaus) | `TestRecordKeyIsStableWithinADeliveryAndABusinessKeyBeyond` |
 | [T14](#t14-die-prufung-des-kopfs-erkennt-fehlende-neue-und-umbenannte-spalten) | `TestHeaderCheckFindsMissingNewAndRenamedColumns` |
 | [T15](#t15-planfehler-verhindern-den-lauf-liefer-und-datenfehler-folgen-der-konfiguration-je-code) | `TestPlanErrorsStopTheRunAndOtherErrorsFollowTheirCode` |
 | [T16](#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) | `TestStatusAndCountsAreConsistent` |
@@ -578,6 +578,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
 | [T60](#t60-mit-einem-ziel-halt-das-ergebnis-keine-zeilen-und-das-ziel-wird-auch-nach-einem-abbruch-geschlossen) | `TestResultWithASinkHoldsNoRowsAndEverySinkIsClosed` |
 | [T61](#t61-writer-je-quelle-bekommen-tabellen-mit-festen-spalten-und-nach-einem-vorzeitigen-ende-bleiben-nicht-geschriebene-aussortierte-zeilen-im-ergebnis) | `TestRejectWritersPerSourceAndRejectsAfterAnEarlyEnd` |
-| [T62](#t62-ein-fachlicher-schlussel-ergibt-record_key-aus-den-werten-unzerlegbare-zeilen-behalten-den-positionsschlussel) | ausstehend |
+| [T62](#t62-ein-fachlicher-schlussel-ergibt-record_key-aus-den-werten-unzerlegbare-zeilen-behalten-den-positionsschlussel) | `TestBusinessKeyFormsRecordKeyFromTheValues` |
 | [T63](#t63-nach-close-tragen-die-tabellen-aussortierter-zeilen-einen-haftenden-fehler-zahlungen-und-status-bleiben) | `TestCloseReleasesTheRejectedRowsAndKeepsTheCounts` |
-| [T64](#t64-der-excel-writer-schreibt-zahlen-wahrheitswerte-und-datumswerte-als-typisierte-zellen-und-text-nie-als-formel) | ausstehend |
+| [T64](#t64-der-excel-writer-schreibt-zahlen-wahrheitswerte-und-datumswerte-als-typisierte-zellen-und-text-nie-als-formel) | `TestExcelWriterWritesTypedCellsAndTextNeverAsFormula` |
