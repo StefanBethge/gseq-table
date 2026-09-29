@@ -16,7 +16,7 @@ Run it in `experimental/v2`. Flags:
 | Flag | Default | Meaning |
 |---|---|---|
 | `-data` | `$ONEBRC_FILE`, else `testdata/measurements.txt` | the delivery |
-| `-budget` | `0` | memory cap of the run in bytes; `0` uses the budget of the process, a quarter of the memory limit |
+| `-budget` | `0` | memory cap of the run in bytes; `0` uses the budget of the process, a tenth of the memory limit |
 | `-block` | `16384` | rows per block |
 | `-managed` | `true` | let the engine set `GOMEMLIMIT` to 90 % of the memory limit, unless it is set |
 | `-spill` | temporary directory | where the run spills to |

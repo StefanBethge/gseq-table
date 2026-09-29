@@ -506,9 +506,9 @@ func TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup(t *testing.T) {
 		limit int64
 		want  int64
 	}{
-		{"cgroup v2", memlimit.DetectFrom(root, "", 64<<30), 512 << 20},
-		{"cgroup v1", memlimit.DetectFrom(v1, "", 64<<30), 1 << 30},
-		{"physical", memlimit.DetectFrom(t.TempDir(), "", 64<<30), 16 << 30},
+		{"cgroup v2", memlimit.DetectFrom(root, "", 64<<30), (2 << 30) / 10},
+		{"cgroup v1", memlimit.DetectFrom(v1, "", 64<<30), (4 << 30) / 10},
+		{"physical", memlimit.DetectFrom(t.TempDir(), "", 64<<30), (64 << 30) / 10},
 	} {
 		withDetectedLimit(t, c.limit)
 		if got := newMemPool(0).budget(); got != c.want {
@@ -522,7 +522,7 @@ func TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup(t *testing.T) {
 		t.Errorf("set budget = %d", got)
 	}
 	SetMemoryBudget(0)
-	if got := procPool.budget(); got != 16<<30 {
+	if got := procPool.budget(); got != (64<<30)/10 {
 		t.Errorf("budget after reset = %d, want the default", got)
 	}
 }

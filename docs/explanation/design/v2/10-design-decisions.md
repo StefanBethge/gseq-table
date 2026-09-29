@@ -1710,3 +1710,18 @@ Spitzenspeicher, 1024 war beim Filtern und Umwandeln etwas langsamer (`experimen
 Budgets. Löst den Teil von [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange), der nach der Blocklänge fragt.
 **Quelle:** Maintainer, 2026-09-29 (Auftrag bei der Umsetzung von #53: Voreinstellungen aus den Messungen festlegen)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D107 — Der Anteil des Speichers für das Budget ist ein Zehntel des erkannten Limits
+
+**Entscheidung:** Die Voreinstellung des Budgets nach [D101](#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits) ist 10 % des erkannten Limits statt
+vorläufig 25 %. Alles andere an [D101](#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits) bleibt.
+**Begründung:** Sortieren von 10 Mio. zahlenlastigen Zeilen mit Ziel in Docker (`experimental/v2/bench/RESULTS.md`):
+Ohne `GOMEMLIMIT` endete jeder Lauf mit 25 % bei 1, 2 und 4 GiB durch das Speicherlimit, weil der
+Prozess auf ein Mehrfaches des Budgets wuchs. Mit 10 % liefen 2 und 4 GiB durch, mit einer Spitze
+von 69 % und 51 % des Limits. Mit von der Engine gesetztem `GOMEMLIMIT` nach [D102](#d102-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist) liefen auch 25 % bei
+allen drei Limits durch, aber [D65](#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess) setzt es nur auf Wunsch, und die Voreinstellung muss ohne es
+tragen. Bei 1 GiB reichte kein Anteil, weil die Buchführung je Quellzeile außerhalb des Budgets
+liegt ([G67](70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets)). Nach deren Umbau (#66) wird der Anteil neu gemessen. Löst den Teil von
+[G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange), der nach dem Anteil des Speichers fragt.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag bei der Umsetzung von #53: Voreinstellungen aus den Messungen festlegen)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)

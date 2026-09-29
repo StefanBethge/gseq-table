@@ -7,7 +7,7 @@
 # generated deliveries (data/, from `bench suite` or `bench gen`) and the
 # results (docker.jsonl). Plans:
 #
-#   sort     sort of 10M numeric-heavy rows, with and without raw state and
+#   sort     sort of 10M numeric-heavy rows to a sink, with and without raw state and
 #            GOMEMLIMIT set by the engine, under 1g, 2g and 4g
 #   onebrc   examples/onebrc_budget over the 1BRC file under 1g, 2g and 4g
 #
@@ -32,7 +32,7 @@ sort)
 		for impl in v2 v2noraw; do
 			for managed in "" -managed; do
 				in_docker "$mem" busybox:1.37.0 /w/bench-linux exec -label "docker-sort-$mem-$impl" $managed -out /w/docker.jsonl -- \
-					/w/bench-linux run -impl $impl -case sort -kind num -rows 10000000 -dir /w/data -spill /tmp $managed || true
+					/w/bench-linux run -impl $impl -case sort -kind num -rows 10000000 -dir /w/data -spill /tmp -sink $managed || true
 			done
 		done
 	done

@@ -28,9 +28,10 @@ import (
 
 // DefaultMemoryShare is the share of the detected memory limit that is the
 // default budget of the process: the limit of the cgroup, else the
-// physical memory. It is provisional until the measurements of the
-// prototype set it (D101, G13).
-const DefaultMemoryShare = 0.25
+// physical memory. The measurements of the prototype set it: without
+// GOMEMLIMIT the process grew to over four times the budget, so that a
+// quarter failed in containers of 1, 2 and 4 GiB (D107, G13).
+const DefaultMemoryShare = 0.10
 
 // detectLimit returns the memory limit of the process, 0 if unknown.
 var detectLimit = memlimit.Detect
