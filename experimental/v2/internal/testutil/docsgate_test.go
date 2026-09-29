@@ -51,6 +51,7 @@ var noUseCaseDecisions = []string{"D37", "D68"}
 var extraFiles = []string{
 	"experimental/v2/CLAUDE.md",
 	"experimental/v2/examples/README.md",
+	"experimental/v2/bench/RESULTS.md",
 }
 
 func TestDocsIDConsistency(t *testing.T) {

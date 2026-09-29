@@ -1,0 +1,34 @@
+{"label": "docker-sort-1g-v2", "case": "exec", "rep": 0, "wall_s": 4.114785043, "maxrss": 1040547840, "exit": -1, "limit": 1073741824, "goos": "linux"}
+{"label": "docker-sort-1g-v2", "case": "exec", "managed": true, "rep": 0, "wall_s": 129.055890184, "maxrss": 1029758976, "result": "10000000", "exit": 0, "limit": 1073741824, "goos": "linux"}
+{"label": "docker-sort-1g-v2noraw", "case": "exec", "rep": 0, "wall_s": 32.090815515, "maxrss": 1065500672, "exit": -1, "limit": 1073741824, "goos": "linux"}
+{"label": "docker-sort-1g-v2noraw", "case": "exec", "managed": true, "rep": 0, "wall_s": 71.924359575, "maxrss": 1037225984, "result": "10000000", "exit": 0, "limit": 1073741824, "goos": "linux"}
+{"label": "docker-sort-2g-v2", "case": "exec", "rep": 0, "wall_s": 57.789090401, "maxrss": 2134368256, "exit": -1, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-sort-2g-v2", "case": "exec", "managed": true, "rep": 0, "wall_s": 44.275721936, "maxrss": 1914261504, "result": "10000000", "exit": 0, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-sort-2g-v2noraw", "case": "exec", "rep": 0, "wall_s": 22.152966093, "maxrss": 2135302144, "exit": -1, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-sort-2g-v2noraw", "case": "exec", "managed": true, "rep": 0, "wall_s": 26.88180218, "maxrss": 1929158656, "result": "10000000", "exit": 0, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-sort-4g-v2", "case": "exec", "rep": 0, "wall_s": 29.277327596, "maxrss": 4215775232, "exit": -1, "limit": 4294967296, "goos": "linux"}
+{"label": "docker-sort-4g-v2", "case": "exec", "managed": true, "rep": 0, "wall_s": 24.333989927, "maxrss": 3862728704, "result": "10000000", "exit": 0, "limit": 4294967296, "goos": "linux"}
+{"label": "docker-sort-4g-v2noraw", "case": "exec", "rep": 0, "wall_s": 9.874810129, "maxrss": 4112834560, "exit": -1, "limit": 4294967296, "goos": "linux"}
+{"label": "docker-sort-4g-v2noraw", "case": "exec", "managed": true, "rep": 0, "wall_s": 19.796854676, "maxrss": 3854471168, "result": "10000000", "exit": 0, "limit": 4294967296, "goos": "linux"}
+{"label": "docker-sort-2g-v2-cap", "case": "exec", "budget": 67108864, "rep": 0, "wall_s": 128.93549035, "maxrss": 921546752, "result": "10000000", "exit": 0, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-sort-2g-v2-cap", "case": "exec", "budget": 268435456, "rep": 0, "wall_s": 28.942137471, "maxrss": 1526046720, "result": "10000000", "exit": 0, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-sort-4g-v2-cap", "case": "exec", "budget": 67108864, "rep": 0, "wall_s": 103.316997464, "maxrss": 927330304, "result": "10000000", "exit": 0, "limit": 4294967296, "goos": "linux"}
+{"label": "docker-sort-4g-v2-cap", "case": "exec", "budget": 268435456, "rep": 0, "wall_s": 22.053127718, "maxrss": 1859833856, "result": "10000000", "exit": 0, "limit": 4294967296, "goos": "linux"}
+{"label": "docker-sort-1g-v2-cap", "case": "exec", "budget": 107374182, "rep": 0, "wall_s": 25.403492387, "maxrss": 909078528, "exit": -1, "limit": 1073741824, "goos": "linux"}
+{"label": "docker-sort-1g-v2-cap", "case": "exec", "budget": 134217728, "rep": 0, "wall_s": 45.935326854, "maxrss": 991690752, "exit": -1, "limit": 1073741824, "goos": "linux"}
+{"label": "docker-sort-2g-v2-cap", "case": "exec", "budget": 214748364, "rep": 0, "wall_s": 27.680728137, "maxrss": 1480548352, "result": "10000000", "exit": 0, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-sort-4g-v2-cap", "case": "exec", "budget": 429496729, "rep": 0, "wall_s": 22.169466094, "maxrss": 2192224256, "result": "10000000", "exit": 0, "limit": 4294967296, "goos": "linux"}
+{"label": "docker-onebrc-measurements-1g", "case": "exec", "managed": true, "rep": 0, "wall_s": 13.949590673, "maxrss": 959885312, "exit": -1, "limit": 1073741824, "goos": "linux"}
+{"label": "docker-onebrc-measurements-2g", "case": "exec", "managed": true, "rep": 0, "wall_s": 33.308890432, "maxrss": 2128728064, "exit": -1, "limit": 2147483648, "goos": "linux"}
+{"label": "docker-onebrc-measurements-4g", "case": "exec", "managed": true, "rep": 0, "wall_s": 66.23331203, "maxrss": 4267311104, "exit": -1, "limit": 4294967296, "goos": "linux"}
+{"label":"docker-onebrc-m20m-1g","case":"exec","managed":true,"rep":0,"wall_s":32.207581724,"maxrss":1060368384,"exit":-1,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-m20m-2g","case":"exec","managed":true,"rep":0,"wall_s":41.126277518,"maxrss":1933078528,"result":"rejected by code: parse 554, unparseable_line 7529","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-m20m-4g","case":"exec","managed":true,"rep":0,"wall_s":26.361917762,"maxrss":3106799616,"result":"rejected by code: parse 554, unparseable_line 7529","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-onebrc-m50m-1g","case":"exec","managed":true,"rep":0,"wall_s":21.209559094,"maxrss":963432448,"exit":-1,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-m50m-2g","case":"exec","managed":true,"rep":0,"wall_s":32.394432557,"maxrss":2085998592,"exit":-1,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-m50m-4g","case":"exec","managed":true,"rep":0,"wall_s":69.886411323,"maxrss":3861065728,"result":"rejected by code: parse 2185, unparseable_line 30089","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-onebrc-m100m-1g","case":"exec","managed":true,"rep":0,"wall_s":15.279006341,"maxrss":972066816,"exit":-1,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-m100m-2g","case":"exec","managed":true,"rep":0,"wall_s":32.611278057,"maxrss":2070802432,"exit":-1,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-m100m-4g","case":"exec","managed":true,"rep":0,"wall_s":73.151484367,"maxrss":4145065984,"exit":-1,"limit":4294967296,"goos":"linux"}
+{"label":"docker-onebrc-m20m-1g-cap","case":"exec","budget":268435456,"managed":true,"rep":0,"wall_s":37.607893017,"maxrss":1000882176,"exit":-1,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-m20m-1g-cap","case":"exec","budget":107374182,"managed":true,"rep":0,"wall_s":27.878135304,"maxrss":1024356352,"exit":-1,"limit":1073741824,"goos":"linux"}

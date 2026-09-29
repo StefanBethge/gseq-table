@@ -1,0 +1,12 @@
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":100000,"rep":0,"wall_s":1.604296042,"maxrss":89767936,"result":"100000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":100000,"rep":1,"wall_s":1.575573625,"maxrss":89980928,"result":"100000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":100000,"rep":2,"wall_s":1.594020333,"maxrss":89538560,"result":"100000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":100000,"sink":true,"rep":0,"wall_s":1.604439333,"maxrss":33849344,"result":"100000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":100000,"sink":true,"rep":1,"wall_s":1.59302025,"maxrss":33603584,"result":"100000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":100000,"sink":true,"rep":2,"wall_s":1.566332042,"maxrss":34029568,"result":"100000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":1000000,"rep":0,"wall_s":16.06465875,"maxrss":717832192,"result":"1000000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":1000000,"rep":1,"wall_s":16.059404583,"maxrss":728612864,"result":"1000000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":1000000,"rep":2,"wall_s":16.11036325,"maxrss":737804288,"result":"1000000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":1000000,"sink":true,"rep":0,"wall_s":15.444979375,"maxrss":143048704,"result":"1000000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":1000000,"sink":true,"rep":1,"wall_s":15.427382166,"maxrss":142999552,"result":"1000000","exit":0,"limit":51539607552,"goos":"darwin"}
+{"label":"excel","impl":"v2","case":"excel","kind":"num","rows":1000000,"sink":true,"rep":2,"wall_s":15.422210708,"maxrss":142786560,"result":"1000000","exit":0,"limit":51539607552,"goos":"darwin"}

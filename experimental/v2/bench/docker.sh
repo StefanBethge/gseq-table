@@ -40,7 +40,7 @@ sort)
 onebrc)
 	file=$3
 	for mem in $limits; do
-		in_docker "$mem" -v "$(dirname "$file")":/data:ro busybox:1.37.0 /w/bench-linux exec -label "docker-onebrc-$mem" -managed -out /w/docker.jsonl -- \
+		in_docker "$mem" -v "$(dirname "$file")":/data:ro busybox:1.37.0 /w/bench-linux exec -label "docker-onebrc-$(basename "$file" .txt)-$mem" -managed -out /w/docker.jsonl -- \
 			/w/onebrc_budget-linux -data "/data/$(basename "$file")" -spill /tmp || true
 	done
 	;;
