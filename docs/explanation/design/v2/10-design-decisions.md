@@ -1386,3 +1386,94 @@ Speicher füllt. Die Voreinstellung der Excel-Bibliothek (16 GiB) schützt prakt
 Verhältnis.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #48)
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D84 — Eine Quellzeile zählt einmal, aussortiert vor durchgelaufen vor verworfen, und nach einem Abbruch gibt es nicht verarbeitete Zeilen
+
+**Entscheidung:** Für die Zählungen nach [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) fällt jede Quellzeile in genau eine Kategorie, auch wenn sie
+nach einem 1:n-Join in mehreren Ergebniszeilen steckt ([D47](#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen)). Sie ist aussortiert, wenn eine ihrer
+Ergebniszeilen aussortiert wurde. Sonst ist sie durchgelaufen, wenn eine das Ziel erreicht hat,
+und sonst verworfen. Eine aggregierte Zeile steht für die Quellzeilen, die in sie eingegangen
+sind: Scheitert sie, sind diese aussortiert, erreicht sie das Ziel, sind sie durchgelaufen
+([D12](#d12-der-rohzustand-reicht-bis-zum-ersten-schritt-uber-alle-zeilen-danach-wird-die-aggregierte-zeile-aussortiert)). Endet ein Lauf vorzeitig (Stopp nach [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen), Kontext, Abbruch an der Schwelle, Fehler
+eines Ziels), sind die gelesenen Zeilen ohne Kategorie `nicht verarbeitet`. Es gilt gelesen =
+durchgelaufen + aussortiert + verworfen + nicht verarbeitet. Je Schritt gelten dieselben Regeln,
+und gelesen sind dort die Quellzeilen, die in den Schritt hineingingen. Die Zählung je
+Fehlercode zählt Quellzeilen. Eine Zeile mit zwei Codes zählt bei beiden, deshalb kann die Summe
+über die Codes größer sein als die Zahl der aussortierten Zeilen. Das ergänzt [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) um die
+fünfte Kategorie.
+**Begründung:** Zählt eine linke Zeile mit einer gescheiterten von fünf Ergebniszeilen als
+aussortiert, fällt der Teilausfall in Zählung und Schwelle auf, statt hinter "durchgelaufen" zu
+verschwinden. Zählen aggregierte Zeilen über ihre Quellzeilen, mischt kein Schritt Einheiten,
+und keine Kategorie wird größer als gelesen. Ohne eigene Kategorie für Abbrüche ginge die
+Gleichung nach einem Abbruch nicht auf.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49, Auflösung von [G43](70-gap-ledger.md#g43-das-zahlmodell-deckt-teilausfalle-einheiten-und-abbruche-nicht-ab))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D85 — Der Anteil für format_change bezieht sich auf die Zeilen einer Quelle, die in den Schritt hineingingen, vorläufig mit 50 %
+
+**Entscheidung:** Der Änderungsbericht nach [D23](#d23-das-laufergebnis-enthalt-einen-anderungsbericht) meldet `format_change` für eine Quelle, einen
+Schritt, eine Spalte und einen Fehlercode, wenn der Anteil der Quellzeilen dieser Quelle, die
+in dem Schritt in dieser Spalte mit diesem Code scheitern, an den Quellzeilen dieser Quelle, die
+in den Schritt hineingingen, die Grenze erreicht. Codes von Lieferfehlern nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error) zählen nicht,
+sie haben eigene Befunde. Die Grenze nach [D59](#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt) ist je Pipeline und je Spalte einstellbar. Ihre
+vorläufige Voreinstellung ist 0,5. Slice 10 (#54) legt die endgültige an den Beispiel-Lieferungen
+fest. Der Befund nennt die Zahl der gescheiterten Zeilen und bis zu fünf verschiedene
+gescheiterte Werte in der Reihenfolge ihres Auftretens.
+**Begründung:** Ein Filter vor dem Schritt soll den Anteil nicht verdünnen. Gemessen wird
+deshalb an dem, was der Schritt gesehen hat. Ohne vorläufige Voreinstellung würde der Bericht
+bis Slice 10 ohne Konfiguration nichts melden, und die Erprobung nach [D59](#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt) hätte keinen
+Ausgangspunkt.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D86 — Die Exit-Codes steigen mit dem Vorrang der Status von 0 bis 5
+
+**Entscheidung:** Die Hilfsfunktion nach [D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) bildet die Status so ab: `ok` 0, `failed_threshold` 1,
+`aborted` 2, `delivery_error` 3, `sink_error` 4, `plan_error` 5.
+**Begründung:** Der Wert folgt der Rangfolge aus [D63](#d63-es-gilt-der-hochste-zutreffende-status-und-das-ergebnis-nennt-alle-befunde), so lässt sich im Scheduler mit einem
+Vergleich prüfen, ob ein Lauf mindestens so schlimm war wie ein bestimmter Status.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D87 — Ohne Ziel hält die Ergebnistabelle den Rohzustand ihrer Zeilen, aussortierte Zeilen behalten eine Kopie
+
+**Entscheidung:** Für die Freigabe des Rohzustands nach [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben) gilt: Eine verworfene Zeile gibt ihren
+Rohzustand frei. Eine aussortierte Zeile behält eine Kopie ihres Rohzustands für die Tabellen
+aussortierter Zeilen ([D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close)). Ein Block des Rohzustands, den keine Zeile im Plan mehr braucht,
+wird freigegeben. Endet ein Lauf ohne Ziel in einer Tabelle, behalten deren Zeilen ihren
+Rohzustand, damit weitere Operationen auf der Tabelle nach [D50](#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler) Zeilen mit Rohzustand aussortieren
+können. Die Freigabe beim Schreiben in ein Ziel ([D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http)) folgt mit den Zielen. Das präzisiert [D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben).
+**Begründung:** Eine Ergebnistabelle ist kein Ziel, das die Zeilen aus dem Plan nimmt, sondern
+kann Ausgangspunkt weiterer Operationen sein. Ohne Rohzustand hätte eine dort aussortierte Zeile
+nur noch den Arbeitszustand, gegen [D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten).
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D88 — Run liefert immer ein Result und einen Fehler nur, wenn der Lauf nicht zu Ende lief
+
+**Entscheidung:** Ein Lauf gibt ein `Result` zurück ([D67](#d67-ein-kernpaket-gtable-formatpakete-fur-csv-und-excel-engine-interna-unter-internal)): die Ergebnistabelle, den Status, alle
+zutreffenden Befunde nach [D63](#d63-es-gilt-der-hochste-zutreffende-status-und-das-ergebnis-nennt-alle-befunde), die Zählungen für den Lauf und je Schritt, den Änderungsbericht
+und den Exit-Code. Das Result ist immer gesetzt, auch bei einem Planfehler. Ein Fehler kommt
+zusätzlich nur, wenn der Lauf nicht zu Ende lief: Planfehler, nicht lesbare Lieferung, Stopp,
+Kontext, Abbruch an der Schwelle. Ein Lauf, der mit `failed_threshold` oder im Modus
+"aussortieren" mit `delivery_error` zu Ende läuft, gibt keinen Fehler zurück. Nach einem
+vorzeitigen Ende trägt die Tabelle die bis dahin durchgelaufenen und aussortierten Zeilen und
+den Fehler als haftenden Fehler. Eine Quelle, die direkt in eine Tabelle gelesen wird, liefert
+weiter Tabelle und Fehler.
+**Begründung:** [D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) verlangt den Status als Wert. Ein Result, das auch bei einem Fehler vorliegt, gibt dem
+Scheduler den Exit-Code in jedem Fall. Die aussortierten Zeilen bis zum Abbruch bleiben
+einsehbar.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D89 — Die Option zum sofortigen Abbruch nimmt die Mindestzahl als Pflichtangabe
+
+**Entscheidung:** Die Option zum sofortigen Abbruch an der Schwelle nach [D20](#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen) nimmt die
+Mindestzahl gelesener Zeilen nach [D45](#d45-die-schwelle-bezieht-anteile-auf-bisher-gelesene-zeilen-gilt-bei-einer-der-grenzen-und-bricht-erst-nach-einer-mindestzahl-ab) als Argument. Es gibt keine Voreinstellung. Überschritten
+ist eine absolute Grenze, wenn mehr Zeilen als angegeben aussortiert sind, ein Anteil, wenn der
+Anteil aussortierter Zeilen größer ist als angegeben.
+**Begründung:** Eine passende Mindestzahl hängt von der Größe der Lieferung ab. Als Pflichtangabe
+muss sie der Pipeline-Entwickler bewusst wählen, statt sich auf eine Zahl zu verlassen, die er
+nicht kennt. "Mehr als" folgt [D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen).
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)

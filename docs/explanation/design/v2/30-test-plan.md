@@ -440,6 +440,30 @@ erneut scheiternde Zeile trägt `record_key`, `source`, `line` und `offset` aus 
 eine durchlaufende Zeile denselben `record_key`, und die Info-Spalten sind keine Datenspalten.
 Eine unzerlegbare Zeile wird mit geänderter Reader-Konfiguration gelesen.
 
+### T57 — Eine Quellzeile zählt einmal, auch nach 1:n-Joins, Gruppierungen und Abbrüchen
+
+**Beweist:** [D84](10-design-decisions.md#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen), [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)
+Eine linke Zeile, von deren drei Ergebniszeilen eines Joins eine scheitert, zählt einmal als
+aussortiert. Eine gescheiterte aggregierte Zeile zählt ihre Quellzeilen als aussortiert. Bricht
+ein Lauf ab, stehen die übrigen gelesenen Zeilen unter `nicht verarbeitet`, und die Gleichung
+geht für den Lauf und je Schritt auf. Eine Zeile mit zwei Codes zählt bei beiden Codes.
+
+### T58 — Verworfene Zeilen geben den Rohzustand frei, aussortierte behalten ihn als Kopie
+
+**Beweist:** [D87](10-design-decisions.md#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie), [D43](10-design-decisions.md#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)
+Ein Lauf über eine gelesene Lieferung verwirft alle Zeilen der ersten Blöcke und sortiert
+einige aus. Die Blöcke des Rohzustands ohne durchgelaufene Zeile sind danach freigegeben, die
+aussortierten Zeilen zeigen trotzdem ihren Rohzustand, und Zeilen der Ergebnistabelle lassen
+sich mit Rohzustand weiter aussortieren.
+
+### T59 — Der Anteil für format_change zählt nur Zeilen, die in den Schritt hineingingen, und ist je Spalte einstellbar
+
+**Beweist:** [D85](10-design-decisions.md#d85-der-anteil-fur-format_change-bezieht-sich-auf-die-zeilen-einer-quelle-die-in-den-schritt-hineingingen-vorlaufig-mit-50), [D59](10-design-decisions.md#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt)
+Filtert ein Schritt vorher die Hälfte der Zeilen weg, meldet ein Schritt, in dem die Hälfte der
+übrigen scheitert, `format_change` mit der vorläufigen Grenze 0,5. Eine höhere Grenze für die
+Spalte unterdrückt den Befund. `missing_column` ergibt keinen `format_change`. Der Befund zeigt
+höchstens fünf verschiedene Werte.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -511,3 +535,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T54](#t54-fundstelle-und-record_key-einer-csv-zeile-folgen-ihrer-physischen-zeile) | `TestLocationAndKeyFollowThePhysicalLine` |
 | [T55](#t55-eine-vermutliche-umbenennung-wird-nach-normalisierung-und-distanz-erkannt) | `TestProbablyRenamedColumns` |
 | [T56](#t56-die-quelle-aus-aussortierten-zeilen-behalt-schlussel-und-fundstelle) | `TestRejectsAsSourceKeepKeysAndLocation` |
+| [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | ausstehend |
+| [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | ausstehend |
+| [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | ausstehend |
