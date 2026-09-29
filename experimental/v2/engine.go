@@ -2,6 +2,7 @@ package gtable
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
@@ -14,34 +15,89 @@ import (
 // through this engine (D31).
 
 type step struct {
-	name string
-	op   Op
+	name  string
+	op    Op
+	fail  *Branch    // the fail branch of the step (D25), or nil
+	split *splitSpec // set for a Split; op is empty
+	bad   error      // an error in building the plan
 }
 
-// planned is a step with the schema of its input.
+// planned is a step with the schema of its input and output, and its
+// planned branches.
 type planned struct {
 	step
-	in schema
+	in, out schema
+	opOut   schema // output of the operation, before a fail branch returns
+	fail    *plannedBranch
+	split   *plannedSplit
+}
+
+type plannedBranch struct {
+	steps   []planned
+	in, out schema
+}
+
+type plannedSplit struct {
+	cond        Expr
+	match, rest *plannedBranch
 }
 
 // checkPlan checks every step against the schema before it and returns the
 // planned steps and the output schema. The first failure is a PlanError
-// (D19).
-func checkPlan(src schema, steps []step) ([]planned, schema, error) {
+// (D19). prefix is the info prefix for the columns of a fail branch.
+func checkPlan(src schema, steps []step, prefix string) ([]planned, schema, error) {
+	return planSteps(src, steps, prefix, false)
+}
+
+// planSteps plans the steps of the plan or, with inBranch, of a branch,
+// which holds only steps that work block by block (D90).
+func planSteps(src schema, steps []step, prefix string, inBranch bool) ([]planned, schema, error) {
 	out := make([]planned, len(steps))
 	s := src
 	for i, st := range steps {
-		if st.op.impl == nil {
-			return nil, nil, &PlanError{Step: st.name, Err: fmt.Errorf("empty operation")}
-		}
-		next, err := st.op.impl.plan(s)
+		p, err := planStep(s, st, prefix, inBranch)
 		if err != nil {
+			var pe *PlanError
+			if errors.As(err, &pe) {
+				return nil, nil, err
+			}
 			return nil, nil, &PlanError{Step: st.name, Err: err}
 		}
-		out[i] = planned{st, s}
-		s = next
+		out[i] = p
+		s = p.out
 	}
 	return out, s, nil
+}
+
+func planStep(in schema, st step, prefix string, inBranch bool) (planned, error) {
+	p := planned{step: st, in: in}
+	switch {
+	case st.bad != nil:
+		return p, st.bad
+	case st.split != nil:
+		sp, out, err := planSplit(in, st.split, prefix)
+		p.split, p.out = sp, out
+		return p, err
+	case st.op.impl == nil:
+		return p, fmt.Errorf("empty operation")
+	}
+	if _, ok := st.op.impl.(streamOp); !ok {
+		switch {
+		case inBranch:
+			return p, fmt.Errorf("%s does not work block by block; a branch holds only steps that work block by block", st.op.impl.kind())
+		case st.fail != nil:
+			return p, fmt.Errorf("%s does not work block by block; only a step that works block by block has a fail branch", st.op.impl.kind())
+		}
+	}
+	out, err := st.op.impl.plan(in)
+	if err != nil {
+		return p, err
+	}
+	p.out, p.opOut = out, out
+	if st.fail != nil {
+		p.fail, p.out, err = planFail(in, out, st.fail, prefix)
+	}
+	return p, err
 }
 
 // batch is a block with the origin of every row (D9, D11).
@@ -56,46 +112,21 @@ type stage interface {
 	finish(ctx context.Context) error
 }
 
-type streamStage struct {
-	op   streamOp
-	in   schema
-	sc   *stepCtx
+// nodeStage runs a step that works block by block, with its branches.
+type nodeStage struct {
+	n    *stepNode
 	next stage
 }
 
-func (s *streamStage) push(ctx context.Context, b batch) error {
-	s.sc.begin(b.blk, b.orig)
-	for _, o := range b.orig {
-		for _, r := range o.rows() {
-			s.sc.cnt.see(r)
-		}
-	}
-	out, keep, err := s.op.apply(b.blk, s.in, s.sc)
+func (s *nodeStage) push(ctx context.Context, b batch) error {
+	out, _, err := s.n.run(b)
 	if err != nil {
 		return err
 	}
-	orig := b.orig
-	if keep != nil {
-		orig = pick(orig, keep)
-		kept := make([]bool, len(b.orig))
-		for _, k := range keep {
-			kept[k] = true
-		}
-		var gone []origin
-		for i, o := range b.orig {
-			if !kept[i] {
-				gone = append(gone, o)
-			}
-		}
-		s.sc.rx.tally.passed(s.sc.cnt, orig, false)
-		s.sc.rx.tally.left(s.sc.cnt, gone, true)
-	} else {
-		s.sc.rx.tally.passed(s.sc.cnt, orig, false)
-	}
-	return s.next.push(ctx, batch{out, orig})
+	return s.next.push(ctx, out)
 }
 
-func (s *streamStage) finish(ctx context.Context) error { return s.next.finish(ctx) }
+func (s *nodeStage) finish(ctx context.Context) error { return s.next.finish(ctx) }
 
 type fullStage struct {
 	op       fullOp
@@ -182,26 +213,58 @@ func (c *collector) push(_ context.Context, b batch) error {
 
 func (c *collector) finish(context.Context) error { return nil }
 
-// build links the stages of the planned steps, ending in c.
+// build links the stages of the planned steps, ending in c. The counters
+// of the steps are created in plan order, a branch after its step.
 func build(steps []planned, rx *rejector, blockLen int, c *collector) stage {
-	scs := make([]*stepCtx, len(steps))
+	stages := make([]func(next stage) stage, len(steps))
 	for i, st := range steps {
-		ref := &stepRef{st.name}
-		scs[i] = &stepCtx{step: st.name, ref: ref, rx: rx, in: st.in, cnt: rx.tally.step(ref)}
+		if op, ok := st.op.impl.(fullOp); ok {
+			sc := newStepCtx(st, nil, rx)
+			stages[i] = func(next stage) stage {
+				return &fullStage{op: op, in: st.in, sc: sc, blockLen: blockLen, next: next}
+			}
+			continue
+		}
+		n := buildNode(st, nil, rx)
+		stages[i] = func(next stage) stage { return &nodeStage{n: n, next: next} }
 	}
 	var next stage = c
-	for i := len(steps) - 1; i >= 0; i-- {
-		st, sc := steps[i], scs[i]
-		switch op := st.op.impl.(type) {
-		case streamOp:
-			next = &streamStage{op: op, in: st.in, sc: sc, next: next}
-		case fullOp:
-			next = &fullStage{op: op, in: st.in, sc: sc, blockLen: blockLen, next: next}
-		default:
-			panic(fmt.Sprintf("gtable: operation %T is neither streamed nor over all rows", op))
-		}
+	for i := len(stages) - 1; i >= 0; i-- {
+		next = stages[i](next)
 	}
 	return next
+}
+
+func newStepCtx(st planned, parent *stepRef, rx *rejector) *stepCtx {
+	ref := &stepRef{name: st.name, parent: parent}
+	return &stepCtx{step: st.name, ref: ref, rx: rx, in: st.in, cnt: rx.tally.step(ref)}
+}
+
+// buildNode builds a step that works block by block with its branches.
+func buildNode(st planned, parent *stepRef, rx *rejector) *stepNode {
+	sc := newStepCtx(st, parent, rx)
+	n := &stepNode{in: st.in, opOut: st.opOut, out: st.out, sc: sc}
+	if st.split != nil {
+		n.split = &splitNode{cond: st.split.cond, match: buildChain(st.split.match, sc.ref, rx), rest: buildChain(st.split.rest, sc.ref, rx)}
+		return n
+	}
+	op, ok := st.op.impl.(streamOp)
+	if !ok {
+		panic(fmt.Sprintf("gtable: operation %T is neither streamed nor over all rows", st.op.impl))
+	}
+	n.op = op
+	if st.fail != nil {
+		n.fail = buildChain(st.fail, sc.ref, rx)
+	}
+	return n
+}
+
+func buildChain(b *plannedBranch, parent *stepRef, rx *rejector) *chain {
+	c := &chain{out: b.out}
+	for _, st := range b.steps {
+		c.nodes = append(c.nodes, buildNode(st, parent, rx))
+	}
+	return c
 }
 
 // run pushes the batches from src through the planned steps. If it ends

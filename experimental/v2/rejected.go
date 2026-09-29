@@ -293,6 +293,9 @@ func entryValues(e rejectEntry, errors int) map[string]any {
 	if e.HasValue {
 		vals["value"] = e.Value
 	}
+	if e.PrevReason != "" {
+		vals["prev_reason"] = e.PrevReason
+	}
 	return vals
 }
 

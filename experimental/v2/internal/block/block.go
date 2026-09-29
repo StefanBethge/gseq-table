@@ -69,6 +69,15 @@ func (b Block) Share() Block {
 	return Block{length: b.length, cols: cols}
 }
 
+// Release gives up the block's ownership of its columns. The block must not
+// be used afterwards.
+func (b *Block) Release() {
+	for i := range b.cols {
+		b.cols[i].Release()
+	}
+	b.cols = nil
+}
+
 // Mutable is a column of a block that may be changed in place.
 type Mutable struct {
 	Column *Column

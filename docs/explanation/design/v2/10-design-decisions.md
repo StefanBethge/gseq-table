@@ -1477,3 +1477,55 @@ muss sie der Pipeline-Entwickler bewusst wählen, statt sich auf eine Zahl zu ve
 nicht kennt. "Mehr als" folgt [D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen).
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D90 — Zweige enthalten nur blockweise Schritte, und Zeilen behalten nach dem Zusammenführen ihre Reihenfolge
+
+**Entscheidung:** Nach einem Fehlerzweig nach [D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) und nach `Split` und `Merge` stehen die Zeilen in der
+Reihenfolge, in der sie in den Schritt hineingingen, unabhängig von der Blocklänge. Dafür
+enthält ein Zweig nur Schritte, die blockweise arbeiten, und einen Fehlerzweig hat nur ein
+blockweiser Schritt. Ein Join, eine Gruppierung oder ein Sortieren im Zweig und ein Fehlerzweig
+an einem Schritt über alle Zeilen sind Planfehler nach [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler).
+**Begründung:** Eine Reihenfolge, die von der Blocklänge abhängt, würde dieselbe Pipeline je nach
+Einstellung andere Ergebnisse liefern lassen. Blockweise Zweige laufen im selben Block wie der
+Hauptweg, sodass die Engine die Zeilen beider Wege nach ihrer Eingangsposition zusammenführen
+kann. Die Fälle aus [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig) brauchen im Zweig Umwandlungen, Ausdrücke und Filter, keine Schritte
+über alle Zeilen.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D91 — Zeilen im Fehlerzweig tragen die Info-Spalten ihres ersten Fehlers ohne Fundstelle
+
+**Entscheidung:** Eine Zeile im Fehlerzweig nach [D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) trägt die fehlerbezogenen Info-Spalten nach
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix): `reject_id`, `run_id`, `row_key`, `error_count`, `step`, `column`, `value`, `reason`,
+`prev_reason` und `code`, gefüllt aus ihrem ersten Fehler im Schritt. `error_count` ist die
+Zahl ihrer Fehler im Schritt. Fundstelle und `record_key` je Quellzeile stehen weiter nur in
+den Tabellen je Quelle nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler).
+**Begründung:** Eine Arbeitszeile kann nach einem Join mehrere Quellzeilen haben
+([D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert)), eine Fundstelle je Zeile gibt es dann nicht. Zum Filtern nach Fehlerart im
+Zweig reichen Code, Spalte und Grund, und `row_key` identifiziert die Zeile.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D92 — Der Weg in step nennt die Schritte, in denen die Zeile gescheitert ist
+
+**Entscheidung:** Der ganze Weg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg) in der Info-Spalte `step` besteht aus den Schritten, in denen
+die Zeile gescheitert ist, verbunden mit ` › `: `cast › cast_alt` für eine Zeile, die im
+Hauptweg und im Zweig scheitert, und `cast › check` für eine gerettete Zeile, die später im
+Hauptweg in `check` scheitert ([D46](#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte)). Schritte, die sie bestanden hat, stehen nicht im Weg.
+`prev_reason` ist der Grund des vorigen Scheiterns.
+**Begründung:** Der Weg soll zeigen, wo die Zeile gescheitert ist, nicht jeden Schritt
+nacherzählen. Bestandene Schritte ergeben sich aus dem Plan.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D93 — Spalten einer Tabelle als Quelle gelten als geteilt, auch im Modus immer ändern
+
+**Entscheidung:** Die Spalten einer Tabelle, die Quelle einer Pipeline ist oder auf die eine
+Operation sofort angewendet wird, gelten als geteilt im Sinn von [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert), wie mit dem Rohzustand
+geteilte Spalten nach [D64](#d64-mit-dem-rohzustand-geteilte-spalten-gelten-als-geteilt-auch-im-modus-immer-andern). Auch im Modus "immer an Ort und Stelle ändern" nach [D8](#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert) kopiert die
+Engine eine solche Spalte bei der ersten Änderung einmal und vermerkt das im Trace. Eine
+Tabelle ändert sich in keinem Modus.
+**Begründung:** Tabellen sind nach [D5](#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen) unveränderlich, und der Entwickler kann die Quelle nach dem
+Lauf weiter verwenden. Der Modus behält seinen Nutzen für alle weiteren Änderungen im Lauf.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

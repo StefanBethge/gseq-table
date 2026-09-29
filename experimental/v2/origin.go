@@ -261,6 +261,7 @@ type origin struct {
 	refs    []srcRef
 	agg     int
 	members []srcRef
+	hist    *history // set once the row went into a fail branch (D46)
 }
 
 // rows returns the source rows the row stands for: its own and those that
@@ -300,7 +301,11 @@ func (o origin) join(r origin) origin {
 	if len(o.members)+len(r.members) > 0 {
 		members = append(append(members, o.members...), r.members...)
 	}
-	return origin{refs: refs, agg: o.agg + r.agg, members: members}
+	hist := o.hist
+	if hist == nil {
+		hist = r.hist
+	}
+	return origin{refs: refs, agg: o.agg + r.agg, members: members, hist: hist}
 }
 
 // sourceOrigins returns the origins of the rows of src, row by row.
