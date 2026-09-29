@@ -1752,7 +1752,8 @@ liegt ([G67](70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-b
 Erstens hält die Engine Buchführung je Zeile nur für Zeilen, die gerade im Plan sind: in einem Block,
 in einem Schritt über alle Zeilen gesammelt oder mit ihm ausgelagert. Hat eine Zeile den Plan verlassen
 ([D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben)), bleibt von ihr nichts im Speicher, außer bei aussortierten Zeilen ([D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)) und nach
-[D110](#d110-zahlungen-entstehen-an-den-ausgangen-des-plans-einen-zustand-je-quellzeile-gibt-es-nur-fur-quellzeilen-in-mehreren-arbeitszeilen). Zweitens beträgt sie je gehaltener Zeile höchstens 50 Bytes über die Daten hinaus. Drittens läuft
+[D110](#d110-zahlungen-entstehen-an-den-ausgangen-des-plans-einen-zustand-je-quellzeile-gibt-es-nur-fur-quellzeilen-in-mehreren-arbeitszeilen). Zweitens beträgt sie je gehaltener Zeile höchstens 50 Bytes über die Daten hinaus; eine Join-Zeile trägt
+16 Bytes je weiterer Quellzeile dazu ([D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert)). Drittens läuft
 `examples/onebrc_budget` (Gruppieren mit Minimum, Mittelwert und Maximum, dann Sortieren) über die volle
 1BRC-Datei in Docker mit `--memory=1g` ohne Swap durch ([D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein)). Die ersten beiden Bedingungen prüft
 ein Unit-Test am Wachstum des Heaps zwischen einer kleinen und einer großen Lieferung ([T71](30-test-plan.md#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung)), die
@@ -1789,13 +1790,18 @@ Lieferung aus [D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-
 
 ### D111 — Fundstelle, Schlüssel und Hash einer gelesenen Zeile liegen beim Block ihres Rohzustands
 
-**Entscheidung:** Zeile und Offset der Fundstelle ([D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle), [D81](#d81-eine-gelesene-zeile-wird-uber-ihre-physische-zeile-gefunden-und-record_key-besteht-aus-fingerabdruck-und-zeile)), ein fachlicher `record_key` ([D97](#d97-ein-fachlicher-schlussel-bildet-record_key-als-hash-uber-die-namen-und-werte-seiner-spalten)), `record_hash`
-([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)) und der angezeigte Text von Excel-Zellen ([D62](#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform)) liegen als Spalten beim Block des Rohzustands, aus
-dem die Zeile gelesen wurde. Sie werden mit ihm freigegeben und ausgelagert ([D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben), [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)). Eine aussortierte
-Zeile behält sie mit der Kopie ihres Rohzustands. `record_key` und `row_key` entstehen als Text erst, wenn
+**Entscheidung:** Offset der Fundstelle ([D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle), [D81](#d81-eine-gelesene-zeile-wird-uber-ihre-physische-zeile-gefunden-und-record_key-besteht-aus-fingerabdruck-und-zeile)), `record_hash` ([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)) und der angezeigte Text
+von Excel-Zellen ([D62](#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform)) liegen als Spalten beim Block des Rohzustands, aus dem die Zeile gelesen wurde. Sie
+werden mit ihm freigegeben und ausgelagert ([D43](#d43-gezahlt-werden-quellzeilen-in-vier-kategorien-und-der-rohzustand-wird-bei-jedem-verlassen-des-plans-freigegeben), [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)). Die Zeilennummern, die `record_key` braucht,
+bleiben je Block als Folgen aufeinanderfolgender Zeilen im Speicher, bei einer Datei ohne Leerzeilen und
+mehrzeilige Felder ein Eintrag je Block. Ein fachlicher `record_key` ([D97](#d97-ein-fachlicher-schlussel-bildet-record_key-als-hash-uber-die-namen-und-werte-seiner-spalten)) bleibt je Block im Speicher, bis der
+Block frei wird, auch wenn er ausgelagert ist ([G74](70-gap-ledger.md#g74-fachliche-schlussel-ausgelagerter-blocke-bleiben-im-speicher)). Eine aussortierte Zeile behält Fundstelle, Schlüssel und
+Hash mit der Kopie ihres Rohzustands. `record_key` und `row_key` entstehen als Text erst, wenn
 eine Zeile aussortiert oder in ein Ziel geschrieben wird. Das präzisiert [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) und [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie).
-**Begründung:** Die Fundstelle wird nur für aussortierte Zeilen gebraucht, und für die bleibt die Kopie.
-Als Liste je Quellzeile wuchs sie mit der Lieferung ([D109](#d109-buchfuhrung-gibt-es-nur-fur-zeilen-im-plan-hochstens-50-bytes-je-zeile-und-die-1brc-datei-lauft-bei-1-gib-durch)); beim Rohzustand wächst sie nur mit den Blöcken im
+**Begründung:** Offset, Hash und Anzeige werden nur für aussortierte Zeilen gebraucht, und für die bleibt
+die Kopie. `record_key` braucht jede geschriebene Zeile; nach einem Sortieren liegen ihre Blöcke verteilt
+auf der Platte, und je Zeile einen Block zu lesen machte das Schreiben hundertfach langsamer. Als Liste
+je Quellzeile wuchs die Fundstelle mit der Lieferung ([D109](#d109-buchfuhrung-gibt-es-nur-fur-zeilen-im-plan-hochstens-50-bytes-je-zeile-und-die-1brc-datei-lauft-bei-1-gib-durch)); beim Rohzustand wächst sie nur mit den Blöcken im
 Plan und lagert mit ihnen aus.
 **Quelle:** Maintainer, 2026-09-29 (Auftrag in #66)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)

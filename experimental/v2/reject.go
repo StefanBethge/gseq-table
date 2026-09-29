@@ -217,6 +217,7 @@ type rejector struct {
 	prefix  string   // info prefix; empty means DefaultInfoPrefix
 	mode    CopyMode // D8
 	trace   *tracer  // nil for a Table method
+	shared  *shared  // units that several working rows hold (D110)
 }
 
 func (rx *rejector) infoPrefix() string { return infoPrefix(rx.prefix) }
@@ -229,7 +230,9 @@ func (rx *rejector) mem() *runMem {
 	return rx.tally.mem
 }
 
-func (rx *rejector) add(e rejectEntry) error {
+// add adds an entry; first says that it is the row's first in its step,
+// fresh that its code is.
+func (rx *rejector) add(e rejectEntry, first, fresh bool) error {
 	if rx.policy.modeFor(e.Code) == ModeStop {
 		if kindOfCode(e.Code) == KindDelivery {
 			src := ""
@@ -241,17 +244,36 @@ func (rx *rejector) add(e rejectEntry) error {
 		return &DataError{Reject: e.Reject}
 	}
 	rx.entries = append(rx.entries, e)
-	rx.tally.reject(e)
+	rx.tally.reject(e, first, fresh)
 	return rx.tally.checkRef(e.step)
+}
+
+// promote gives the units of o that have no state yet one of their own:
+// the left row of a join with more than one partner (D110). In a run, the
+// run and step sc count them from now on with that state.
+func (rx *rejector) promote(sc *counter, o origin) {
+	t := rx.tally
+	adopt := func(k unitKey) {
+		if t != nil {
+			t.run.adopt(k)
+			sc.adopt(k)
+		}
+	}
+	for _, r := range o.refs {
+		if rx.shared.addRow(r) {
+			adopt(unitKey{src: r.src, row: r.row})
+		}
+	}
+	if a := o.agg(); a != nil && rx.shared.addAgg(a) {
+		adopt(unitKey{agg: a})
+	}
 }
 
 // carry adds rejects that an input brings into the run: those of a table
 // source, or of the right side of a join (D69). They count for the run.
 func (rx *rejector) carry(es []rejectEntry) {
 	rx.entries = append(rx.entries, es...)
-	for _, e := range es {
-		rx.tally.reject(e)
-	}
+	rx.tally.carried(es)
 }
 
 // formatCell returns cell i of v as text: integers in decimal, floats in the

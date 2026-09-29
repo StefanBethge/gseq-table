@@ -269,10 +269,8 @@ func newOpenedReader(src Source, h Header) (*openedReader, error) {
 	for i, c := range cols {
 		rs[i] = field{c, block.Text}
 	}
-	o.raw = &rawSource{name: h.Source, sheet: h.Sheet, s: rs, loc: &readLoc{id: h.ID, cells: h.Cells}, rel: &release{}}
-	if src.hash {
-		o.raw.loc.hashes = []string{}
-	}
+	o.raw = &rawSource{name: h.Source, sheet: h.Sheet, s: rs, rel: &release{},
+		loc: &readLoc{id: h.ID, cells: h.Cells, hashes: src.hash, noRaw: benchknob.NoRawState.Load()}}
 	for _, k := range src.key {
 		j := slices.Index(cols, k)
 		if j < 0 && !slices.Contains(src.expect, k) {
@@ -369,6 +367,11 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 	for i := range builders {
 		builders[i] = block.NewBuilder(block.Text, n)
 	}
+	// The location, keys and hashes go with the raw state (D111).
+	offsets := block.NewBuilder(block.Int, n)
+	var lines []lineRun
+	var keys, hashes, displays []string
+	hasKey, hasDisplay := false, false
 	loc := o.raw.loc
 	done := false
 	for len(c.recs) < n {
@@ -400,36 +403,36 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 				b.AppendText(fields[i])
 			}
 		}
-		loc.lines = append(loc.lines, r.Line)
-		loc.offsets = append(loc.offsets, r.Offset)
+		if i := len(c.recs); len(lines) == 0 || lines[len(lines)-1].line+i-lines[len(lines)-1].row != r.Line {
+			lines = append(lines, lineRun{i, r.Line})
+		}
+		if r.Offset >= 0 {
+			offsets.AppendInt(r.Offset)
+		} else {
+			offsets.AppendNull()
+		}
 		if cr.code != "" && len(r.Raw) > 0 {
 			if loc.rawLines == nil {
 				loc.rawLines = map[int]string{}
 			}
 			loc.rawLines[row] = string(r.Raw)
 		}
+		disp := ""
 		if len(r.Display) > 0 && fields != nil {
-			if loc.display == nil {
-				loc.display = map[int]map[int]string{}
-			}
-			loc.display[row] = r.Display
+			disp, hasDisplay = encodeDisplay(r.Display), true
 		}
+		displays = append(displays, disp)
 		key := r.key
 		if key == "" && o.keyCols != nil && fields != nil {
 			key = businessKey(o.src.key, o.keyCols, fields)
 		}
-		if key != "" && loc.keys == nil {
-			loc.keys = make([]string, row, row+1)
-		}
-		if loc.keys != nil {
-			loc.keys = append(loc.keys, key)
-		}
-		if loc.hashes != nil {
+		keys, hasKey = append(keys, key), hasKey || key != ""
+		if loc.hashes {
 			h := r.hash
 			if h == "" {
 				h = recordHash(r.Fields, r.Raw)
 			}
-			loc.hashes = append(loc.hashes, h)
+			hashes = append(hashes, h)
 		}
 		c.recs = append(c.recs, cr)
 	}
@@ -437,8 +440,36 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 	for i, b := range builders {
 		c.cols[i] = b.Build()
 	}
-	o.raw.addChunk(c.cols, len(c.recs))
+	chunk := c.cols
+	if loc.noRaw {
+		chunk = nil // D106
+	}
+	lay := chunkLayout{lines: lines, offset: len(chunk), hash: -1, display: -1}
+	if hasKey {
+		lay.keys, lay.hasKeys = textColumn(keys), true
+	}
+	chunk = append(chunk[:len(chunk):len(chunk)], offsets.Build())
+	for _, extra := range []struct {
+		vals []string
+		on   bool
+		at   *int
+	}{{hashes, loc.hashes, &lay.hash}, {displays, hasDisplay, &lay.display}} {
+		if extra.on {
+			*extra.at = len(chunk)
+			chunk = append(chunk, textColumn(extra.vals))
+		}
+	}
+	o.raw.addChunk(chunk, lay, len(c.recs))
 	return c, done, nil
+}
+
+// textColumn returns a text column of vals.
+func textColumn(vals []string) block.Column {
+	b := block.NewBuilder(block.Text, len(vals))
+	for _, v := range vals {
+		b.AppendText(v)
+	}
+	return b.Build()
 }
 
 // emit rejects the records of c that failed at read time and yields the
@@ -449,8 +480,13 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 	sc.begin(block.Block{}, nil)
 	for i, r := range c.recs {
 		row := c.first + i
+		if r.code == "" && len(o.missing) == 0 {
+			keep = append(keep, i)
+			continue
+		}
 		orig := origin{refs: []srcRef{{o.raw, row}}}
-		sc.cnt.see(orig.refs[0])
+		sc.rx.tally.see([]origin{orig})
+		sc.cnt.enter(orig)
 		if r.code != "" || len(o.missing) > 0 {
 			rejected = append(rejected, orig)
 		}
@@ -470,12 +506,10 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 					return err
 				}
 			}
-		default:
-			keep = append(keep, i)
 		}
 	}
 	// Rows rejected while reading leave the plan here (D43).
-	sc.rx.tally.left(sc.cnt, rejected, true)
+	sc.rx.tally.release(rejected)
 	if len(keep) == 0 {
 		return nil
 	}
@@ -504,6 +538,7 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 		refs[i] = srcRef{o.raw, c.first + k}
 		orig[i] = origin{refs: refs[i : i+1 : i+1]}
 	}
+	sc.rx.tally.enter(sc.cnt, orig)
 	sc.rx.tally.passed(sc.cnt, orig, false)
 	return yield(batch{newBlock(cols, len(keep)), orig})
 }

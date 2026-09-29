@@ -656,6 +656,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T68](#t68-auf-wunsch-steht-gomemlimit-bei-90-des-erkannten-limits-und-ein-gesetzter-wert-bleibt) | `TestManagedMemorySetsGOMEMLIMITToNinetyPercent` |
 | [T69](#t69-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) | `TestLaterRunRemovesEndedRunsButNotOpenResults` |
 | [T70](#t70-ohne-einstellung-meldet-der-anderungsbericht-format_change-ab-einem-funftel-der-zeilen) | `TestFormatChangeDefaultLimitIsOneFifth` |
-| [T71](#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung) | ausstehend |
-| [T72](#t72-fortlaufendes-gruppieren-ergibt-dieselben-werte-wie-im-speicher-und-lagert-bei-wenigen-gruppen-nicht-aus) | ausstehend |
-| [T73](#t73-nur-quellzeilen-in-mehreren-arbeitszeilen-haben-einen-zustand-und-er-zahlt-im-budget) | ausstehend |
+| [T71](#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung) | `TestBookkeepingDoesNotGrowWithTheDelivery` |
+| [T72](#t72-fortlaufendes-gruppieren-ergibt-dieselben-werte-wie-im-speicher-und-lagert-bei-wenigen-gruppen-nicht-aus) | `TestStreamingGroupByEqualsInMemoryAndSpillsOnlyForManyGroups` |
+| [T73](#t73-nur-quellzeilen-in-mehreren-arbeitszeilen-haben-einen-zustand-und-er-zahlt-im-budget) | `TestOnlySourceRowsInSeveralWorkingRowsHaveAState` |

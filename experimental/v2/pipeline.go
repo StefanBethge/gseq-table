@@ -389,7 +389,9 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 	}
 	spill.CleanOrphans(root)
 
-	t := newTally()
+	sh := &shared{mem: mem}
+	mem.shared = sh
+	t := newTally(sh)
 	t.mem = mem
 	t.run.limits, t.stepLimits = p.limits, p.stepLimits
 	t.abort, t.min = p.abort, p.abortMin
@@ -399,7 +401,8 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 			mem.srcs = append(mem.srcs, src)
 		}
 	}
-	rx := &rejector{policy: p.policy, run: newRun(), tally: t, prefix: p.prefix, mode: p.copyMode, trace: &tracer{}}
+	rx := &rejector{policy: p.policy, run: newRun(), tally: t, prefix: p.prefix, mode: p.copyMode, trace: &tracer{}, shared: sh}
+	registerShared(sh, o, steps)
 	read := &stepCtx{step: "read", ref: &stepRef{name: "read"}, rx: rx}
 	if _, ok := o.(*openedReader); ok {
 		read.cnt = t.step(read.ref)
@@ -467,6 +470,24 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 	}
 	res.Status = status(res.Causes)
 	return res, runErr
+}
+
+// registerShared registers the units that several working rows may hold
+// before any row is counted (D110): those more than one row of a table
+// source holds, and the rows of the right side of every join.
+func registerShared(sh *shared, o opened, steps []planned) {
+	if ts, ok := o.(tableSource); ok {
+		orig := ts.t.origins()
+		for _, e := range ts.t.rejects {
+			orig = append(orig, e.orig)
+		}
+		sh.scan(orig)
+	}
+	for _, st := range steps {
+		if j, ok := st.op.impl.(joinOp); ok {
+			sh.register(j.right.origins())
+		}
+	}
 }
 
 // checkJoins returns a *MemoryError if the right side of a join does not

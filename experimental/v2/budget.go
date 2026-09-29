@@ -133,6 +133,10 @@ type runMem struct {
 	dir         *spill.Dir
 	reg         map[*rawSource]int // sources of spilled origins
 	regList     []*rawSource
+
+	shared     *shared            // units with a state (D110)
+	stateRows  map[*rawSource]int // source rows with a state of their own (D110)
+	stateBytes int64              // counted bytes of those states
 }
 
 func newRunMem(pool *memPool, cap int64, root string) *runMem {

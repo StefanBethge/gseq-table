@@ -11,15 +11,15 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/stefanbethge/gseq-table/experimental/v2/internal/benchknob"
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
 
 // rawSource is the raw state of one source (D9): its columns as they were
 // read or created, held apart from the working data. No step changes them;
 // the working data shares them until a step replaces a column (D55). A
-// source read by a Reader holds its rows in chunks as they are read, with
-// their location (D10).
+// source read by a Reader holds its rows in chunks as they are read; each
+// chunk carries the location, keys and hashes of its rows as columns after
+// the raw columns, and they go with it (D10, D111).
 type rawSource struct {
 	name   string // location source; "code" for a table built in code (D50, D75)
 	sheet  string
@@ -35,17 +35,56 @@ type rawSource struct {
 	fp     string
 }
 
-// readLoc is the location and the keys of the rows of a source read by a
-// Reader, by row (D10, D18, D81).
+// readLoc describes the location columns of a source read by a Reader (D10,
+// D18, D81, D111).
 type readLoc struct {
 	id       string // delivery identifier (D61)
 	cells    bool   // cells located by address (D52)
-	lines    []int
-	offsets  []int64                // -1: none
-	display  map[int]map[int]string // row, raw column: displayed text (D62)
-	rawLines map[int]string         // row: raw bytes of a rejected line
-	keys     []string               // record_key taken from a rejects table (D82); nil if formed
-	hashes   []string               // record_hash; nil unless the source has them
+	noRaw    bool   // the chunks hold no raw columns (D106)
+	hashes   bool   // the rows have a record_hash
+	layouts  []chunkLayout
+	rawLines map[int]string // row: raw bytes of a line rejected at read time
+}
+
+// chunkLayout describes the location of the rows of a chunk. The lines
+// stay in memory as runs of consecutive lines, one run for a chunk without
+// empty lines or records over several lines, so that record_key needs no
+// spilled chunk; so do keys (G74). Offset, hash and displayed texts are
+// columns after the raw columns, which only rejected rows need; hash and
+// display only where a row of the chunk has one, else -1.
+type chunkLayout struct {
+	lines                 []lineRun
+	keys                  block.Column // record_key per row where taken or formed; unset for none
+	hasKeys               bool
+	offset, hash, display int
+}
+
+// lineRun says that from row row of a chunk on, the lines count up from
+// line.
+type lineRun struct{ row, line int }
+
+// line returns the line of row i of the chunk.
+func (l chunkLayout) line(i int) int {
+	k := sort.Search(len(l.lines), func(j int) bool { return l.lines[j].row > i }) - 1
+	return l.lines[k].line + i - l.lines[k].row
+}
+
+// key returns the key of row i of the chunk, or "".
+func (l chunkLayout) key(i int) string {
+	if !l.hasKeys {
+		return ""
+	}
+	k, _ := l.keys.Text(i)
+	return k
+}
+
+// rowLoc is the location and the keys of one read row.
+type rowLoc struct {
+	line    int
+	offset  int64 // -1: none
+	key     string
+	hash    string
+	display string // displayed texts by raw column, see encodeDisplay (D62)
 }
 
 // newRawSource returns the raw state of a source with the given columns,
@@ -60,16 +99,21 @@ func newRawSource(name string, s schema, cols []block.Column) *rawSource {
 	return &rawSource{name: name, s: s, chunks: [][]block.Column{shared}, starts: []int{0}, n: n}
 }
 
-// release tracks which rows of a source read in a run are still in the
-// plan, so that a chunk of the raw state no row needs is freed (D43, D87).
-// A rejected row keeps a copy of its raw state.
+// release tracks which chunks of a source read in a run the plan still
+// needs, so that a chunk no working row needs is freed (D43, D87, D110). A
+// rejected row keeps a copy of its raw state and location.
 type release struct {
 	owner     *tally  // the run that read the rows
-	live      []int32 // working rows per source row
-	chunkLive []int   // source rows still in the plan per chunk
+	chunkLive []int   // working rows per chunk that hold its raw state
 	bytes     []int64 // counted bytes per chunk (D28)
-	kept      map[int][]keptCell
+	kept      map[int]*keptRow
 	keptBytes int64
+}
+
+// keptRow is the copy of the raw state and the location of a rejected row.
+type keptRow struct {
+	cells []keptCell
+	loc   rowLoc
 }
 
 type keptCell struct {
@@ -77,29 +121,34 @@ type keptCell struct {
 	ok bool
 }
 
-// addChunk stores cols as the raw state of the next rows. With release, the
-// rows count as in the plan.
-// Under the switch of D106 the chunk is not kept.
-func (r *rawSource) addChunk(cols []block.Column, rows int) {
-	if r.rel != nil && benchknob.NoRawState.Load() {
-		cols = nil
-	}
+// addChunk stores cols, the raw columns and then the location columns
+// described by lay, as the chunk of the next rows. With release, every row
+// counts as held by one working row.
+func (r *rawSource) addChunk(cols []block.Column, lay chunkLayout, rows int) {
 	r.chunks = append(r.chunks, cols)
 	r.starts = append(r.starts, r.n)
 	r.n += rows
+	if r.loc != nil {
+		r.loc.layouts = append(r.loc.layouts, lay)
+	}
 	if r.rel != nil {
-		for range rows {
-			r.rel.live = append(r.rel.live, 1)
-		}
 		r.rel.chunkLive = append(r.rel.chunkLive, rows)
-		var n int64 // 0 for a chunk not kept
-		for _, c := range cols {
+		// The location counts in the budget, but only the raw columns are
+		// raw state read (D106).
+		var n, raw int64
+		for i, c := range cols {
 			n += c.Bytes()
+			if r.loc == nil || i < r.dataCols() {
+				raw += c.Bytes()
+			}
+		}
+		if lay.hasKeys {
+			n += lay.keys.Bytes()
 		}
 		r.rel.bytes = append(r.rel.bytes, n)
 		if m := r.mem(); m != nil {
 			m.grow(n)
-			m.read += n
+			m.read += raw
 		}
 	}
 }
@@ -109,39 +158,52 @@ func (r *rawSource) chunkOf(row int) int {
 	return sort.Search(len(r.starts), func(i int) bool { return r.starts[i] > row }) - 1
 }
 
-// acquire notes one more working row of source row row.
+// acquire notes one more working row that holds the raw state of row.
 func (r *rawSource) acquire(row int) {
 	if r.rel != nil {
-		r.rel.live[row]++
+		r.rel.chunkLive[r.chunkOf(row)]++
 	}
 }
 
-// drop notes that a working row of row left the plan. When no working row
-// of any row of a chunk is left, the chunk is freed (D43).
+// drop notes that a working row that held the raw state of row left the
+// plan. When no working row holds a chunk any more, it is freed (D43).
 func (r *rawSource) drop(row int) {
-	if r.rel == nil || r.rel.live[row] <= 0 {
-		return
-	}
-	r.rel.live[row]--
-	if r.rel.live[row] > 0 {
+	if r.rel == nil {
 		return
 	}
 	c := r.chunkOf(row)
+	if r.rel.chunkLive[c] <= 0 {
+		return
+	}
 	r.rel.chunkLive[c]--
-	if r.rel.chunkLive[c] == 0 {
-		if r.chunks[c] != nil {
-			r.mem().shrink(r.rel.bytes[c])
-		}
-		r.chunks[c] = nil
-		if r.sp != nil {
-			delete(r.sp.at, c)
-		}
+	if r.rel.chunkLive[c] > 0 {
+		return
+	}
+	if r.chunks[c] != nil {
+		r.mem().shrink(r.rel.bytes[c])
+	} else if lay := &r.loc.layouts[c]; lay.hasKeys {
+		r.mem().shrink(lay.keys.Bytes()) // they stayed when the chunk was spilled
+	}
+	r.chunks[c] = nil
+	if r.loc != nil {
+		r.loc.layouts[c].keys, r.loc.layouts[c].hasKeys = block.Column{}, false
+	}
+	if r.sp != nil {
+		delete(r.sp.at, c)
 	}
 }
 
-// keep copies the raw state of a rejected row, so that the row keeps it
-// after its chunk is freed (D87). The copy counts against the budget and is
-// spilled over it (D49).
+// chunk returns chunk c from memory or disk, or nil if it was freed.
+func (r *rawSource) chunk(c int) []block.Column {
+	if cols := r.chunks[c]; cols != nil {
+		return cols
+	}
+	return r.spilledChunk(c)
+}
+
+// keep copies the raw state and the location of a rejected row, so that
+// the row keeps them after its chunk is freed (D87, D111). The copy counts
+// against the budget and is spilled over it (D49).
 func (r *rawSource) keep(row int) {
 	if r.rel == nil {
 		return
@@ -153,43 +215,95 @@ func (r *rawSource) keep(row int) {
 		return
 	}
 	c := r.chunkOf(row)
-	cols := r.chunks[c]
-	if cols == nil {
-		cols = r.spilledChunk(c)
-	}
+	cols := r.chunk(c)
 	if cols == nil {
 		return
 	}
-	cells := make([]keptCell, len(r.s))
-	for j, col := range cols {
-		cells[j].s, cells[j].ok = col.Text(row - r.starts[c])
+	k := &keptRow{loc: r.chunkLoc(c, cols, row)}
+	if !r.loc.noRaw {
+		k.cells = make([]keptCell, len(r.s))
+		for j := range r.s {
+			k.cells[j].s, k.cells[j].ok = cols[j].Text(row - r.starts[c])
+		}
 	}
 	if r.rel.kept == nil {
-		r.rel.kept = map[int][]keptCell{}
+		r.rel.kept = map[int]*keptRow{}
 	}
-	r.rel.kept[row] = cells
-	n := keptBytes(cells)
+	r.rel.kept[row] = k
+	n := keptBytes(k)
 	r.rel.keptBytes += n
 	r.mem().grow(n)
+}
+
+// keptOf returns the copy of a rejected row, in memory or spilled.
+func (r *rawSource) keptOf(row int) (*keptRow, bool) {
+	if r.rel == nil {
+		return nil, false
+	}
+	if k, ok := r.rel.kept[row]; ok {
+		return k, true
+	}
+	return r.spilledKept(row)
 }
 
 // text returns the raw value of column j in row as text: from its chunk,
 // in memory or spilled, or from the copy of a rejected row.
 func (r *rawSource) text(row, j int) (string, bool) {
+	if r.loc != nil && r.loc.noRaw {
+		return "", false // D106
+	}
 	c := r.chunkOf(row)
 	if cols := r.chunks[c]; cols != nil {
 		return cols[j].Text(row - r.starts[c])
 	}
-	if k, ok := r.rel.kept[row]; ok {
-		return k[j].s, k[j].ok
-	}
-	if k, ok := r.spilledKept(row); ok {
-		return k[j].s, k[j].ok
+	if k, ok := r.keptOf(row); ok {
+		if k.cells == nil {
+			return "", false
+		}
+		return k.cells[j].s, k.cells[j].ok
 	}
 	if cols := r.spilledChunk(c); cols != nil {
 		return cols[j].Text(row - r.starts[c])
 	}
 	return "", false // released by Result.Close or a writer (D49, D98)
+}
+
+// dataCols returns the number of raw columns in a chunk.
+func (r *rawSource) dataCols() int {
+	if r.loc != nil && r.loc.noRaw {
+		return 0
+	}
+	return len(r.s)
+}
+
+// chunkLoc reads the location of row from the columns of its chunk c.
+func (r *rawSource) chunkLoc(c int, cols []block.Column, row int) rowLoc {
+	i := row - r.starts[c]
+	lay := r.loc.layouts[c]
+	loc := rowLoc{line: lay.line(i), offset: -1, key: lay.key(i)}
+	if off, ok := cols[lay.offset].Int(i); ok {
+		loc.offset = off
+	}
+	if lay.hash >= 0 {
+		loc.hash, _ = cols[lay.hash].Text(i)
+	}
+	if lay.display >= 0 {
+		loc.display, _ = cols[lay.display].Text(i)
+	}
+	return loc
+}
+
+// locOf returns the location of a read row: from the copy of a rejected
+// row, or from its chunk. A freed row has none (D111).
+func (r *rawSource) locOf(row int) rowLoc {
+	if k, ok := r.keptOf(row); ok {
+		return k.loc
+	}
+	c := r.chunkOf(row)
+	if cols := r.chunk(c); cols != nil {
+		return r.chunkLoc(c, cols, row)
+	}
+	return rowLoc{offset: -1}
 }
 
 // rawColumn returns raw column j for the given rows.
@@ -250,16 +364,28 @@ func (r *rawSource) fingerprint() string {
 
 // recordKey is the record_key of a row: for a table built in code the
 // fingerprint and the row index (D76), for a read row the delivery
-// identifier and the line (D81), or the key taken from a rejects table
-// (D82).
+// identifier and the line (D81), or its business key or the key taken from
+// a rejects table (D82, D97).
 func (r *rawSource) recordKey(row int) string {
 	if r.loc == nil {
 		return r.fingerprint() + ":" + strconv.Itoa(row)
 	}
-	if r.loc.keys != nil && r.loc.keys[row] != "" {
-		return r.loc.keys[row]
+	line, key := r.lineKey(row)
+	if key != "" {
+		return key
 	}
-	return r.loc.id + ":" + strconv.Itoa(r.loc.lines[row])
+	return r.loc.id + ":" + strconv.Itoa(line)
+}
+
+// lineKey returns the line and the key of a read row without reading its
+// chunk, from the copy of a rejected row or from the layout.
+func (r *rawSource) lineKey(row int) (int, string) {
+	if k, ok := r.keptOf(row); ok {
+		return k.loc.line, k.loc.key
+	}
+	c := r.chunkOf(row)
+	lay := r.loc.layouts[c]
+	return lay.line(row - r.starts[c]), lay.key(row - r.starts[c])
 }
 
 // line returns the line of a row: its index for a table built in code.
@@ -267,7 +393,8 @@ func (r *rawSource) line(row int) int {
 	if r.loc == nil {
 		return row
 	}
-	return r.loc.lines[row]
+	line, _ := r.lineKey(row)
+	return line
 }
 
 // cell returns the address and the displayed text of the cell of raw
@@ -281,12 +408,46 @@ func (r *rawSource) cell(row int, col string) (addr, display string, ok bool) {
 	if j < 0 {
 		return "", "", false
 	}
-	addr = columnLetters(j) + strconv.Itoa(r.loc.lines[row])
-	if d, ok := r.loc.display[row][j]; ok {
+	loc := r.locOf(row)
+	addr = columnLetters(j) + strconv.Itoa(loc.line)
+	if d, ok := displayOf(loc.display, j); ok {
 		return addr, d, true
 	}
 	display, _ = r.text(row, j)
 	return addr, display, true
+}
+
+// encodeDisplay encodes the displayed texts of a row by raw column as one
+// text, "<column>:<length>:<text>" for each (D62).
+func encodeDisplay(d map[int]string) string {
+	cols := make([]int, 0, len(d))
+	for j := range d {
+		cols = append(cols, j)
+	}
+	sort.Ints(cols)
+	var sb strings.Builder
+	for _, j := range cols {
+		fmt.Fprintf(&sb, "%d:%d:%s", j, len(d[j]), d[j])
+	}
+	return sb.String()
+}
+
+// displayOf returns the displayed text of raw column j from an encoded
+// display.
+func displayOf(s string, j int) (string, bool) {
+	for s != "" {
+		a := strings.IndexByte(s, ':')
+		col, _ := strconv.Atoi(s[:a])
+		s = s[a+1:]
+		b := strings.IndexByte(s, ':')
+		n, _ := strconv.Atoi(s[:b])
+		v := s[b+1 : b+1+n]
+		s = s[b+1+n:]
+		if col == j {
+			return v, true
+		}
+	}
+	return "", false
 }
 
 // srcRef is one source row.
@@ -296,29 +457,72 @@ type srcRef struct {
 }
 
 // origin says where a working row comes from: its source rows, more than
-// one after a join (D11), or, for a row that a step over all rows computed
-// from others, the number of rows that went into it (D12). members are the
-// source rows an aggregated row stands for; they are counted with it but
-// have no raw state in its rejects (D84, P6).
+// one after a join (D11), and for a row that a step over all rows computed
+// from others, what went into it (D12). A row that went into a fail branch
+// carries its history (D46).
 type origin struct {
-	refs    []srcRef
-	agg     int
-	members []srcRef
-	hist    *history // set once the row went into a fail branch (D46)
+	refs []srcRef
+	x    *originExt // nil for a row that is neither aggregated nor in a branch
 }
 
-// rows returns the source rows the row stands for: its own and those that
-// went into it (D84).
-func (o origin) rows() []srcRef {
-	if len(o.members) == 0 {
-		return o.refs
-	}
-	return append(append(make([]srcRef, 0, len(o.refs)+len(o.members)), o.refs...), o.members...)
+// originExt is the rarer part of an origin. It is never changed once set,
+// so origins that share it stay independent.
+type originExt struct {
+	agg  *aggOrigin
+	hist *history
 }
+
+// aggOrigin is what went into an aggregated row: the number of rows for
+// the weight (D77), and the source rows it stands for (D84), counted per
+// source instead of listed (D110). Source rows and aggregated rows that
+// several working rows hold keep their identity, because they are counted
+// with a state of their own.
+type aggOrigin struct {
+	n     int
+	srcs  []srcCount   // source rows per source counted without a state
+	multi []srcRef     // source rows with a state, each once
+	units []*aggOrigin // aggregated rows that went into it or were joined, each once
+}
+
+type srcCount struct {
+	src *rawSource
+	n   int
+}
+
+func (o origin) agg() *aggOrigin {
+	if o.x == nil {
+		return nil
+	}
+	return o.x.agg
+}
+
+func (o origin) history() *history {
+	if o.x == nil {
+		return nil
+	}
+	return o.x.hist
+}
+
+// withHistory returns o with the history h.
+func (o origin) withHistory(h *history) origin {
+	x := &originExt{hist: h}
+	if o.x != nil {
+		x.agg = o.x.agg
+	}
+	o.x = x
+	return o
+}
+
+// aggOf returns an origin for a row aggregated from a.
+func aggOf(a *aggOrigin) origin { return origin{x: &originExt{agg: a}} }
 
 // rowKey is the row_key of the row: the record_keys of its source rows,
 // joined with "+" (D47, D76).
 func (o origin) rowKey() string {
+	if len(o.refs) == 1 {
+		r := o.refs[0]
+		return r.src.recordKey(r.row)
+	}
 	keys := make([]string, len(o.refs))
 	for i, r := range o.refs {
 		keys[i] = r.src.recordKey(r.row)
@@ -329,26 +533,49 @@ func (o origin) rowKey() string {
 // weight is the number of rows the row stands for when it goes into a
 // group (D77).
 func (o origin) weight() int {
-	if o.agg > 0 {
-		return o.agg
+	if a := o.agg(); a != nil {
+		return a.n
 	}
 	return 1
 }
 
+// aggregated returns the number of rows that went into an aggregated row,
+// or 0 for another row.
+func (o origin) aggregated() int {
+	if a := o.agg(); a != nil {
+		return a.n
+	}
+	return 0
+}
+
+// detached returns o with its own copy of the source rows, so that a
+// reject does not hold the source rows of a whole block.
+func (o origin) detached() origin {
+	o.refs = append([]srcRef(nil), o.refs...)
+	return o
+}
+
 // join is the origin of a join row: the source rows of both sides, left
-// first.
+// first. An aggregated side keeps its identity (D110).
 func (o origin) join(r origin) origin {
 	refs := make([]srcRef, 0, len(o.refs)+len(r.refs))
 	refs = append(append(refs, o.refs...), r.refs...)
-	var members []srcRef
-	if len(o.members)+len(r.members) > 0 {
-		members = append(append(members, o.members...), r.members...)
+	a, b := o.agg(), r.agg()
+	switch {
+	case a == nil:
+		a = b
+	case b != nil:
+		a = &aggOrigin{n: a.n + b.n, units: []*aggOrigin{a, b}}
 	}
-	hist := o.hist
+	hist := o.history()
 	if hist == nil {
-		hist = r.hist
+		hist = r.history()
 	}
-	return origin{refs: refs, agg: o.agg + r.agg, members: members, hist: hist}
+	out := origin{refs: refs}
+	if a != nil || hist != nil {
+		out.x = &originExt{agg: a, hist: hist}
+	}
+	return out
 }
 
 // sourceOrigins returns the origins of the rows of src, row by row.

@@ -250,11 +250,7 @@ func compose(pos, keep []int) []int {
 func (n *stepNode) run(b batch) (batch, []int, error) {
 	sc := n.sc
 	sc.begin(b.blk, b.orig)
-	for _, o := range b.orig {
-		for _, r := range o.rows() {
-			sc.cnt.see(r)
-		}
-	}
+	sc.rx.tally.enter(sc.cnt, b.orig)
 	switch {
 	case n.split != nil:
 		return n.runSplit(b)
@@ -269,32 +265,39 @@ func (n *stepNode) run(b batch) (batch, []int, error) {
 	t := sc.rx.tally
 	if keep != nil {
 		orig = pick(b.orig, keep)
-		t.left(sc.cnt, others(b.orig, keep), true)
+		rejected, dropped := sc.others(b.orig, keep)
+		t.release(rejected)
+		t.left(sc.cnt, dropped, true)
 	}
 	t.passed(sc.cnt, orig, false)
 	return batch{out, orig}, keep, nil
 }
 
-// others returns the origins of the rows not in keep.
-func others(orig []origin, keep []int) []origin {
+// others returns the origins of the rows not in keep: those the step
+// rejected, which are counted already, and those it dropped.
+func (sc *stepCtx) others(orig []origin, keep []int) (rejected, dropped []origin) {
 	kept := make([]bool, len(orig))
 	for _, k := range keep {
 		kept[k] = true
 	}
-	var gone []origin
 	for i, o := range orig {
-		if !kept[i] {
-			gone = append(gone, o)
+		switch {
+		case kept[i]:
+		case sc.rejected(i):
+			rejected = append(rejected, o)
+		default:
+			dropped = append(dropped, o)
 		}
 	}
-	return gone
+	return rejected, dropped
 }
 
 // history is what a row that went into a fail branch keeps in the
 // background: its reject_id, the steps it failed in and the reason of its
-// last failure (D27, D46, D92).
+// last failure (D27, D46, D92), and whether a branch rescued it before.
 type history struct {
 	id, path, reason string
+	rescued          bool
 }
 
 // pendingReject is an error of a row in a step with a fail branch. It
@@ -369,14 +372,18 @@ func (n *stepNode) runFail(b batch) (batch, []int, error) {
 		vals["row_key"] = e.orig.rowKey()
 		ib.set(vals)
 		o := b.orig[row]
-		o.hist = &history{id: e.ID, path: e.Step, reason: e.Reason}
-		forig[i] = o
+		h := &history{id: e.ID, path: e.Step, reason: e.Reason}
+		if old := o.history(); old != nil {
+			h.rescued = old.rescued
+		}
+		forig[i] = o.withHistory(h)
 	}
 	for _, c := range ib.columns(sc.rx.infoPrefix()) {
 		if err := fblk.AppendColumn(c.col); err != nil {
 			panic("gtable: " + err.Error())
 		}
 	}
+	rejBefore := sc.cnt.rejectedPlain()
 	fb, fpos, err := n.fail.run(batch{fblk, forig})
 	if err != nil {
 		return batch{}, nil, err
@@ -389,7 +396,7 @@ func (n *stepNode) runFail(b batch) (batch, []int, error) {
 	// rejected or dropped (D46).
 	t.passed(sc.cnt, fb.orig, false)
 	t.rescued(sc.cnt, fb.orig)
-	t.gone(sc.cnt, pick(b.orig, notIn(failed, back)))
+	t.gone(sc.cnt, pick(b.orig, notIn(failed, back)), rejBefore)
 	blk, orig, pos := mergeRows(n.out, main, rowsPart{n.fail.out, fb.blk, fb.orig, back})
 	return batch{blk, orig}, pos, nil
 }
@@ -431,7 +438,7 @@ func (n *stepNode) runSplit(b batch) (batch, []int, error) {
 			rest = append(rest, i)
 		}
 	}
-	t.left(sc.cnt, pick(b.orig, bad), true)
+	t.release(pick(b.orig, bad)) // rejected and counted
 	if b.blk.Len() > 0 {
 		sc.traceCopy("", TraceCopyAtBranch)
 	}
@@ -443,6 +450,7 @@ func (n *stepNode) runSplit(b batch) (batch, []int, error) {
 		if len(br.rows) == 0 {
 			continue
 		}
+		rejBefore := sc.cnt.rejectedPlain()
 		ob, opos, err := br.c.run(batch{b.blk.Take(br.rows), pick(b.orig, br.rows)})
 		if err != nil {
 			return batch{}, nil, err
@@ -452,7 +460,7 @@ func (n *stepNode) runSplit(b batch) (batch, []int, error) {
 			back = br.rows[:ob.blk.Len()]
 		}
 		t.passed(sc.cnt, ob.orig, false)
-		t.gone(sc.cnt, pick(b.orig, notIn(br.rows, back)))
+		t.gone(sc.cnt, pick(b.orig, notIn(br.rows, back)), rejBefore)
 		parts = append(parts, rowsPart{br.c.out, ob.blk, ob.orig, back})
 	}
 	blk, orig, pos := mergeRows(n.out, parts...)

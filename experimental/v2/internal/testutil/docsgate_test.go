@@ -38,7 +38,7 @@ var familyFloors = map[string]int{
 	"F":  24,
 	"T":  73,
 	"P":  8,
-	"G":  73,
+	"G":  74,
 }
 
 // noUseCaseDecisions lists the decisions that deliberately name no use case

@@ -19,4 +19,4 @@ Erprobung klärt, bevor ein v2.0-Release geplant wird.
 | [Scope Prototyp](40-scope-prototype.md) | Selektion, Vereinfachungen und Exit-Kriterien des Prototyps | [P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren) – [P8](40-scope-prototype.md#p8-keine-formelmaskierung-im-csv-writer) |
 | [Failure Modes](50-failure-modes.md) | Was bei einem Lauf schiefgehen kann und wie reagiert wird | — |
 | [Security Boundaries](60-security-boundaries.md) | Grenzen für nicht vertrauenswürdige Lieferungen und ausgelagerte Daten | — |
-| [Gap Ledger](70-gap-ledger.md) | Offene Fragen, Annahmen und Inkonsistenzen | [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst) – [G73](70-gap-ledger.md#g73-zustande-je-quellzeile-nach-1n-joins-werden-nicht-ausgelagert) |
+| [Gap Ledger](70-gap-ledger.md) | Offene Fragen, Annahmen und Inkonsistenzen | [G1](70-gap-ledger.md#g1-was-der-rohzustand-einer-zeile-umfasst) – [G74](70-gap-ledger.md#g74-fachliche-schlussel-ausgelagerter-blocke-bleiben-im-speicher) |
