@@ -72,7 +72,7 @@ func run(ctx context.Context, w io.Writer, dir, outDir string) error {
 	report(w, "First run", res)
 
 	// Read the file back. Its columns carry the info prefix, which is
-	// reserved in a delivery, so it is read under another prefix (G65).
+	// reserved in a delivery, so it is read under another prefix (G66).
 	back, err := gtable.FromSource(csv.File(rejectsFile), blockLen).InfoPrefix("_file_").Run(ctx)
 	if err != nil {
 		return err

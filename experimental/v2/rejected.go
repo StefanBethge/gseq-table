@@ -96,7 +96,7 @@ var aggregatedInfo = []field{
 // table per source with the raw columns of the source and the info columns
 // (D13, D44), the overview with one entry per error (D15), and a table per
 // step in which aggregated rows failed (D48, D77). After Result.Close, every
-// table carries the sticky error ErrClosed (D94).
+// table carries the sticky error ErrClosed (D98).
 type RejectedRows struct {
 	prefix  string
 	entries []rejectEntry
@@ -105,7 +105,7 @@ type RejectedRows struct {
 
 // rejectState is shared by the table of a result and the tables derived
 // from it: the source rows a writer in the plan took (D49), and whether
-// the result is closed (D94).
+// the result is closed (D98).
 type rejectState struct {
 	mu     sync.Mutex
 	sunk   map[srcRef]bool
@@ -119,7 +119,7 @@ func (st *rejectState) sink(r srcRef) {
 		st.sunk = map[srcRef]bool{}
 	}
 	// The copy of the raw state stays until Close: the overview, which
-	// the result keeps (D91), shows the displayed text of a cell from it.
+	// the result keeps (D95), shows the displayed text of a cell from it.
 	st.sunk[r] = true
 }
 
@@ -142,7 +142,7 @@ func (st *rejectState) isClosed() bool {
 }
 
 // close marks the state closed and frees the copies of the raw state of
-// the rejected rows (D94).
+// the rejected rows (D98).
 func (st *rejectState) close(entries []rejectEntry) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -386,6 +386,9 @@ func entryValues(e rejectEntry, errors int) map[string]any {
 	}
 	if e.HasValue {
 		vals["value"] = e.Value
+	}
+	if e.PrevReason != "" {
+		vals["prev_reason"] = e.PrevReason
 	}
 	return vals
 }

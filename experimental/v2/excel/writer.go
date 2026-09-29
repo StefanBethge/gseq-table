@@ -13,11 +13,11 @@ import (
 // (F19, D35), for results or rejected rows (D2); an empty sheet name is
 // "Sheet1". The first row is the header. Integers and floats are written as
 // numbers, booleans as booleans, timestamps as date cells, and text always
-// as text, never as a formula; a null is an empty cell (D95).
+// as text, never as a formula; a null is an empty cell (D99).
 //
 // The file is created, or replaced, when the sink is closed. A run closes
 // its sinks also after it ended early, so the blocks written before stay
-// (D51, D96); a run without a block leaves no file.
+// (D51, D100); a run without a block leaves no file.
 func Create(path, sheet string) gtable.Sink {
 	if sheet == "" {
 		sheet = "Sheet1"
@@ -110,7 +110,7 @@ func value(c gtable.Column, i int) any {
 		}
 	default:
 		if v, ok := c.Text(i); ok {
-			return v // an inline string, never a formula (D95)
+			return v // an inline string, never a formula (D99)
 		}
 	}
 	return nil

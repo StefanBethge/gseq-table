@@ -230,11 +230,11 @@ func TestRejectWritersWriteDuringTheRunElseTheResultHoldsTheRejectsUntilClose(t 
 }
 
 func TestResultWithASinkHoldsNoRowsAndEverySinkIsClosed(t *testing.T) {
-	testutil.Proves(t, "T60")
+	testutil.Proves(t, "T62")
 	ctx := context.Background()
 
 	// With a target, the result table has the columns but no rows; the
-	// rows are in the target (D90).
+	// rows are in the target (D94).
 	out := &memSink{}
 	res, err := From(amounts(5, 1), 2).Then(Cast("amount", TypeInt)).To(out).Run(ctx)
 	if err != nil {
@@ -254,7 +254,7 @@ func TestResultWithASinkHoldsNoRowsAndEverySinkIsClosed(t *testing.T) {
 	}
 
 	// A run without result rows writes one empty block, so a file gets
-	// its header (D96).
+	// its header (D100).
 	out = &memSink{}
 	if _, err := From(amounts(5), 2).Then(Where(Col("id").Eq(Lit("x")))).To(out).Run(ctx); err != nil {
 		t.Fatal(err)
@@ -264,7 +264,7 @@ func TestResultWithASinkHoldsNoRowsAndEverySinkIsClosed(t *testing.T) {
 	}
 
 	// Every target is closed, also after an early end, and a failing
-	// Close is sink_error (D96, D40).
+	// Close is sink_error (D100, D40).
 	for name, p := range map[string]func(out, rej *memSink) *Pipeline{
 		"stop": func(out, rej *memSink) *Pipeline {
 			return From(amounts(5, 3), 2).Then(Cast("amount", TypeInt)).OnError(ModeStop).To(out).RejectsTo("code", rej)
@@ -291,12 +291,12 @@ func TestResultWithASinkHoldsNoRowsAndEverySinkIsClosed(t *testing.T) {
 }
 
 func TestRejectWritersPerSourceAndRejectsAfterAnEarlyEnd(t *testing.T) {
-	testutil.Proves(t, "T61")
+	testutil.Proves(t, "T63")
 	ctx := context.Background()
 
 	// A writer for a named source goes before the factory; the factory
 	// gets the name of every other source with rejected rows, and a source
-	// without writer stays in the result (D91).
+	// without writer stays in the result (D95).
 	customers := NewTable(Texts("customer", "K1", "K2", "K3"), Texts("since", "2020-01-01T00:00:00Z", "bad", "2021-01-01T00:00:00Z")).
 		AsSource("customers").Cast("since", TypeTimestamp)
 	orders := NewTable(Texts("order", "1", "2", "3"), Texts("customer", "K1", "K3", "K1"), Texts("amount", "5", "x", "7")).
@@ -331,7 +331,7 @@ func TestRejectWritersPerSourceAndRejectsAfterAnEarlyEnd(t *testing.T) {
 
 	// After a stop no target gets a block, and the rejected rows of the
 	// failing block stay in the result, although their source has a
-	// writer (D92).
+	// writer (D96).
 	tbl := NewTable(Texts("amount", "x", "1", "y", "2"), Ints("n", 1, 1, 1, 0))
 	out, rejects := &memSink{}, &memSink{}
 	res, err = From(tbl, 2).Then(Cast("amount", TypeInt)).Then(With("q", Lit(1).Div(Col("n")))).
@@ -351,7 +351,7 @@ func TestRejectWritersPerSourceAndRejectsAfterAnEarlyEnd(t *testing.T) {
 }
 
 func TestCloseReleasesTheRejectedRowsAndKeepsTheCounts(t *testing.T) {
-	testutil.Proves(t, "T63")
+	testutil.Proves(t, "T65")
 	ctx := context.Background()
 	res, err := From(amounts(4, 1), 2).Then(Cast("amount", TypeInt)).
 		Then(GroupBy([]string{"id"}, Sum("amount").As("total"))).

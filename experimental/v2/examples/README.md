@@ -28,7 +28,7 @@ API names below are sketches. The behavior follows the linked decisions.
 |---|---|---|
 | `eager_table` | runnable | slice 2 (#46) |
 | `inspect_rejects` | runnable | slice 4 (#48) |
-| `fail_branch` | planned | slice 6 (#50) |
+| `fail_branch` | runnable | slice 6 (#50) |
 | `onebrc_budget` | planned | slice 7 (#51), Docker runs in slice 9 (#53) |
 | `scheduled_excel` | runnable | slice 8 (#52) |
 | `reprocess_rejects` | runnable | slice 8 (#52) |
@@ -53,9 +53,13 @@ Design: [UC3](../../../docs/explanation/design/v2/05-use-cases.md#uc3-pipeline-e
 ### fail_branch
 
 An `OnFail` branch that retries a failed date cast with an alternative format. One row is
-recovered and flows back into the main path. Another fails again and shows its whole path in
-`step` and the main-path reason in `prev_reason`.
-Design: [UC5](../../../docs/explanation/design/v2/05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [D25](../../../docs/explanation/design/v2/10-design-decisions.md#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck), [D26](../../../docs/explanation/design/v2/10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler), [D27](../../../docs/explanation/design/v2/10-design-decisions.md#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg), [D46](../../../docs/explanation/design/v2/10-design-decisions.md#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte).
+recovered and flows back into the main path in its place. Another fails again and shows its
+whole path in `step` and the main-path reason in `prev_reason`. A third is recovered and fails
+later in the main path, keeping its history; the threshold counts only the rows that stay
+rejected, and the step counts show the rescued rows apart. Run it with
+`go run ./examples/fail_branch` in `experimental/v2`. It reads `testdata/payments.csv` with
+`csv.File`.
+Design: [UC5](../../../docs/explanation/design/v2/05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [D25](../../../docs/explanation/design/v2/10-design-decisions.md#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck), [D26](../../../docs/explanation/design/v2/10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler), [D27](../../../docs/explanation/design/v2/10-design-decisions.md#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg), [D46](../../../docs/explanation/design/v2/10-design-decisions.md#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte), [D90](../../../docs/explanation/design/v2/10-design-decisions.md#d90-zweige-enthalten-nur-blockweise-schritte-und-zeilen-behalten-nach-dem-zusammenfuhren-ihre-reihenfolge), [D92](../../../docs/explanation/design/v2/10-design-decisions.md#d92-der-weg-in-step-nennt-die-schritte-in-denen-die-zeile-gescheitert-ist).
 
 ### onebrc_budget
 
@@ -83,7 +87,7 @@ Design: [UC1](../../../docs/explanation/design/v2/05-use-cases.md#uc1-geplanter-
 
 Reprocessing the rejected rows of an earlier run after fixing the pipeline: the first run
 writes its rejects to a CSV file with `RejectsTo`, the file is read back (under another
-info prefix, see [G65](../../../docs/explanation/design/v2/70-gap-ledger.md#g65-eine-datei-aussortierter-zeilen-lasst-sich-nur-mit-einem-anderen-prafix-zurucklesen)), and the fixed pipeline runs it with
+info prefix, see [G66](../../../docs/explanation/design/v2/70-gap-ledger.md#g66-eine-datei-aussortierter-zeilen-lasst-sich-nur-mit-einem-anderen-prafix-zurucklesen)), and the fixed pipeline runs it with
 `ReplaceSource(FromRejects(...))`, reading the broken line again with `csv.Reparse`. The rows
 keep `record_key` and `row_key`, and an upsert on `row_key` leaves no duplicates in the
 target, also when the whole delivery runs once more. Because the prototype has no database

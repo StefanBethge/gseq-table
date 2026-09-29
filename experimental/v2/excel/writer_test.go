@@ -34,7 +34,7 @@ func texts(t *testing.T, tbl gtable.Table) map[string][]string {
 }
 
 // readBack reads a sheet written by the writer. Columns of rejected rows
-// carry the info prefix, so it is read under another prefix (D14, G65).
+// carry the info prefix, so it is read under another prefix (D14, G66).
 func readBack(t *testing.T, path, sheet string) gtable.Table {
 	t.Helper()
 	res, err := gtable.FromSource(excel.Sheet(path, sheet), 100).InfoPrefix("_read_").Run(ctx)
@@ -86,7 +86,7 @@ func TestRejectsWrittenWithTheExcelWriterReadBack(t *testing.T) {
 }
 
 func TestExcelWriterWritesTypedCellsAndTextNeverAsFormula(t *testing.T) {
-	testutil.Proves(t, "T64")
+	testutil.Proves(t, "T66")
 	at := time.Date(2026, 9, 27, 14, 30, 0, 0, time.UTC)
 	tbl := gtable.NewTable(
 		gtable.Ints("n", 5, 6),
@@ -117,7 +117,7 @@ func TestExcelWriterWritesTypedCellsAndTextNeverAsFormula(t *testing.T) {
 			t.Errorf("%s: type %v (%v), want %v", cell, got, err, typ)
 		}
 	}
-	// A date has a date format; text is never a formula (D95).
+	// A date has a date format; text is never a formula (D99).
 	if st, _ := f.GetCellStyle(sheet, "D2"); st == 0 {
 		t.Error("D2 has no date format")
 	}

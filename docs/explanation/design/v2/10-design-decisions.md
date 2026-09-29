@@ -1478,7 +1478,59 @@ nicht kennt. "Mehr als" folgt [D4](#d4-eine-pipeline-kann-eine-schwelle-fur-auss
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
 
-### D90 — Mit einem Ziel für Ergebnisse hält die Ergebnistabelle keine Zeilen
+### D90 — Zweige enthalten nur blockweise Schritte, und Zeilen behalten nach dem Zusammenführen ihre Reihenfolge
+
+**Entscheidung:** Nach einem Fehlerzweig nach [D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) und nach `Split` und `Merge` stehen die Zeilen in der
+Reihenfolge, in der sie in den Schritt hineingingen, unabhängig von der Blocklänge. Dafür
+enthält ein Zweig nur Schritte, die blockweise arbeiten, und einen Fehlerzweig hat nur ein
+blockweiser Schritt. Ein Join, eine Gruppierung oder ein Sortieren im Zweig und ein Fehlerzweig
+an einem Schritt über alle Zeilen sind Planfehler nach [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler).
+**Begründung:** Eine Reihenfolge, die von der Blocklänge abhängt, würde dieselbe Pipeline je nach
+Einstellung andere Ergebnisse liefern lassen. Blockweise Zweige laufen im selben Block wie der
+Hauptweg, sodass die Engine die Zeilen beider Wege nach ihrer Eingangsposition zusammenführen
+kann. Die Fälle aus [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig) brauchen im Zweig Umwandlungen, Ausdrücke und Filter, keine Schritte
+über alle Zeilen.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D91 — Zeilen im Fehlerzweig tragen die Info-Spalten ihres ersten Fehlers ohne Fundstelle
+
+**Entscheidung:** Eine Zeile im Fehlerzweig nach [D25](#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck) trägt die fehlerbezogenen Info-Spalten nach
+[D14](#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix): `reject_id`, `run_id`, `row_key`, `error_count`, `step`, `column`, `value`, `reason`,
+`prev_reason` und `code`, gefüllt aus ihrem ersten Fehler im Schritt. `error_count` ist die
+Zahl ihrer Fehler im Schritt. Fundstelle und `record_key` je Quellzeile stehen weiter nur in
+den Tabellen je Quelle nach [D44](#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler).
+**Begründung:** Eine Arbeitszeile kann nach einem Join mehrere Quellzeilen haben
+([D11](#d11-scheitert-eine-zeile-nach-einem-join-wird-jede-beteiligte-quellzeile-aussortiert)), eine Fundstelle je Zeile gibt es dann nicht. Zum Filtern nach Fehlerart im
+Zweig reichen Code, Spalte und Grund, und `row_key` identifiziert die Zeile.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig)
+
+### D92 — Der Weg in step nennt die Schritte, in denen die Zeile gescheitert ist
+
+**Entscheidung:** Der ganze Weg nach [D27](#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg) in der Info-Spalte `step` besteht aus den Schritten, in denen
+die Zeile gescheitert ist, verbunden mit ` › `: `cast › cast_alt` für eine Zeile, die im
+Hauptweg und im Zweig scheitert, und `cast › check` für eine gerettete Zeile, die später im
+Hauptweg in `check` scheitert ([D46](#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte)). Schritte, die sie bestanden hat, stehen nicht im Weg.
+`prev_reason` ist der Grund des vorigen Scheiterns.
+**Begründung:** Der Weg soll zeigen, wo die Zeile gescheitert ist, nicht jeden Schritt
+nacherzählen. Bestandene Schritte ergeben sich aus dem Plan.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC5](05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D93 — Spalten einer Tabelle als Quelle gelten als geteilt, auch im Modus immer ändern
+
+**Entscheidung:** Die Spalten einer Tabelle, die Quelle einer Pipeline ist oder auf die eine
+Operation sofort angewendet wird, gelten als geteilt im Sinn von [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert), wie mit dem Rohzustand
+geteilte Spalten nach [D64](#d64-mit-dem-rohzustand-geteilte-spalten-gelten-als-geteilt-auch-im-modus-immer-andern). Auch im Modus "immer an Ort und Stelle ändern" nach [D8](#d8-eine-option-legt-fest-dass-die-engine-immer-kopiert-oder-immer-an-ort-und-stelle-andert) kopiert die
+Engine eine solche Spalte bei der ersten Änderung einmal und vermerkt das im Trace. Eine
+Tabelle ändert sich in keinem Modus.
+**Begründung:** Tabellen sind nach [D5](#d5-voreinstellung-durchlauf-mit-aussortieren-unveranderliche-tabellen) unveränderlich, und der Entwickler kann die Quelle nach dem
+Lauf weiter verwenden. Der Modus behält seinen Nutzen für alle weiteren Änderungen im Lauf.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D94 — Mit einem Ziel für Ergebnisse hält die Ergebnistabelle keine Zeilen
 
 **Entscheidung:** Hat eine Pipeline ein Ziel für ihre Ergebnisse nach [D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http), verlassen die
 Ergebniszeilen den Plan mit dem Schreiben und geben ihren Rohzustand frei. Die Ergebnistabelle
@@ -1491,7 +1543,7 @@ Weg für kleine Läufe und Tests.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
-### D91 — Writer für aussortierte Zeilen im Plan gibt es je Quelle, als Fabrik für alle Quellen und für die Übersicht
+### D95 — Writer für aussortierte Zeilen im Plan gibt es je Quelle, als Fabrik für alle Quellen und für die Übersicht
 
 **Entscheidung:** Ein Writer für aussortierte Zeilen nach [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) wird im Plan auf drei Arten angegeben:
 für eine benannte Quelle, als Fabrik für alle Quellen und für die Übersicht. Die Fabrik bekommt
@@ -1506,20 +1558,20 @@ Quelle in ein eigenes Ziel, etwa eine Datei je Quelle, ohne die Quellen vorab au
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52, Teilauflösung von [G54](70-gap-ledger.md#g54-lucken-bei-writern-fur-aussortierte-zeilen-im-plan))
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
-### D92 — Nach einem vorzeitigen Ende wird in kein Ziel mehr geschrieben, und nicht geschriebene aussortierte Zeilen bleiben im Ergebnis
+### D96 — Nach einem vorzeitigen Ende wird in kein Ziel mehr geschrieben, und nicht geschriebene aussortierte Zeilen bleiben im Ergebnis
 
 **Entscheidung:** Endet ein Lauf vorzeitig, etwa durch einen Stopp nach [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen) oder einen
 Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab), schreibt die Engine danach in kein Ziel mehr, weder Ergebnisse noch
 aussortierte Zeilen. Bereits Geschriebenes bleibt nach [D51](#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben). Aussortierte Zeilen, die noch in keinen
 Writer gegangen sind, auch die des scheiternden Blocks, bleiben im Ergebnis lesbar, auch für
-Quellen mit Writer nach [D91](#d91-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht).
+Quellen mit Writer nach [D95](#d95-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht).
 **Begründung:** Der Abbruch wirkt so sofort, wie [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab) es verlangt, und ein Ziel, das
 gerade gescheitert ist, bekommt keine weiteren Blöcke. Weil die nicht geschriebenen
 aussortierten Zeilen im Ergebnis bleiben, geht nichts verloren, was [D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) bewahren soll.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52, Teilauflösung von [G54](70-gap-ledger.md#g54-lucken-bei-writern-fur-aussortierte-zeilen-im-plan))
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
 
-### D93 — Ein fachlicher Schlüssel bildet record_key als Hash über die Namen und Werte seiner Spalten
+### D97 — Ein fachlicher Schlüssel bildet record_key als Hash über die Namen und Werte seiner Spalten
 
 **Entscheidung:** Gibt eine Quelle einen fachlichen Schlüssel aus Spalten an ([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)), besteht
 `record_key` aus den ersten 16 Hex-Zeichen von SHA-256 über die Namen der Schlüsselspalten und
@@ -1534,7 +1586,7 @@ Die Namen im Hash halten zwei Schlüssel aus verschiedenen Spalten auseinander.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
 **Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
 
-### D94 — Close gibt die aussortierten Zeilen eines Ergebnisses frei, danach tragen ihre Tabellen einen haftenden Fehler
+### D98 — Close gibt die aussortierten Zeilen eines Ergebnisses frei, danach tragen ihre Tabellen einen haftenden Fehler
 
 **Entscheidung:** `Close` auf einem `Result` gibt den Rohzustand und die Tabellen der
 aussortierten Zeilen frei, die das Ergebnis nach [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) hält, und das ausgelagerte davon. Danach tragen
@@ -1546,7 +1598,7 @@ Scheduler braucht, bleibt auch nach `Close` erhalten.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
-### D95 — Der Excel-Writer schreibt typisierte Zellen, Text nie als Formel
+### D99 — Der Excel-Writer schreibt typisierte Zellen, Text nie als Formel
 
 **Entscheidung:** Der Excel-Writer nach [D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http) schreibt Ganzzahlen und Gleitkommazahlen als Zahl,
 Wahrheitswerte als Wahrheitswert und Zeitpunkte als Datumszelle mit Datumsformat. Text wird
@@ -1559,11 +1611,11 @@ vertrauenswürdigen Lieferung ausführbar machen.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
 
-### D96 — Run beendet jedes Ziel des Plans mit Close, auch nach einem Abbruch
+### D100 — Run beendet jedes Ziel des Plans mit Close, auch nach einem Abbruch
 
 **Entscheidung:** Ein Ziel nach [D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http) nimmt Blöcke mit `Write` entgegen und wird mit `Close`
 beendet. `Run` ruft `Close` für jedes Ziel des Plans am Ende des Laufs auf, auch nach einem
-vorzeitigen Ende, ein Ziel aus der Fabrik nach [D91](#d91-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht) nur, wenn sie es geliefert hat, damit Geschriebenes nach [D51](#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben) bleibt. Ein
+vorzeitigen Ende, ein Ziel aus der Fabrik nach [D95](#d95-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht) nur, wenn sie es geliefert hat, damit Geschriebenes nach [D51](#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben) bleibt. Ein
 Fehler aus `Close` ist ein Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab). Datei-Writer legen ihre Datei beim ersten
 Block an und überschreiben eine vorhandene; ohne Block legen sie keine Datei an. Das Ziel für Ergebnisse bekommt bei einem Lauf
 ohne Ergebniszeilen einen leeren Block, damit eine Datei ihren Kopf erhält. Ein Writer für

@@ -37,7 +37,7 @@ func (s *keySink) Close() error { return nil }
 
 // readBack reads a file of rejected rows written by a writer. Its columns
 // carry the info prefix, which is reserved in a delivery, so it is read
-// under another prefix (D14, G65).
+// under another prefix (D14, G66).
 func readBack(t *testing.T, path string) gtable.Table {
 	t.Helper()
 	res, err := gtable.FromSource(csv.File(path), 100).InfoPrefix("_read_").Run(ctx)
@@ -232,7 +232,7 @@ func TestRecordKeyIsStableWithinADeliveryAndABusinessKeyBeyond(t *testing.T) {
 }
 
 func TestBusinessKeyFormsRecordKeyFromTheValues(t *testing.T) {
-	testutil.Proves(t, "T62")
+	testutil.Proves(t, "T64")
 	content := "region,order,amount\nN,1,5\nS,1,6\nN,2,7\n\"broken,1,1\n"
 	path := write(t, "a.csv", content)
 	other := write(t, "b.csv", "order,region,amount\n2,N,9\n1,S,8\n1,N,0\n")
@@ -253,7 +253,7 @@ func TestBusinessKeyFormsRecordKeyFromTheValues(t *testing.T) {
 	ka, tbl := keys(path)
 	kb, _ := keys(other)
 	// A key of 16 hex characters from the values, the same in both
-	// deliveries and different for other values (D93).
+	// deliveries and different for other values (D97).
 	hex16 := regexp.MustCompile(`^[0-9a-f]{16}$`)
 	for _, k := range ka {
 		if !hex16.MatchString(k) {

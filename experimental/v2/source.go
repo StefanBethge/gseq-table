@@ -180,7 +180,7 @@ func (s Source) WithRecordHash() Source {
 
 // Key sets a business key from the given columns: record_key is then the
 // first 16 hex characters of SHA-256 over the names of the columns and
-// their values as read, the same across deliveries (D18, D93). A line
+// their values as read, the same across deliveries (D18, D97). A line
 // without cells keeps the key from fingerprint and line (D81). A key
 // column that is neither in the header nor expected is a plan error.
 func (s Source) Key(cols ...string) Source {
@@ -242,7 +242,7 @@ type openedReader struct {
 	s        schema
 	missing  []string
 	findings []Finding
-	keyCols  []int // raw column per business key column, -1 for a missing one (D93)
+	keyCols  []int // raw column per business key column, -1 for a missing one (D97)
 }
 
 func newOpenedReader(src Source, h Header) (*openedReader, error) {
@@ -525,7 +525,7 @@ func recordHash(fields []string, raw []byte) string {
 
 // businessKey is the record_key of a row with a business key: the first 16
 // hex characters of SHA-256 over the names of the key columns and their
-// values (D93).
+// values (D97).
 func businessKey(names []string, cols []int, fields []string) string {
 	h := sha256.New()
 	for i, name := range names {

@@ -12,7 +12,7 @@ import (
 //
 // A run hands a sink its rows block by block with Write and ends it with
 // Close, also after the run ended early, so what was written stays (D51,
-// D96). If Write or Close returns an error, the run ends at once with
+// D100). If Write or Close returns an error, the run ends at once with
 // StatusSinkError (D40).
 type Sink interface {
 	// Write writes one block. The blocks of one run have the same columns.
@@ -41,18 +41,18 @@ func (e *SinkError) Error() string { return fmt.Sprintf("sink error in %s: %v", 
 func (e *SinkError) Unwrap() error { return e.Err }
 
 // ErrClosed is the sticky error of the tables of rejected rows of a result
-// after Close (D94).
+// after Close (D98).
 var ErrClosed = errors.New("gtable: the result is closed")
 
 // To sets the sink for the result rows (D35). The result table then has the
-// columns of the plan but no rows (D90).
+// columns of the plan but no rows (D94).
 func (p *Pipeline) To(s Sink) *Pipeline {
 	p.sinks.result, p.sinks.hasResult = s, true
 	return p
 }
 
 // RejectsTo sets the writer for the rejected rows of the named source
-// (D49, D91). The rows are written during the run, block by block, and the
+// (D49, D95). The rows are written during the run, block by block, and the
 // result then holds the overview and the counts, not the rows. A name that
 // no source of the plan has is a plan error.
 func (p *Pipeline) RejectsTo(source string, s Sink) *Pipeline {
@@ -67,7 +67,7 @@ func (p *Pipeline) RejectsTo(source string, s Sink) *Pipeline {
 }
 
 // RejectsToEach sets a factory for the writers of the rejected rows of all
-// sources (D91). The run calls it with the name of a source when its first
+// sources (D95). The run calls it with the name of a source when its first
 // row is rejected; a nil Sink keeps the rows of that source in the result.
 // A writer set with RejectsTo goes first.
 func (p *Pipeline) RejectsToEach(f func(source string) Sink) *Pipeline {
@@ -76,7 +76,7 @@ func (p *Pipeline) RejectsToEach(f func(source string) Sink) *Pipeline {
 }
 
 // OverviewTo sets the writer for the overview of the rejected rows, one
-// entry per error (D49). The result holds the overview too (D91).
+// entry per error (D49). The result holds the overview too (D95).
 func (p *Pipeline) OverviewTo(s Sink) *Pipeline {
 	p.sinks.overview, p.sinks.hasOverview = s, true
 	return p
@@ -166,7 +166,7 @@ type madeSink struct {
 	s      Sink
 }
 
-// rejectWriters write the rejected rows of a run while it runs (D49, D91).
+// rejectWriters write the rejected rows of a run while it runs (D49, D95).
 type rejectWriters struct {
 	sinks
 	prefix string
@@ -200,7 +200,7 @@ func (w *rejectWriters) sinkFor(src *rawSource) Sink {
 
 // flush writes the entries not written yet. A source row written stays out
 // of the tables of the result; entries not written, after an error, stay
-// in them (D92).
+// in them (D96).
 func (w *rejectWriters) flush(ctx context.Context, entries []rejectEntry) error {
 	if w == nil || w.done == len(entries) {
 		return nil
@@ -235,7 +235,7 @@ func (w *rejectWriters) flush(ctx context.Context, entries []rejectEntry) error 
 	return nil
 }
 
-// closeSinks closes every sink of the plan and returns their errors (D96).
+// closeSinks closes every sink of the plan and returns their errors (D100).
 func closeSinks(s sinks, w *rejectWriters) []error {
 	var errs []error
 	closeOne := func(name string, sk Sink) {

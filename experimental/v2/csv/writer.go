@@ -12,7 +12,7 @@ import (
 
 // Create returns a sink that writes CSV to the file at path (F19, D35),
 // for results or rejected rows (D2). The file is created, or truncated,
-// with the first block; a run without a block leaves no file (D96). The
+// with the first block; a run without a block leaves no file (D100). The
 // first line is the header, unless NoHeader is given, and Comma sets the
 // separator. Values are written in the text form of Column.Format; a null
 // is an empty field. Values that a spreadsheet would read as a formula are
