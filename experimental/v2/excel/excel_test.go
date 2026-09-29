@@ -77,11 +77,11 @@ func run(t *testing.T, src gtable.Source, ops ...gtable.Op) gtable.Table {
 	for _, op := range ops {
 		p.Then(op)
 	}
-	tbl, err := p.Run(ctx)
+	res, err := p.Run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tbl
+	return res.Table
 }
 
 func rejected(t *testing.T, tbl gtable.Table, source string) gtable.Table {
@@ -171,7 +171,7 @@ func TestExcelCellTypesHaveAFixedTextForm(t *testing.T) {
 }
 
 // A row with values right of the header is rejected (G64), a missing
-// sheet is a delivery error (D42; prepares T42), and an archive over the
+// sheet is a delivery error (D42), and an archive over the
 // unpacked size limit is unreadable (D56, D83; prepares T35).
 func TestExcelDeliveryErrors(t *testing.T) {
 	path := book(t, x.Book{Sheets: []x.Sheet{{Name: "S", Rows: []x.Row{
@@ -251,4 +251,54 @@ func TestExcelFileWrittenByExcelize(t *testing.T) {
 	want(t, rows, "menge", "2.5")
 	want(t, rows, info("cell"), "B3")
 	want(t, rows, info("display"), "unbekannt")
+}
+
+func TestTwoSheetsAreTwoSourcesAndAMissingSheetIsADeliveryError(t *testing.T) {
+	testutil.Proves(t, "T42")
+	path := book(t, x.Book{Sheets: []x.Sheet{
+		{Name: "Kunden", Rows: []x.Row{
+			header("kunde", "limit"),
+			{Num: 2, Cells: []x.Cell{x.Text("A2", "K1"), x.Text("B2", "100")}},
+			{Num: 3, Cells: []x.Cell{x.Text("A3", "K2"), x.Text("B3", "viel")}},
+		}},
+		{Name: "Auftraege", Rows: []x.Row{
+			header("auftrag", "kunde", "betrag"),
+			{Num: 2, Cells: []x.Cell{x.Text("A2", "A1"), x.Text("B2", "K1"), x.Text("C2", "5")}},
+			{Num: 3, Cells: []x.Cell{x.Text("A3", "A2"), x.Text("B3", "K1"), x.Text("C3", "fünf")}},
+		}},
+	}})
+
+	// Each sheet is a source of its own, with its own table of rejected
+	// rows (D53).
+	kunden, err := excel.Sheet(path, "Kunden").Table(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := gtable.FromSource(excel.Sheet(path, "Auftraege"), 2).
+		Then(gtable.Cast("betrag", gtable.TypeInt)).
+		Then(gtable.InnerJoin(kunden.Cast("limit", gtable.TypeInt), gtable.On("kunde"))).
+		Run(ctx)
+	if err != nil || res.Status != gtable.StatusOK {
+		t.Fatalf("err %v, status %v", err, res.Status)
+	}
+	want(t, res.Table, "auftrag", "A1")
+	var names []string
+	for _, s := range res.Table.RejectedRows().Sources() {
+		names = append(names, s.Source)
+	}
+	if !slices.Equal(names, []string{"d.xlsx#Auftraege", "d.xlsx#Kunden"}) {
+		t.Errorf("sources = %q", names)
+	}
+	want(t, rejected(t, res.Table, "d.xlsx#Auftraege"), "betrag", "fünf")
+	want(t, rejected(t, res.Table, "d.xlsx#Kunden"), "limit", "viel")
+
+	// A missing sheet is the delivery error missing_sheet (D42).
+	res, err = gtable.FromSource(excel.Sheet(path, "Lieferungen"), 2).Run(ctx)
+	var de *gtable.DeliveryError
+	if !errors.As(err, &de) || de.Code != gtable.CodeMissingSheet || de.Source != "d.xlsx#Lieferungen" {
+		t.Errorf("err = %v, want missing_sheet", err)
+	}
+	if res.Status != gtable.StatusDeliveryError || res.ExitCode() != 3 {
+		t.Errorf("status %v, exit %d", res.Status, res.ExitCode())
+	}
 }

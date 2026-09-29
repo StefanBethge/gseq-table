@@ -41,7 +41,7 @@ func run(ctx context.Context, w io.Writer, dir string) error {
 	// The CSV delivery: lines that cannot be split are rejected while
 	// reading, with their raw bytes (D10). The row that fails in amount and
 	// ordered is rejected once, with an overview entry per column (D44).
-	orders, err := gtable.FromSource(csv.File(filepath.Join(dir, "orders.csv")), blockLen).
+	ordersRun, err := gtable.FromSource(csv.File(filepath.Join(dir, "orders.csv")), blockLen).
 		Then(gtable.CastAll(
 			gtable.Cast("amount", gtable.TypeFloat, gtable.NullTexts("n/a")),
 			gtable.Cast("ordered", gtable.TypeTimestamp, gtable.DateFormat("02.01.2006")),
@@ -50,11 +50,12 @@ func run(ctx context.Context, w io.Writer, dir string) error {
 	if err != nil {
 		return err
 	}
+	orders := ordersRun.Table
 
 	// The Excel delivery: every sheet is a source of its own (D53). The
 	// working columns hold the stored values in a fixed text form, so dates
 	// cast without a DateFormat (D62).
-	customers, err := gtable.FromSource(excel.Sheet(filepath.Join(dir, "customers.xlsx"), "Kunden"), blockLen).
+	customersRun, err := gtable.FromSource(excel.Sheet(filepath.Join(dir, "customers.xlsx"), "Kunden"), blockLen).
 		Then(gtable.CastAll(
 			gtable.Cast("since", gtable.TypeTimestamp),
 			gtable.Cast("credit", gtable.TypeFloat),
@@ -63,6 +64,7 @@ func run(ctx context.Context, w io.Writer, dir string) error {
 	if err != nil {
 		return err
 	}
+	customers := customersRun.Table
 
 	fmt.Fprintf(w, "Orders that passed: %d, customers that passed: %d\n\n", orders.Len(), customers.Len())
 

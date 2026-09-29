@@ -206,6 +206,7 @@ type snapshot struct {
 type rejector struct {
 	policy  errorPolicy
 	run     *runInfo
+	tally   *tally // nil for a Table method
 	entries []rejectEntry
 }
 
@@ -221,7 +222,17 @@ func (rx *rejector) add(e rejectEntry) error {
 		return &DataError{Reject: e.Reject}
 	}
 	rx.entries = append(rx.entries, e)
-	return nil
+	rx.tally.reject(e)
+	return rx.tally.checkRef(e.step)
+}
+
+// carry adds rejects that an input brings into the run: those of a table
+// source, or of the right side of a join (D69). They count for the run.
+func (rx *rejector) carry(es []rejectEntry) {
+	rx.entries = append(rx.entries, es...)
+	for _, e := range es {
+		rx.tally.reject(e)
+	}
 }
 
 // formatCell returns cell i of v as text: integers in decimal, floats in the

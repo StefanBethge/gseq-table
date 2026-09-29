@@ -163,7 +163,7 @@ func (r RejectedRows) sourceTable(src *rawSource, rows []int, first, counts map[
 	}
 	cols := make([]Column, 0, len(src.s)+len(sourceInfo))
 	for j, f := range src.s {
-		cols = append(cols, newColumn(f.name, src.column(j).Take(rows)))
+		cols = append(cols, newColumn(f.name, src.rawColumn(j, rows)))
 	}
 	ib := newInfoBuilder(infoFields([]*rawSource{src}), len(rows))
 	for _, row := range rows {

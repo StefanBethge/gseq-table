@@ -56,11 +56,11 @@ func TestRowFailingInOneStepIsRejectedOnceWithAnEntryPerColumn(t *testing.T) {
 			for _, op := range ops {
 				p.Then(op)
 			}
-			tbl, err := p.Run(context.Background())
+			res, err := p.Run(context.Background())
 			if err != nil {
 				t.Fatal(err)
 			}
-			return tbl
+			return res.Table
 		}},
 	} {
 		later = 0
@@ -126,10 +126,11 @@ func TestRejectsPerSourceAndOverviewAgree(t *testing.T) {
 	p := From(orders, 2).InfoPrefix("x_").
 		Then(CastAll(Cast("customer", TypeInt), Cast("amount", TypeInt))).
 		Then(InnerJoin(right, OnPair("customer", "id")))
-	got, err := p.Run(context.Background())
+	res, err := p.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := res.Table
 	wantCells(t, got, "order", "o1")
 
 	rr := got.RejectedRows()
@@ -513,13 +514,16 @@ func TestStickyErrorKeepsTheDataBeforeTheFailedOperation(t *testing.T) {
 }
 
 // The error behavior is chosen per pipeline, per error kind and per code,
-// and defaults to reject (D3, D5, D19; prepares T3 and T15).
+// and defaults to reject (D3, D5, D19; prepares T3).
 func TestErrorPolicyPerKindAndCode(t *testing.T) {
 	src := NewTable(Texts("a", "1", "x", "0"))
 	ops := func(p *Pipeline) *Pipeline {
 		return p.Then(Cast("a", TypeInt)).Then(With("b", Lit(1).Div(Col("a"))))
 	}
-	run := func(p *Pipeline) (Table, error) { return ops(p).Run(context.Background()) }
+	run := func(p *Pipeline) (Table, error) {
+		res, err := ops(p).Run(context.Background())
+		return res.Table, err
+	}
 
 	got, err := run(From(src, 10))
 	if err != nil || got.Len() != 1 || !slices.Equal(codes(got.Rejects()), []string{CodeParse, CodeExpr}) {

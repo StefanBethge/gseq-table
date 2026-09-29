@@ -18,8 +18,8 @@ type countingSource struct {
 
 func (s *countingSource) open() (opened, error) { return s, nil }
 
-func (s *countingSource) blocks(n int, rx *rejector, yield func(batch) error) error {
-	return s.tableSource.blocks(n, rx, func(b batch) error {
+func (s *countingSource) blocks(n int, sc *stepCtx, yield func(batch) error) error {
+	return s.tableSource.blocks(n, sc, func(b batch) error {
 		s.read += b.blk.Len()
 		return yield(b)
 	})
@@ -49,7 +49,7 @@ func steps() []Op {
 	}
 }
 
-// A plan error is found before any row is read (D19; prepares T15).
+// A plan error is found before any row is read (D19).
 func TestPipelinePlanErrorBeforeAnyRowIsRead(t *testing.T) {
 	src := &countingSource{tableSource: tableSource{delivery(20)}}
 	for name, op := range map[string]Op{
@@ -94,10 +94,11 @@ func TestPipelineMatchesTableMethods(t *testing.T) {
 		for _, op := range steps() {
 			p.Then(op)
 		}
-		got, err := p.Run(context.Background())
+		res, err := p.Run(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
+		got := res.Table
 		for _, c := range eager.Columns() {
 			if a, b := cells(t, got, c), cells(t, eager, c); !slices.Equal(a, b) {
 				t.Errorf("block length %d, column %s: %v, want %v", n, c, a, b)
@@ -145,10 +146,11 @@ func withoutIDs(rs []Reject) []Reject {
 
 func TestPipelineCarriesSourceRejectsAndNamesSteps(t *testing.T) {
 	src := NewTable(Texts("a", "1", "x")).Cast("a", TypeInt)
-	got, err := From(src, 2).Step("double", With("a", Col("a").Div(Lit(0)))).Run(context.Background())
+	res, err := From(src, 2).Step("double", With("a", Col("a").Div(Lit(0)))).Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := res.Table
 	rs := got.Rejects()
 	if len(rs) != 2 || rs[0].Step != "cast" || rs[1].Step != "double" || rs[1].Code != CodeExpr {
 		t.Errorf("rejects = %v", rs)
@@ -165,7 +167,8 @@ func TestPipelineStopsOnCanceledContext(t *testing.T) {
 }
 
 func TestPipelineOverEmptySource(t *testing.T) {
-	got, err := From(delivery(0), 2).Then(Cast("amount", TypeInt)).Then(Sort(Asc("amount"))).Run(context.Background())
+	res, err := From(delivery(0), 2).Then(Cast("amount", TypeInt)).Then(Sort(Asc("amount"))).Run(context.Background())
+	got := res.Table
 	if err != nil || got.Len() != 0 || !slices.Equal(got.Columns(), []string{"id", "amount"}) {
 		t.Errorf("got %v, %v", got.Columns(), err)
 	}

@@ -88,21 +88,28 @@ const (
 	IgnoreNewColumns
 )
 
-// Kinds of findings about the build of a delivery (D22, D23).
+// Kinds of findings of the change report (D22, D23, D42).
 const (
 	FindingMissingColumn   = "missing_column"
 	FindingNewColumn       = "new_column"
 	FindingProbablyRenamed = "probably_renamed"
+	FindingFormatChange    = "format_change"
+	FindingUnreadable      = "unreadable"
 )
 
-// Finding is one finding about the build of a delivery: a missing, a new or
-// a probably renamed column (D22). For a rename, Column is the missing
-// column and Detail the new one (D79).
+// Finding is one finding of the change report (D23): a missing, a new or a
+// probably renamed column (D22), an unreadable delivery (D42), or a format
+// change (D85). For a rename, Column is the missing column and Detail the
+// new one (D79). For a format change, Count is the number of source rows
+// whose value failed and Examples are up to five of the failed values, as
+// they look now.
 type Finding struct {
-	Kind   string
-	Source string
-	Column string
-	Detail string
+	Kind     string
+	Source   string
+	Column   string
+	Detail   string
+	Count    int
+	Examples []string
 }
 
 // DeliveryError is a delivery error that ends a run (D42): a delivery that
@@ -177,7 +184,8 @@ const eagerBlockLen = 1 << 14
 // returns a *DeliveryError if the delivery cannot be read, or a *PlanError
 // if the source has no column names.
 func (s Source) Table(ctx context.Context) (Table, error) {
-	return FromSource(s, eagerBlockLen).Run(ctx)
+	res, err := FromSource(s, eagerBlockLen).Run(ctx)
+	return res.Table, err
 }
 
 // FromSource returns a pipeline over the rows of src, run in blocks of
@@ -250,7 +258,7 @@ func newOpenedReader(src Source, h Header) (*openedReader, error) {
 	for i, c := range cols {
 		rs[i] = field{c, block.Text}
 	}
-	o.raw = &rawSource{name: h.Source, sheet: h.Sheet, s: rs, loc: &readLoc{id: h.ID, cells: h.Cells}}
+	o.raw = &rawSource{name: h.Source, sheet: h.Sheet, s: rs, loc: &readLoc{id: h.ID, cells: h.Cells}, rel: &release{}}
 	if src.hash {
 		o.raw.loc.hashes = []string{}
 	}
@@ -307,8 +315,7 @@ func (o *openedReader) stopAtOpen(p errorPolicy) error {
 // reader could not split, and every record while a column is missing, are
 // rejected at read time; the others go on as working rows that share the
 // raw columns (D55).
-func (o *openedReader) blocks(n int, rx *rejector, yield func(batch) error) error {
-	sc := &stepCtx{step: "read", ref: &stepRef{"read"}, rx: rx}
+func (o *openedReader) blocks(n int, sc *stepCtx, yield func(batch) error) error {
 	for {
 		chunk, done, err := o.readChunk(n)
 		if err != nil {
@@ -410,8 +417,7 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 	for i, b := range builders {
 		c.cols[i] = b.Build()
 	}
-	o.raw.chunks = append(o.raw.chunks, c.cols)
-	o.raw.n += len(c.recs)
+	o.raw.addChunk(c.cols, len(c.recs))
 	return c, done, nil
 }
 
@@ -419,10 +425,15 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 // others as one batch.
 func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) error {
 	var keep []int
+	var rejected []origin
 	sc.begin(block.Block{}, nil)
 	for i, r := range c.recs {
 		row := c.first + i
 		orig := origin{refs: []srcRef{{o.raw, row}}}
+		sc.cnt.see(orig.refs[0])
+		if r.code != "" || len(o.missing) > 0 {
+			rejected = append(rejected, orig)
+		}
 		switch {
 		case r.code != "":
 			col := ""
@@ -443,6 +454,8 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 			keep = append(keep, i)
 		}
 	}
+	// Rows rejected while reading leave the plan here (D43).
+	sc.rx.tally.left(sc.cnt, rejected, true)
 	if len(keep) == 0 {
 		return nil
 	}
@@ -468,6 +481,7 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 		refs[i] = srcRef{o.raw, c.first + k}
 		orig[i] = origin{refs: refs[i : i+1 : i+1]}
 	}
+	sc.rx.tally.passed(sc.cnt, orig, false)
 	return yield(batch{newBlock(cols, len(keep)), orig})
 }
 

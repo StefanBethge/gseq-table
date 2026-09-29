@@ -52,6 +52,7 @@ type stepCtx struct {
 	blk  block.Block
 	orig []origin
 	ids  map[int]string // reject_id per failed row of the current input
+	cnt  *counter       // counts of the step in a run (D43); nil for a Table method
 }
 
 // begin sets the input rows of the next apply.

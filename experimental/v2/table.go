@@ -89,7 +89,7 @@ func (t Table) AsSource(name string) Table {
 		return t
 	}
 	old := t.srcs[0]
-	src := &rawSource{name: name, s: old.s, chunks: old.chunks, n: old.n}
+	src := &rawSource{name: name, s: old.s, chunks: old.chunks, starts: old.starts, n: old.n}
 	t.srcs = []*rawSource{src}
 	t.orig = [][]origin{sourceOrigins(src, t.Len())}
 	return t
