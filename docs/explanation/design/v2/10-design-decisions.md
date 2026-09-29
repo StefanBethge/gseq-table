@@ -1426,6 +1426,9 @@ Ausgangspunkt.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
 **Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
 
+**Amendment (2026-09-29):** Die endgültige Voreinstellung ist 0,2 nach [D105](#d105-die-voreinstellung-der-grenze-fur-format_change-ist-02),
+festgelegt im Review der Beispiel-Lieferungen ([G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren)).
+
 ### D86 — Die Exit-Codes steigen mit dem Vorrang der Status von 0 bis 5
 
 **Entscheidung:** Die Hilfsfunktion nach [D21](#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst) bildet die Status so ab: `ok` 0, `failed_threshold` 1,
@@ -1684,3 +1687,21 @@ Unit-Test darauf wäre unzuverlässig. Die Zählung der Engine ist genau und zei
 rechtzeitig auslagert. Ob das Budget im Container reicht, zeigt erst der Lauf mit echten Limits.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #51, Teil-Auflösung von [G59](70-gap-ledger.md#g59-vergleichbarkeit-der-bestehkriterien))
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D105 — Die Voreinstellung der Grenze für format_change ist 0,2
+
+**Entscheidung:** Die Voreinstellung der Grenze für einen Formatänderungs-Befund nach [D59](#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt)
+ist 0,2: Der Änderungsbericht meldet `format_change`, sobald ein Fünftel der Quellzeilen, die in
+den Schritt hineingingen, in einer Spalte mit demselben Code scheitert. Sie ersetzt die
+vorläufige Voreinstellung 0,5 aus [D85](#d85-der-anteil-fur-format_change-bezieht-sich-auf-die-zeilen-einer-quelle-die-in-den-schritt-hineingingen-vorlaufig-mit-50); Bezugsgröße und Einstellbarkeit bleiben, wie
+[D85](#d85-der-anteil-fur-format_change-bezieht-sich-auf-die-zeilen-einer-quelle-die-in-den-schritt-hineingingen-vorlaufig-mit-50) sie festlegt.
+**Begründung:** An den Beispiel-Lieferungen nach [D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt) meldet 0,5 nur einen vollständigen
+Wechsel (Dezimalkomma bei 70 % der Preise). Ein Lieferant stellt aber oft nur einen Teil der Werte
+um, in den Beispielen 20 % der Bestände mit Tausenderpunkt und 30 % der Daten im ISO-Format; auch
+das soll der Bericht zeigen. Dass kleine, schmutzige Lieferungen dadurch Befunde ohne echten
+Formatwechsel bekommen (Platzhalter bei 3 von 7 Preisen), nimmt der Maintainer in Kauf: Der
+Befund ändert den Status nicht ([D63](#d63-es-gilt-der-hochste-zutreffende-status-und-das-ergebnis-nennt-alle-befunde)), und die Grenze ist je Pipeline und je Spalte
+einstellbar.
+**Quelle:** Maintainer, 2026-09-29 (Review der Beispiel-Lieferungen in #54, zu [G11](70-gap-ledger.md#g11-form-der-aussortierten-zeilen-im-prototyp-validieren))
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+

@@ -406,6 +406,31 @@ func TestFormatChangesAppearInTheChangeReport(t *testing.T) {
 	wantCells(t, rep, "column", "date")
 }
 
+func TestFormatChangeDefaultLimitIsOneFifth(t *testing.T) {
+	testutil.Proves(t, "T70")
+	ctx := context.Background()
+	// Without a limit, 2 of 10 failed values are a format change, 1 of 10 is
+	// not (D105).
+	for _, tc := range []struct {
+		amounts []string
+		want    int
+	}{
+		{[]string{"1", "2", "x", "4", "5", "6", "y", "8", "9", "10"}, 1},
+		{[]string{"1", "2", "x", "4", "5", "6", "7", "8", "9", "10"}, 0},
+	} {
+		res, err := From(NewTable(Texts("amount", tc.amounts...)), 4).Then(Cast("amount", TypeInt)).Run(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Report) != tc.want {
+			t.Errorf("%v: report %+v, want %d findings", tc.amounts, res.Report, tc.want)
+		}
+	}
+	if DefaultFormatChangeLimit != 0.2 {
+		t.Errorf("DefaultFormatChangeLimit = %v, want 0.2", DefaultFormatChangeLimit)
+	}
+}
+
 func TestFormatChangeShareCountsTheRowsThatWentIntoTheStep(t *testing.T) {
 	testutil.Proves(t, "T59")
 	ctx := context.Background()
