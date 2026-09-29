@@ -158,7 +158,7 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
           cache-dependency-path: |
-            experimental/v2/go.mod
+            experimental/v2/go.sum
 
       # Includes the docs gates of the v2 design set (D37).
       - name: Run tests

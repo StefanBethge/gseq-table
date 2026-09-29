@@ -1306,3 +1306,83 @@ dann alle Probleme einer Zeile auf einmal, wie [D15](#d15-eine-zeile-wird-im-ers
 ersten scheiternden Spalte. Das Vorbild für `WithAll` ist `with_columns` in Polars.
 **Quelle:** Maintainer, 2026-09-28 (bei der Umsetzung von #47)
 **Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC7](05-use-cases.md#uc7-externer-entwickler-baut-seine-erste-pipeline)
+
+### D79 — Eine fehlende und eine neue Spalte gelten als vermutlich umbenannt, wenn ihre Namen normalisiert gleich oder nah beieinander sind
+
+**Entscheidung:** Für die Meldung einer vermutlichen Umbenennung nach [D22](#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird) vergleicht die
+Engine jede fehlende mit jeder neuen Spalte. Beide Namen werden normalisiert: klein geschrieben
+und ohne alle Zeichen außer Buchstaben und Ziffern. Ein Paar gilt als ähnlich, wenn die
+normalisierten Namen gleich sind oder ihre Levenshtein-Distanz höchstens 2 und höchstens ein
+Drittel der Länge des längeren normalisierten Namens beträgt. Jede fehlende Spalte wird in der
+Reihenfolge des erwarteten Aufbaus mit höchstens einer neuen gepaart, der mit der kleinsten
+Distanz, die noch keiner anderen fehlenden Spalte zugeordnet ist. Haben zwei neue Spalten
+dieselbe kleinste Distanz, gibt es keine Meldung. Fehlende und neue Spalte werden auch bei
+einem Paar als solche gemeldet. Das präzisiert [D22](#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird).
+**Begründung:** Anbieter benennen Spalten meist in Schreibvarianten um (`Kunden Nr` ↔
+`kunden_nr`) oder ändern sie leicht (`Kundennr` ↔ `KundenNr.`). Die relative Grenze verhindert,
+dass kurze Namen wie `id` und `nr` als Paar gelten. Bei Gleichstand wäre jede Wahl geraten.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #48)
+**Betroffene Use Cases:** [UC2](05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt)
+
+### D80 — Jeder Zelltyp einer Excel-Lieferung hat eine feste Textform
+
+**Entscheidung:** Ergänzend zu [D62](#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform) tragen Rohzustand und Arbeitsspalte diese Formen: Datum ohne
+Uhrzeit `2026-09-27`, Datum mit Uhrzeit `2026-09-27T14:30:00`, reine Uhrzeit (Seriennummer
+unter 1) `14:30:00`, Zahl in der kürzesten Dezimalform ohne Exponent (`1234.5`, `100000`),
+Wahrheitswert `true` oder `false`, Fehlerzelle wie gespeichert (`#DIV/0!`), Text unverändert und
+leere Zelle als leerer Text. Als Datum gilt eine Zahlenzelle mit einem Datums- oder Zeitformat.
+Zeilen ohne Wert in jeder Zelle werden übersprungen, zählen bei der Zeilennummer aber mit. In
+einer aussortierten Zeile nennen `cell` und `display` die Zelle der betroffenen Spalte. Ist die
+Spalte keine Rohspalte der Quelle, weil ein Schritt sie abgeleitet oder umbenannt hat, bleiben
+beide leer. Das präzisiert [D52](#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert) und [D62](#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform).
+**Begründung:** Die Formen lassen sich ohne Option mit `Cast` umwandeln: Datum und Uhrzeit
+liest `Cast` in RFC 3339 oder mit einem `DateFormat`, Zahlen und Wahrheitswerte in der Form von
+Go. Eine Form, die vom Wert abhängt (mit oder ohne Uhrzeit), bleibt lesbar und entspricht dem,
+was der Pipeline-Entwickler in der Zelle sieht. Leere Zeilen am Ende eines Sheets sind in
+Anbieterdateien häufig und wären sonst lauter leere Datensätze.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #48)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets)
+
+### D81 — Eine gelesene Zeile wird über ihre physische Zeile gefunden, und record_key besteht aus Fingerabdruck und Zeile
+
+**Entscheidung:** Bei CSV ist die Zeilennummer nach [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle) die physische Zeile, in der der Datensatz
+beginnt, ab 1 gezählt und einschließlich Kopfzeile, wie ein Editor sie zeigt. Leerzeilen zählen
+mit und werden übersprungen. Der Byte-Offset ist der des Datensatzanfangs, ab 0 gezählt. Bei
+Excel gilt die Zeilennummer nach [D52](#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert). Der `record_key` einer gelesenen Zeile hat die Form
+`<fingerprint>:<zeilennummer>`. Der Fingerabdruck nach [D61](#d61-die-kennung-einer-lieferung-ist-ein-fingerabdruck-der-beim-offnen-feststeht) besteht aus den ersten 16 Hex-Zeichen von
+SHA-256 über Quellname, Größe, Änderungszeit und die ersten 64 KiB der Datei; eine eigene
+Kennung der Pipeline tritt an seine Stelle. Der Quellname ist der Dateiname, bei Excel mit Sheet
+nach [D53](#d53-jede-datei-und-jedes-sheet-ist-eine-quelle-gruppen-von-dateien-wirken-als-eine-quelle) (`lieferung.xlsx#Kunden`). Der optionale `record_hash` nach [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash) besteht aus den ersten 16
+Hex-Zeichen von SHA-256 über die Zellwerte der Zeile oder, bei einer unzerlegbaren Zeile, über
+ihre Rohbytes. Ein Kopf mit einem leeren oder doppelten Spaltennamen ist bei CSV und Excel der
+Lieferfehler `unreadable` nach [D42](#d42-jeder-lieferfehler-setzt-den-status-delivery_error). Das präzisiert [D10](#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle), [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash) und [D61](#d61-die-kennung-einer-lieferung-ist-ein-fingerabdruck-der-beim-offnen-feststeht).
+**Begründung:** Die physische Zeile ist die, die der Pipeline-Entwickler im Editor findet, auch
+wenn ein Feld über mehrere Zeilen geht. Die Zeilennummer im Schlüssel lässt sich bei einer
+Nachverarbeitung aus der Fundstelle wiederfinden. Ein Kopf mit doppelten Namen lässt sich
+keiner Spalte eindeutig zuordnen; stilles Durchnummerieren würde eine Formatänderung verdecken.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #48)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D82 — Die Quelle aus aussortierten Zeilen übernimmt Schlüssel und Fundstelle aus den Info-Spalten
+
+**Entscheidung:** Die Quelle nach [D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) macht die Info-Spalten nicht zu Datenspalten, übernimmt aber aus
+ihnen `record_key`, `record_hash` und die Fundstelle (`source`, `sheet`, `line`, `offset`). Eine
+Zeile, die erneut scheitert, trägt dieselben Werte wie im ersten Lauf, und eine durchlaufende
+Zeile denselben `record_key`. Das beantwortet die Schlüssel-Frage aus [G49](70-gap-ledger.md#g49-nachverarbeitung-ubernimmt-schlussel-nicht-und-braucht-die-original-lieferung); die übrigen
+Fragen dort bleiben offen.
+**Begründung:** [D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash) sagt einen stabilen Schlüssel auch bei einer Nachverarbeitung zu. Neu gebildet
+hinge er an der Datei mit den aussortierten Zeilen statt an der Original-Lieferung, und die
+Original-Lieferung muss nicht mehr vorliegen.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #48, Teilauflösung von [G49](70-gap-ledger.md#g49-nachverarbeitung-ubernimmt-schlussel-nicht-und-braucht-die-original-lieferung))
+**Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D83 — Der entpackte Umfang eines Excel-Archivs ist standardmäßig auf 1 GiB begrenzt
+
+**Entscheidung:** Die Grenze für den entpackten Umfang eines Excel-Archivs nach [D56](#d56-die-library-begrenzt-feldlange-und-entpackten-umfang-schutzt-ausgelagerte-dateien-und-maskiert-formeln-in-csv-auf-wunsch) beträgt
+standardmäßig 1 GiB und ist einstellbar. Das Verhältnis bleibt bei höchstens 100:1.
+**Begründung:** Eine Excel-Datei mit einer Million Zeilen entpackt meist auf 100 bis 300 MiB.
+1 GiB lässt große Anbieterdateien durch und hält ein präpariertes Archiv auf, bevor es den
+Speicher füllt. Die Voreinstellung der Excel-Bibliothek (16 GiB) schützt praktisch nur über das
+Verhältnis.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #48)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

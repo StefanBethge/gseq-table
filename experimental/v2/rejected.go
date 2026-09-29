@@ -31,8 +31,8 @@ func prefixClash(src *rawSource, prefix string) error {
 
 // The info columns of a table per source and of the overview, in order
 // (D14). Columns that a source cannot fill, such as sheet or cell for a
-// table built in code, are null. The optional record_hash, formula and
-// display follow with the readers that fill them.
+// table built in code, are null. The optional record_hash and display are
+// added by infoFields where a source fills them.
 var sourceInfo = []field{
 	{"reject_id", block.Text},
 	{"run_id", block.Text},
@@ -51,6 +51,31 @@ var sourceInfo = []field{
 	{"prev_reason", block.Text},
 	{"code", block.Text},
 	{"raw_line", block.Text},
+}
+
+// infoFields returns the info columns for rows of the given sources: the
+// fixed ones, with record_hash after row_key if a source has hashes (D18)
+// and display after cell if a source locates cells (D62).
+func infoFields(srcs []*rawSource) []field {
+	hash, display := false, false
+	for _, s := range srcs {
+		hash = hash || s.loc != nil && s.loc.hashes != nil
+		display = display || s.loc != nil && s.loc.cells
+	}
+	if !hash && !display {
+		return sourceInfo
+	}
+	out := make([]field, 0, len(sourceInfo)+2)
+	for _, f := range sourceInfo {
+		out = append(out, f)
+		switch {
+		case f.name == "row_key" && hash:
+			out = append(out, field{"record_hash", block.Text})
+		case f.name == "cell" && display:
+			out = append(out, field{"display", block.Text})
+		}
+	}
+	return out
 }
 
 // The info columns of a table of aggregated rejected rows (D77).
@@ -138,9 +163,9 @@ func (r RejectedRows) sourceTable(src *rawSource, rows []int, first, counts map[
 	}
 	cols := make([]Column, 0, len(src.s)+len(sourceInfo))
 	for j, f := range src.s {
-		cols = append(cols, newColumn(f.name, src.cols[j].Take(rows)))
+		cols = append(cols, newColumn(f.name, src.column(j).Take(rows)))
 	}
-	ib := newInfoBuilder(sourceInfo, len(rows))
+	ib := newInfoBuilder(infoFields([]*rawSource{src}), len(rows))
 	for _, row := range rows {
 		ref := srcRef{src, row}
 		ib.sourceRow(r.entries[first[ref]], ref, counts[ref])
@@ -153,7 +178,13 @@ func (r RejectedRows) sourceTable(src *rawSource, rows []int, first, counts map[
 // with an empty location for an aggregated row (D77).
 func (r RejectedRows) Overview() Table {
 	perID := r.errorsPerID()
-	ib := newInfoBuilder(sourceInfo, len(r.entries))
+	var srcs []*rawSource
+	for _, e := range r.entries {
+		for _, ref := range e.orig.refs {
+			srcs = append(srcs, ref.src)
+		}
+	}
+	ib := newInfoBuilder(infoFields(srcs), len(r.entries))
 	for _, e := range r.entries {
 		for _, ref := range e.orig.refs {
 			ib.sourceRow(e, ref, perID[e.ID])
@@ -239,6 +270,8 @@ func (ib *infoBuilder) set(vals map[string]any) {
 			b.AppendText(v)
 		case int:
 			b.AppendInt(int64(v))
+		case int64:
+			b.AppendInt(v)
 		default:
 			b.AppendNull()
 		}
@@ -266,10 +299,28 @@ func entryValues(e rejectEntry, errors int) map[string]any {
 // sourceRow adds the entry for one source row of e.
 func (ib *infoBuilder) sourceRow(e rejectEntry, ref srcRef, errors int) {
 	vals := entryValues(e, errors)
-	vals["record_key"] = ref.src.recordKey(ref.row)
+	src := ref.src
+	vals["record_key"] = src.recordKey(ref.row)
 	vals["row_key"] = e.orig.rowKey()
-	vals["source"] = ref.src.name
-	vals["line"] = ref.row
+	vals["source"] = src.name
+	vals["line"] = src.line(ref.row)
+	if src.sheet != "" {
+		vals["sheet"] = src.sheet
+	}
+	if loc := src.loc; loc != nil {
+		if loc.offsets[ref.row] >= 0 {
+			vals["offset"] = loc.offsets[ref.row]
+		}
+		if loc.hashes != nil {
+			vals["record_hash"] = loc.hashes[ref.row]
+		}
+		if raw, ok := loc.rawLines[ref.row]; ok {
+			vals["raw_line"] = raw
+		}
+		if addr, display, ok := src.cell(ref.row, e.Column); ok {
+			vals["cell"], vals["display"] = addr, display
+		}
+	}
 	ib.set(vals)
 }
 

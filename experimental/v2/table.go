@@ -29,6 +29,7 @@ type Table struct {
 	orig    [][]origin // per block, the origin of every row
 	srcs    []*rawSource
 	rejects []rejectEntry
+	finds   []Finding
 	err     error
 	policy  errorPolicy
 	prefix  string // info column prefix; empty means DefaultInfoPrefix
@@ -88,7 +89,7 @@ func (t Table) AsSource(name string) Table {
 		return t
 	}
 	old := t.srcs[0]
-	src := &rawSource{name: name, s: old.s, cols: old.cols}
+	src := &rawSource{name: name, s: old.s, chunks: old.chunks, n: old.n}
 	t.srcs = []*rawSource{src}
 	t.orig = [][]origin{sourceOrigins(src, t.Len())}
 	return t
@@ -139,6 +140,10 @@ func (t Table) Rejects() []Reject {
 	}
 	return out
 }
+
+// Findings returns the findings about the build of the deliveries the table
+// was read from: missing, new and probably renamed columns (D22, D79).
+func (t Table) Findings() []Finding { return append([]Finding(nil), t.finds...) }
 
 // Err returns the sticky error, or nil. It is a *PlanError or, for an error
 // whose code is set to ModeStop, a *DataError.
@@ -196,7 +201,7 @@ func (t Table) Apply(op Op) Table {
 	if op.impl != nil {
 		name = op.impl.kind()
 	}
-	srcs := t.srcs
+	srcs, finds := t.srcs, t.finds
 	if j, ok := op.impl.(joinOp); ok {
 		if j.right.err != nil {
 			t.err = j.right.err // the result carries the right side's error (D69)
@@ -207,6 +212,7 @@ func (t Table) Apply(op Op) Table {
 			return t
 		}
 		srcs = unionSources(t.srcs, j.right.srcs)
+		finds = append(append([]Finding(nil), t.finds...), j.right.finds...)
 	}
 	steps, out, err := checkPlan(t.s, []step{{name, op}})
 	if err != nil {
@@ -234,7 +240,7 @@ func (t Table) Apply(op Op) Table {
 		return t
 	}
 	rejects := append(append([]rejectEntry(nil), t.rejects...), rx.entries...)
-	return Table{s: out, blocks: blocksOf(res), orig: originsOf(res), srcs: srcs, rejects: rejects,
+	return Table{s: out, blocks: blocksOf(res), orig: originsOf(res), srcs: srcs, rejects: rejects, finds: finds,
 		policy: t.policy, prefix: t.prefix, run: t.run}
 }
 
