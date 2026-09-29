@@ -1477,3 +1477,61 @@ muss sie der Pipeline-Entwickler bewusst wählen, statt sich auf eine Zahl zu ve
 nicht kennt. "Mehr als" folgt [D4](#d4-eine-pipeline-kann-eine-schwelle-fur-aussortierte-zeilen-festlegen).
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #49)
 **Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D90 — Das Budget gilt je Prozess, ein Lauf kann darin eine eigene Obergrenze haben, und die Voreinstellung ist vorläufig ein Viertel des erkannten Limits
+
+**Entscheidung:** Das Speicherbudget nach [D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern) und [D65](#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess) ist ein Budget für den
+ganzen Prozess. Seine Voreinstellung ist ein Anteil des erkannten Limits: das Limit der cgroup,
+wenn eines gesetzt ist, sonst der physische Speicher. Der Anteil ist vorläufig 25 %. Slice 9 (#53)
+legt ihn aus den Messungen fest ([G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange)). Eine Funktion der Library setzt das Budget des Prozesses
+auf einen festen Wert. Zusätzlich kann eine Pipeline für ihren Lauf eine Obergrenze angeben. Ein
+Lauf lagert aus, sobald sein eigener Verbrauch seine Obergrenze erreicht oder der Verbrauch aller
+Läufe des Prozesses das Budget des Prozesses. Das verbindet "je Lauf einstellbar" aus [D28](#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)
+mit dem geteilten Budget aus [D65](#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess).
+**Begründung:** Ein Budget je Prozess verhindert, dass mehrere Läufe zusammen mehr belegen als
+der Container hat. Die Obergrenze je Lauf lässt einen kleinen Lauf neben einem großen nicht das
+ganze Budget belegen. Das Budget zählt nur die Blöcke der Engine, die Go-Runtime braucht bis zum
+Doppelten davon. Deshalb liegt der vorläufige Anteil bei einem Viertel und nicht bei der Hälfte.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #51)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D91 — Auf Wunsch setzt die Engine GOMEMLIMIT auf 90 % des erkannten Limits, wenn es noch nicht gesetzt ist
+
+**Entscheidung:** Verlangt eine Pipeline ausdrücklich, dass die Engine den Speicher verwaltet
+([D65](#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess)), setzt die Engine `GOMEMLIMIT` auf 90 % des erkannten Limits nach
+[D90](#d90-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits).
+Sie tut das nur, wenn weder die Umgebungsvariable `GOMEMLIMIT` noch ein früherer Aufruf von
+`debug.SetMemoryLimit` einen Wert gesetzt hat. Nach dem Lauf setzt sie den Wert nicht zurück.
+**Begründung:** 90 % lassen der Go-Runtime Luft bis zum Limit des Containers. Zurücksetzen würde
+einem zweiten Lauf im selben Prozess den Wert unter den Füßen wegziehen, und `GOMEMLIMIT` gilt
+ohnehin für den ganzen Prozess.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #51)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D92 — Ein Lauf markiert sein Verzeichnis zum Auslagern mit einer Dateisperre, die das Ergebnis bis Close hält
+
+**Entscheidung:** Jedes Unterverzeichnis zum Auslagern nach [D38](#d38-ein-spaterer-lauf-entfernt-verwaiste-ausgelagerte-daten) hat eine Sperrdatei, die
+mit `flock` gesperrt ist. Der Lauf hält die Sperre, und hält das Ergebnis nach [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close)
+ausgelagerte aussortierte Zeilen, hält es die Sperre bis `Close`. Ein späterer Lauf entfernt nur
+Verzeichnisse, deren Sperre er bekommt, deren Prozess also beendet ist oder deren Ergebnis
+geschlossen wurde. Verzeichnisse offener Ergebnisse bleiben stehen, im selben Prozess wie in einem
+anderen. Wo es kein `flock` gibt, entfernt ein Lauf keine fremden Verzeichnisse. Geteilte
+Netz-Volumes mehrerer Container bleiben offen.
+**Begründung:** Eine Sperre gibt das System beim Ende des Prozesses selbst frei, auch nach einer
+Beendigung durch das System. Anders als eine Prozess-ID kann sie nicht auf einen fremden Prozess
+zeigen, der dieselbe Nummer bekommen hat. Löst [G47](70-gap-ledger.md#g47-aufraumen-verwaister-laufe-gegen-offene-ergebnisse).
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #51, Auflösung von [G47](70-gap-ledger.md#g47-aufraumen-verwaister-laufe-gegen-offene-ergebnisse))
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D93 — Die Unit-Tests messen das Budget an der Zählung der Engine, den Speicher des Prozesses misst T23 in Docker
+
+**Entscheidung:** [T9](30-test-plan.md#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) und [T39](30-test-plan.md#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) prüfen die Spitze des Speichers, den die Engine in ihrem Budget
+zählt: in Schritten über alle Zeilen gesammelte Blöcke, den Rohzustand gelesener Zeilen und die
+Kopien aussortierter Zeilen. Die Toleranz ist die aus [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget), 10 % über dem Budget. Den
+Spitzenspeicher des ganzen Prozesses misst [T23](30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) in Docker ([D60](#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt)). Das löst den Teil von
+[G59](70-gap-ledger.md#g59-vergleichbarkeit-der-bestehkriterien), der fragt, worauf sich die 10 % beziehen.
+**Begründung:** Den Speicher des Prozesses bestimmt der Zeitpunkt der Speicherbereinigung. Ein
+Unit-Test darauf wäre unzuverlässig. Die Zählung der Engine ist genau und zeigt, ob die Engine
+rechtzeitig auslagert. Ob das Budget im Container reicht, zeigt erst der Lauf mit echten Limits.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #51, Teil-Auflösung von [G59](70-gap-ledger.md#g59-vergleichbarkeit-der-bestehkriterien))
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

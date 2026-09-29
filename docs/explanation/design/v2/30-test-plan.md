@@ -464,6 +464,29 @@ Filtert ein Schritt vorher die Hälfte der Zeilen weg, meldet ein Schritt, in de
 Spalte unterdrückt den Befund. `missing_column` ergibt keinen `format_change`. Der Befund zeigt
 höchstens fünf verschiedene Werte.
 
+### T60 — Ein Lauf lagert an seiner eigenen Obergrenze aus, und ohne Angabe folgt das Budget dem Limit der cgroup
+
+**Beweist:** [D90](10-design-decisions.md#d90-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits), [D28](10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern)
+Ein Lauf mit einer Obergrenze weit unter dem Budget des Prozesses lagert beim Sortieren aus, und
+seine gezählte Spitze bleibt an seiner Obergrenze. Ohne Angabe ist das Budget ein Viertel des
+Limits der cgroup (v2 und v1), und ohne gesetztes Limit ein Viertel des physischen Speichers. Ein
+fest gesetztes Budget des Prozesses ersetzt die Voreinstellung.
+
+### T61 — Auf Wunsch steht GOMEMLIMIT bei 90 % des erkannten Limits, und ein gesetzter Wert bleibt
+
+**Beweist:** [D91](10-design-decisions.md#d91-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist), [D65](10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess)
+Ohne gesetzten Wert setzt die Option `GOMEMLIMIT` auf 90 % des erkannten Limits. Ist die
+Umgebungsvariable gesetzt oder hat das Programm `debug.SetMemoryLimit` aufgerufen, bleibt der
+Wert unverändert. Nach dem Lauf wird der Wert nicht zurückgesetzt.
+
+### T62 — Ein späterer Lauf entfernt das Verzeichnis eines beendeten Laufs, nicht das eines offenen Ergebnisses
+
+**Beweist:** [D92](10-design-decisions.md#d92-ein-lauf-markiert-sein-verzeichnis-zum-auslagern-mit-einer-dateisperre-die-das-ergebnis-bis-close-halt), [D38](10-design-decisions.md#d38-ein-spaterer-lauf-entfernt-verwaiste-ausgelagerte-daten)
+Ein Unterverzeichnis ohne gehaltene Sperre entfernt der nächste Lauf. Das Verzeichnis eines
+Ergebnisses mit ausgelagerten aussortierten Zeilen, das noch nicht geschlossen ist, bleibt
+stehen und lesbar. Nach `Close` entfernt es der nächste Lauf, falls `Close` es nicht schon selbst
+entfernt hat.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -538,3 +561,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | `TestSourceRowCountsOnce` |
 | [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | `TestDroppedRowsReleaseTheRawState` |
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
+| [T60](#t60-ein-lauf-lagert-an-seiner-eigenen-obergrenze-aus-und-ohne-angabe-folgt-das-budget-dem-limit-der-cgroup) | ausstehend |
+| [T61](#t61-auf-wunsch-steht-gomemlimit-bei-90-des-erkannten-limits-und-ein-gesetzter-wert-bleibt) | ausstehend |
+| [T62](#t62-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) | ausstehend |
