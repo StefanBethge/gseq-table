@@ -239,10 +239,9 @@ func (s *shared) plainOf(a *aggOrigin, f func(*rawSource, int)) {
 
 // aggBuilder builds what went into an aggregated row from its input rows.
 type aggBuilder struct {
-	sh    *shared
-	a     aggOrigin
-	bySrc map[*rawSource]int // index in a.srcs
-	seen  map[unitKey]bool
+	sh   *shared
+	a    aggOrigin
+	seen map[unitKey]bool
 }
 
 func newAggBuilder(sh *shared) *aggBuilder { return &aggBuilder{sh: sh} }
@@ -253,17 +252,15 @@ func (b *aggBuilder) add(o origin) {
 	b.sh.eachUnitTop(o, b.plain, b.keyed)
 }
 
+// plain adds n source rows of src; a group has rows of few sources.
 func (b *aggBuilder) plain(src *rawSource, n int) {
-	if b.bySrc == nil {
-		b.bySrc = map[*rawSource]int{}
+	for i := range b.a.srcs {
+		if b.a.srcs[i].src == src {
+			b.a.srcs[i].n += n
+			return
+		}
 	}
-	i, ok := b.bySrc[src]
-	if !ok {
-		i = len(b.a.srcs)
-		b.bySrc[src] = i
-		b.a.srcs = append(b.a.srcs, srcCount{src, 0})
-	}
-	b.a.srcs[i].n += n
+	b.a.srcs = append(b.a.srcs, srcCount{src, n})
 }
 
 func (b *aggBuilder) keyed(k unitKey) {
