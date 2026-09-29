@@ -8,9 +8,9 @@ import (
 
 // DefaultFormatChangeLimit is the share of the rows that went into a step
 // from which values of a column failing with the same code are a format
-// change (D59, D85). It is provisional; the prototype sets the final
-// default on its sample deliveries (slice 10, #54).
-const DefaultFormatChangeLimit = 0.5
+// change (D59, D85). The maintainer set it to a fifth on the sample
+// deliveries of the prototype (D105).
+const DefaultFormatChangeLimit = 0.2
 
 // maxExamples is the number of failed values a format change shows (D85).
 const maxExamples = 5

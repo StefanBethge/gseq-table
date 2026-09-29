@@ -460,9 +460,9 @@ sich mit Rohzustand weiter aussortieren.
 
 **Beweist:** [D85](10-design-decisions.md#d85-der-anteil-fur-format_change-bezieht-sich-auf-die-zeilen-einer-quelle-die-in-den-schritt-hineingingen-vorlaufig-mit-50), [D59](10-design-decisions.md#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt)
 Filtert ein Schritt vorher die Hälfte der Zeilen weg, meldet ein Schritt, in dem die Hälfte der
-übrigen scheitert, `format_change` mit der vorläufigen Grenze 0,5. Eine höhere Grenze für die
-Spalte unterdrückt den Befund. `missing_column` ergibt keinen `format_change`. Der Befund zeigt
-höchstens fünf verschiedene Werte.
+übrigen scheitert, `format_change` mit der Voreinstellung nach [D105](10-design-decisions.md#d105-die-voreinstellung-der-grenze-fur-format_change-ist-02).
+Eine Grenze über 0,5 für die Spalte unterdrückt den Befund. `missing_column` ergibt keinen
+`format_change`. Der Befund zeigt höchstens fünf verschiedene Werte.
 
 ### T60 — Nach einem Zweig stehen die Zeilen in Eingangsreihenfolge, und Operationen über alle Zeilen im Zweig sind Planfehler
 
@@ -537,6 +537,12 @@ Ein Unterverzeichnis ohne gehaltene Sperre entfernt der nächste Lauf. Das Verze
 Ergebnisses mit ausgelagerten aussortierten Zeilen, das noch nicht geschlossen ist, bleibt
 stehen und lesbar. Nach `Close` entfernt es der nächste Lauf, falls `Close` es nicht schon selbst
 entfernt hat.
+
+### T70 — Ohne Einstellung meldet der Änderungsbericht format_change ab einem Fünftel der Zeilen
+
+**Beweist:** [D105](10-design-decisions.md#d105-die-voreinstellung-der-grenze-fur-format_change-ist-02), [D59](10-design-decisions.md#d59-die-grenze-fur-einen-formatanderungs-befund-ist-einstellbar-die-voreinstellung-wird-im-prototyp-festgelegt)
+Ohne eingestellte Grenze ergeben 2 von 10 gescheiterten Werten einer Spalte `format_change`,
+1 von 10 ergibt keinen Befund.
 
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
@@ -622,3 +628,4 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T67](#t67-ein-lauf-lagert-an-seiner-eigenen-obergrenze-aus-und-ohne-angabe-folgt-das-budget-dem-limit-der-cgroup) | `TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup` |
 | [T68](#t68-auf-wunsch-steht-gomemlimit-bei-90-des-erkannten-limits-und-ein-gesetzter-wert-bleibt) | `TestManagedMemorySetsGOMEMLIMITToNinetyPercent` |
 | [T69](#t69-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) | `TestLaterRunRemovesEndedRunsButNotOpenResults` |
+| [T70](#t70-ohne-einstellung-meldet-der-anderungsbericht-format_change-ab-einem-funftel-der-zeilen) | `TestFormatChangeDefaultLimitIsOneFifth` |
