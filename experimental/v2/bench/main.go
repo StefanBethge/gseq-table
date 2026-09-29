@@ -112,8 +112,13 @@ func (c runConfig) args() []string {
 func cmdRun(args []string) error {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	c := runFlags(fs)
+	prof := profileFlags(fs)
 	fs.Parse(args)
+	if err := prof.start(); err != nil {
+		return err
+	}
 	n, err := runCase(context.Background(), *c)
+	prof.finish()
 	if err != nil {
 		return err
 	}
