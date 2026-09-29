@@ -381,7 +381,14 @@ func (x *sorter) merge(yield func(row) error) error {
 		}
 		// The rows leave the buffer, so that a spill meanwhile has
 		// nothing to write; they are counted until the merge ends.
-		b, seq := x.sorted(x.buf, x.seq)
+		bs := x.buf
+		if x.prep != nil {
+			bs = make([]batch, len(x.buf))
+			for i, b := range x.buf {
+				bs[i] = x.prep(b)
+			}
+		}
+		b, seq := x.sorted(bs, x.seq)
 		bytes := x.bytes
 		x.buf, x.seq, x.bytes, x.rows = nil, nil, 0, 0
 		defer x.m.shrink(bytes)

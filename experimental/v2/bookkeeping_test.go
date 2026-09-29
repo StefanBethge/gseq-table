@@ -177,9 +177,38 @@ func TestStreamingGroupByEqualsInMemoryAndSpillsOnlyForManyGroups(t *testing.T) 
 		})
 	}
 
+	// New keys after the budget is reached wait for the sorted way, also
+	// when nothing spills.
+	src := floatGroups(2_000, 1_500)
+	op := GroupBy([]string{"g"}, streaming...)
+	steps, _, err := checkPlan(src.s, []step{{name: "group_by", op: op}}, DefaultInfoPrefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &collector{}
+	fs := build(steps, &rejector{run: newRun(), shared: &shared{}}, 0, c).(*fullStage)
+	for _, b := range src.batches() {
+		for _, part := range chunk(b, 500) {
+			if err := fs.push(ctx, part); err != nil {
+				t.Fatal(err)
+			}
+			fs.g.full = true // after the first 500 rows
+		}
+	}
+	if fs.x.rows == 0 || fs.x.spilled() {
+		t.Fatalf("waiting rows %d, spilled %v", fs.x.rows, fs.x.spilled())
+	}
+	if err := fs.finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got := Table{s: src.Apply(op).s, blocks: blocksOf(c.batches), orig: originsOf(c.batches)}
+	if g, w := rowsOf(t, got, false), rowsOf(t, src.Apply(op), false); g != w {
+		t.Errorf("waiting keys:\n%s\nwant\n%s", head(g), head(w))
+	}
+
 	// An integer sum that overflows rejects the aggregated row, as in memory.
-	src := NewTable(Texts("g", "a", "b", "a", "b"), Ints("v", math.MaxInt64, 1, 1, 2))
-	op := GroupBy([]string{"g"}, Sum("v"), Count("v").As("n"))
+	src = NewTable(Texts("g", "a", "b", "a", "b"), Ints("v", math.MaxInt64, 1, 1, 2))
+	op = GroupBy([]string{"g"}, Sum("v"), Count("v").As("n"))
 	want := entries(t, src.Apply(op))
 	res, err := From(src, 1).Then(op).Run(ctx)
 	if err != nil {
