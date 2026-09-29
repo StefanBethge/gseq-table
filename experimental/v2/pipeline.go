@@ -68,11 +68,11 @@ type opened interface {
 
 // DefaultBlockLen is the block length of a pipeline with block length 0,
 // and of a table read at once. The benchmarks of the prototype found no
-// difference between 4096 and 262144 rows (D106, G13).
+// difference between 4096 and 262144 rows (D107, G13).
 const DefaultBlockLen = 1 << 14
 
 // From returns a pipeline over the rows of src, run in blocks of blockLen
-// rows; 0 means DefaultBlockLen (D106).
+// rows; 0 means DefaultBlockLen (D107).
 func From(src Table, blockLen int) *Pipeline {
 	return &Pipeline{src: tableSource{src}, blockLen: blockLen}
 }

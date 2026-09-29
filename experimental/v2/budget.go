@@ -30,7 +30,7 @@ import (
 // default budget of the process: the limit of the cgroup, else the
 // physical memory. The measurements of the prototype set it: without
 // GOMEMLIMIT the process grew to over four times the budget, so that a
-// quarter failed in containers of 1, 2 and 4 GiB (D107, G13).
+// quarter failed in containers of 1, 2 and 4 GiB (D108, G13).
 const DefaultMemoryShare = 0.10
 
 // detectLimit returns the memory limit of the process, 0 if unknown.

@@ -73,7 +73,7 @@ func TestPipelinePlanErrorBeforeAnyRowIsRead(t *testing.T) {
 			t.Fatalf("%s: %d rows read before the plan error", name, src.read)
 		}
 	}
-	wantPlanError(t, From(delivery(1), -1).Check()) // 0 is the default (D106)
+	wantPlanError(t, From(delivery(1), -1).Check()) // 0 is the default (D107)
 	wantPlanError(t, From(delivery(1).Select("x"), 1).Check())
 	wantPlanError(t, From(delivery(1), 1).Then(Op{}).Check())
 }
@@ -175,7 +175,7 @@ func TestPipelineOverEmptySource(t *testing.T) {
 }
 
 // Block length 0 is the default of the engine, a negative one a plan error
-// (D106).
+// (D107).
 func TestBlockLengthZeroIsTheDefault(t *testing.T) {
 	src := &countingSource{tableSource: tableSource{delivery(DefaultBlockLen + 5)}}
 	var sizes []int

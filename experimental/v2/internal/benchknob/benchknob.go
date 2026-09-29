@@ -1,5 +1,5 @@
 // Package benchknob holds switches of the engine that only the benchmarks
-// and tests of the module set, never a pipeline (design decision D105).
+// and tests of the module set, never a pipeline (design decision D106).
 package benchknob
 
 import "sync/atomic"

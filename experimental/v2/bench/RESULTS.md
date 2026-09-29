@@ -10,9 +10,9 @@ stehen unter [results/](results/), das Werkzeug ist `bench` in diesem Verzeichni
 |---|---|---|
 | [G5](../../../docs/explanation/design/v2/70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht): v2 automatisch mit Rohzustand gegen v1 `MutableTable` | höchstens 1,2-fache Laufzeit und höchstens der Spitzenspeicher, bei Filter, Umwandeln, Sortieren, Gruppieren und Join | **nicht bestanden, Neumessung nach #66**. Zeit: nur Sortieren und zahlenlastiges Umwandeln im Kriterium, sonst das 1,3- bis 2,2-Fache. Speicher: nur abgeleitete Spalten im Kriterium, Sortieren das 2,4- bis 2,9-Fache |
 | [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): typisierte Blöcke gegen v1 `Table`, zahlenlastig | nicht langsamer und höchstens 70 % des Spitzenspeichers | **nicht bestanden, Neumessung nach #66**. Nur Umwandeln erfüllt beides (0,67- bis 0,68-fache Zeit, 0,53- bis 0,58-facher Speicher); Sortieren ist schneller, braucht aber das Doppelte an Speicher |
-| [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): Blocklänge | Voreinstellung aus den Messungen | 16384 Zeilen ([D106](../../../docs/explanation/design/v2/10-design-decisions.md#d106-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie)); 4096 bis 262144 liegen innerhalb weniger Prozent |
-| [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): Anteil des Speichers | Voreinstellung aus den Messungen | 10 % des erkannten Limits ([D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)); 25 % endeten ohne `GOMEMLIMIT` in jedem Limit durch das System |
-| [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): Rohzustand an und aus | messen | ohne Rohzustand ([D105](../../../docs/explanation/design/v2/10-design-decisions.md#d105-ein-interner-mess-schalter-lasst-den-rohzustand-fur-die-benchmarks-weg)) sinkt der Spitzenspeicher beim Filtern um rund 40 %, sonst meist um weniger als 10 %; die Laufzeit bleibt gleich |
+| [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): Blocklänge | Voreinstellung aus den Messungen | 16384 Zeilen ([D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie)); 4096 bis 262144 liegen innerhalb weniger Prozent |
+| [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): Anteil des Speichers | Voreinstellung aus den Messungen | 10 % des erkannten Limits ([D108](../../../docs/explanation/design/v2/10-design-decisions.md#d108-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)); 25 % endeten ohne `GOMEMLIMIT` in jedem Limit durch das System |
+| [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): Rohzustand an und aus | messen | ohne Rohzustand ([D106](../../../docs/explanation/design/v2/10-design-decisions.md#d106-ein-interner-mess-schalter-lasst-den-rohzustand-fur-die-benchmarks-weg)) sinkt der Spitzenspeicher beim Filtern um rund 40 %, sonst meist um weniger als 10 %; die Laufzeit bleibt gleich |
 | [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): Excel lesen | im Budget | 1 Mio. Zeilen (58 MB) mit Ziel in 136 MiB Prozessspeicher |
 | [T23](../../../docs/explanation/design/v2/30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein): 1BRC-Datei in Docker mit 1g, 2g, 4g | Lauf kommt durch, Spitze im Budget plus 10 % | **nicht bestanden, Neumessung nach #66**. Die volle Datei endet bei jedem Limit durch das System; die Engine lagert rechtzeitig aus, aber die Buchführung je Quellzeile außerhalb des Budgets ([G67](../../../docs/explanation/design/v2/70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets)) wächst mit der Lieferung. Der Unit-Test zu [T23](../../../docs/explanation/design/v2/30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) ist grün |
 
@@ -39,9 +39,9 @@ das Ergebnis bleibt im Speicher. `read` ist das Lesen allein.
   Stelle; Gruppieren und Join gibt es in v1 nur auf `Table` und laufen auf `FreezeView`.
   Umwandeln in v1 heißt: den Text parsen und neu formatieren, wie die nachsichtigen Umwandlungen von
   v1 ([D74](../../../docs/explanation/design/v2/10-design-decisions.md#d74-cast-ist-standardmaig-streng-die-option-lenient-verhalt-sich-wie-v1)).
-- `v2`: automatische Wahl nach [D7](../../../docs/explanation/design/v2/10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert), mit Rohzustand nach [D64](../../../docs/explanation/design/v2/10-design-decisions.md#d64-mit-dem-rohzustand-geteilte-spalten-gelten-als-geteilt-auch-im-modus-immer-andern), Blocklänge nach [D106](../../../docs/explanation/design/v2/10-design-decisions.md#d106-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie).
+- `v2`: automatische Wahl nach [D7](../../../docs/explanation/design/v2/10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert), mit Rohzustand nach [D64](../../../docs/explanation/design/v2/10-design-decisions.md#d64-mit-dem-rohzustand-geteilte-spalten-gelten-als-geteilt-auch-im-modus-immer-andern), Blocklänge nach [D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie).
   Filter, Gruppieren und abgeleitete Zahlenspalten wandeln die Spalten vorher um, weil Rohspalten
-  Text sind ([D29](../../../docs/explanation/design/v2/10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text)). `v2noraw`: wie `v2`, ohne Rohzustand ([D105](../../../docs/explanation/design/v2/10-design-decisions.md#d105-ein-interner-mess-schalter-lasst-den-rohzustand-fur-die-benchmarks-weg)).
+  Text sind ([D29](../../../docs/explanation/design/v2/10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text)). `v2noraw`: wie `v2`, ohne Rohzustand ([D106](../../../docs/explanation/design/v2/10-design-decisions.md#d106-ein-interner-mess-schalter-lasst-den-rohzustand-fur-die-benchmarks-weg)).
 - Zahlenlastige Lieferung: `id`, Textschlüssel `code` mit 1000 Werten, fünf Gleitkommaspalten, eine
   Ganzzahlspalte (57 MB bei 1 Mio. Zeilen). Textlastige Lieferung: `id`, `code`, fünf Textspalten
   (Stadt, Name, Straße, E-Mail, Kommentar), ein Betrag (153 MB bei 1 Mio. Zeilen). `bench gen` erzeugt
@@ -215,7 +215,7 @@ Textlastig, 10M Zeilen:
 Mit einem Ziel hält die Ergebnistabelle keine Zeilen ([D94](../../../docs/explanation/design/v2/10-design-decisions.md#d94-mit-einem-ziel-fur-ergebnisse-halt-die-ergebnistabelle-keine-zeilen)). Die blockweisen Schritte über 10 Mio.
 Zeilen brauchen dann rund 700 MiB, ohne dass die Engine mehr als wenige Blöcke hält. Das ist vor allem
 die Buchführung je Quellzeile ([G67](../../../docs/explanation/design/v2/70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets)). Sortieren, Gruppieren und Join halten weiter alle Zeilen, weil
-das Budget des Hosts (ein Viertel von 48 GiB vor [D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)) nicht erreicht wird.
+das Budget des Hosts (ein Viertel von 48 GiB vor [D108](../../../docs/explanation/design/v2/10-design-decisions.md#d108-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)) nicht erreicht wird.
 
 | Art | Fall | Impl | Zeilen | Block | Ziel | Budget MiB | GOMEMLIMIT | s | MiB | Wdh. | Fehlgeschlagen | Ergebnis |
 |---|---|---|---:|---:|---|---:|---|---:|---:|---:|---:|---|
@@ -284,7 +284,7 @@ Numerische Zellen, acht Spalten. Mit Ziel bleibt das Lesen klein.
 | num | excel | v2 | 1M | 0 | false | 0 | false | 16.06 | 695 | 3 | 0 | 1000000 |
 | num | excel | v2 | 1M | 0 | true | 0 | false | 15.43 | 136 | 3 | 0 | 1000000 |
 
-### Blocklänge ([D106](../../../docs/explanation/design/v2/10-design-decisions.md#d106-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie))
+### Blocklänge ([D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie))
 
 10 Mio. zahlenlastige Zeilen, Ergebnis im Speicher.
 
@@ -316,7 +316,7 @@ Numerische Zellen, acht Spalten. Mit Ziel bleibt das Lesen klein.
 | num | sort | v2 | 10M | 4096 | false | 0 | false | 15.46 | 9066 | 3 | 0 | 10000000 |
 | num | sort | v2 | 10M | 65536 | false | 0 | false | 14.85 | 8952 | 3 | 0 | 10000000 |
 
-## Budget und GOMEMLIMIT in Docker ([D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits))
+## Budget und GOMEMLIMIT in Docker ([D108](../../../docs/explanation/design/v2/10-design-decisions.md#d108-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits))
 
 Sortieren von 10 Mio. zahlenlastigen Zeilen in ein Ziel, das die Zeilen verwirft
 (`bench/docker.sh <dir> sort`). Budget „25 %“ ist die vorläufige Voreinstellung aus [D101](../../../docs/explanation/design/v2/10-design-decisions.md#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits), mit der diese
@@ -350,14 +350,14 @@ Ohne `GOMEMLIMIT` wächst der Heap nach der Regel der Go-Runtime auf ein Mehrfac
 und mit 25 % reicht das in keinem Limit. Mit 10 % laufen 2g und 4g durch, mit einer Spitze von 69 %
 und 51 % des Limits. Kleinere Budgets tragen auch, lagern aber so oft aus, dass der Lauf vier- bis
 fünfmal länger dauert. Mit `GOMEMLIMIT` tragen auch 25 %. Weil [D65](../../../docs/explanation/design/v2/10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess) `GOMEMLIMIT` nur auf Wunsch setzt,
-muss die Voreinstellung ohne es tragen, daher 10 % ([D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)). Bei 1g reicht kein Anteil ohne `GOMEMLIMIT`:
+muss die Voreinstellung ohne es tragen, daher 10 % ([D108](../../../docs/explanation/design/v2/10-design-decisions.md#d108-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)). Bei 1g reicht kein Anteil ohne `GOMEMLIMIT`:
 schon die Buchführung von 10 Mio. Quellzeilen füllt das Limit ([G67](../../../docs/explanation/design/v2/70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets)).
 
 ## [T23](../../../docs/explanation/design/v2/30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein): 1BRC in Docker
 
 `examples/onebrc_budget` (Gruppieren mit Minimum, Mittelwert und Maximum, dann Sortieren) über die
 1BRC-Datei `~/1brc/golang/measurements.txt` (13,8 GB, 1 Mrd. Zeilen, schreibgeschützt eingebunden,
-nie im Repo), mit `GOMEMLIMIT` durch die Engine und dem Budget nach [D107](../../../docs/explanation/design/v2/10-design-decisions.md#d107-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)
+nie im Repo), mit `GOMEMLIMIT` durch die Engine und dem Budget nach [D108](../../../docs/explanation/design/v2/10-design-decisions.md#d108-der-anteil-des-speichers-fur-das-budget-ist-ein-zehntel-des-erkannten-limits)
 (`bench/docker.sh <dir> onebrc <datei>`). Die Ausschnitte sind die ersten 20, 50 und 100 Mio. Zeilen.
 
 | Lieferung | Limit | Budget | Ergebnis | Zeit s | Spitze MiB |

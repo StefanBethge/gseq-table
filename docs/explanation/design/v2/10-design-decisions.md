@@ -1685,7 +1685,7 @@ rechtzeitig auslagert. Ob das Budget im Container reicht, zeigt erst der Lauf mi
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #51, Teil-Auflösung von [G59](70-gap-ledger.md#g59-vergleichbarkeit-der-bestehkriterien))
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
-### D105 — Ein interner Mess-Schalter lässt den Rohzustand für die Benchmarks weg
+### D106 — Ein interner Mess-Schalter lässt den Rohzustand für die Benchmarks weg
 
 **Entscheidung:** Für die Messungen zu [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) hat die Engine einen Schalter, der den Rohzustand gelesener
 Zeilen nicht hält: Die Blöcke eines Readers werden nicht als Rohzustand gespeichert, nicht im
@@ -1698,7 +1698,7 @@ trennen. Als Option für Pipelines würde er das Fehlermodell aus [D1](#d1-ausso
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #53)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
-### D106 — Die Blocklänge ist standardmäßig 16384 Zeilen, 0 wählt sie
+### D107 — Die Blocklänge ist standardmäßig 16384 Zeilen, 0 wählt sie
 
 **Entscheidung:** Die Voreinstellung der Blocklänge nach [D29](#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) ist 16384 Zeilen. Eine Pipeline mit
 Blocklänge 0 läuft mit ihr, eine negative Blocklänge ist ein Planfehler. Auch eine auf einmal gelesene
@@ -1711,7 +1711,7 @@ Budgets. Löst den Teil von [G13](70-gap-ledger.md#g13-vorteil-spaltenorientiert
 **Quelle:** Maintainer, 2026-09-29 (Auftrag bei der Umsetzung von #53: Voreinstellungen aus den Messungen festlegen)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
-### D107 — Der Anteil des Speichers für das Budget ist ein Zehntel des erkannten Limits
+### D108 — Der Anteil des Speichers für das Budget ist ein Zehntel des erkannten Limits
 
 **Entscheidung:** Die Voreinstellung des Budgets nach [D101](#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits) ist 10 % des erkannten Limits statt
 vorläufig 25 %. Alles andere an [D101](#d101-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits) bleibt.

@@ -7,7 +7,7 @@ import (
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/benchknob"
 )
 
-// The switch of D105 drops the raw state of the rows read: nothing of it
+// The switch of D106 drops the raw state of the rows read: nothing of it
 // is counted, and the result is the same as with the raw state.
 func TestNoRawStateSwitchDropsTheRawState(t *testing.T) {
 	run := func() Result {

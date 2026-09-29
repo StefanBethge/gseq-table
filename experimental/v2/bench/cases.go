@@ -23,7 +23,7 @@ import (
 //	v1m     v1 MutableTable, in place where v1 has the operation; group by
 //	        and join exist only on Table and run on a view of the rows
 //	v2      v2 with the automatic copy mode (D7) and the raw state (D64)
-//	v2noraw v2 without the raw state, by the internal switch (D105)
+//	v2noraw v2 without the raw state, by the internal switch (D106)
 var caseNames = []string{"read", "filter", "cast", "derive", "sort", "groupby", "join"}
 
 // spec names the columns a case uses in a delivery of one kind.

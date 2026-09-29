@@ -79,7 +79,7 @@ type keptCell struct {
 
 // addChunk stores cols as the raw state of the next rows. With release, the
 // rows count as in the plan.
-// Under the switch of D105 the chunk is not kept.
+// Under the switch of D106 the chunk is not kept.
 func (r *rawSource) addChunk(cols []block.Column, rows int) {
 	if r.rel != nil && benchknob.NoRawState.Load() {
 		cols = nil

@@ -11,7 +11,7 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// The generated deliveries (D60, D106). Both have eight columns and a text
+// The generated deliveries (D60). Both have eight columns and a text
 // key code with 1000 values. A numeric-heavy delivery holds five floats
 // and two integers besides the key; a text-heavy one five texts, one
 // float and one integer. The dimension table for the join maps every code
