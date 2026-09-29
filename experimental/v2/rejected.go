@@ -3,6 +3,7 @@ package gtable
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
@@ -94,10 +95,68 @@ var aggregatedInfo = []field{
 // RejectedRows are the rejected rows of a table or a run as tables (D1): a
 // table per source with the raw columns of the source and the info columns
 // (D13, D44), the overview with one entry per error (D15), and a table per
-// step in which aggregated rows failed (D48, D77).
+// step in which aggregated rows failed (D48, D77). After Result.Close, every
+// table carries the sticky error ErrClosed (D94).
 type RejectedRows struct {
 	prefix  string
 	entries []rejectEntry
+	st      *rejectState
+}
+
+// rejectState is shared by the table of a result and the tables derived
+// from it: the source rows a writer in the plan took (D49), and whether
+// the result is closed (D94).
+type rejectState struct {
+	mu     sync.Mutex
+	sunk   map[srcRef]bool
+	closed bool
+}
+
+func (st *rejectState) sink(r srcRef) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.sunk == nil {
+		st.sunk = map[srcRef]bool{}
+	}
+	// The copy of the raw state stays until Close: the overview, which
+	// the result keeps (D91), shows the displayed text of a cell from it.
+	st.sunk[r] = true
+}
+
+func (st *rejectState) written(r srcRef) bool {
+	if st == nil {
+		return false
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.sunk[r]
+}
+
+func (st *rejectState) isClosed() bool {
+	if st == nil {
+		return false
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.closed
+}
+
+// close marks the state closed and frees the copies of the raw state of
+// the rejected rows (D94).
+func (st *rejectState) close(entries []rejectEntry) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.closed {
+		return
+	}
+	st.closed = true
+	for _, e := range entries {
+		for _, r := range e.orig.refs {
+			if r.src.rel != nil {
+				r.src.rel.kept = nil
+			}
+		}
+	}
 }
 
 // SourceRejects are the rejected rows of one source: each source row once,
@@ -116,33 +175,61 @@ type StepRejects struct {
 // RejectedRows returns the rejected rows of the table's operations as
 // tables.
 func (t Table) RejectedRows() RejectedRows {
-	return RejectedRows{prefix: infoPrefix(t.prefix), entries: t.rejects}
+	return RejectedRows{prefix: infoPrefix(t.prefix), entries: t.rejects, st: t.rs}
+}
+
+// closedTable is a table of rejected rows after Close.
+func closedTable() Table { return Table{err: ErrClosed} }
+
+// sourceGroup are the rejected rows of one source: the source rows in the
+// order of their first error, that entry and the number of errors of each.
+type sourceGroup struct {
+	src    *rawSource
+	rows   []int
+	first  map[srcRef]int
+	counts map[srcRef]int
+}
+
+// groups returns the rejected rows per source, in the order of their first
+// rejected row, without the rows a writer took (D49).
+func (r RejectedRows) groups() []sourceGroup {
+	var out []sourceGroup
+	idx := map[*rawSource]int{}
+	for i, e := range r.entries {
+		for _, ref := range e.orig.refs {
+			if r.st.written(ref) {
+				continue
+			}
+			j, ok := idx[ref.src]
+			if !ok {
+				j = len(out)
+				idx[ref.src] = j
+				out = append(out, sourceGroup{src: ref.src, first: map[srcRef]int{}, counts: map[srcRef]int{}})
+			}
+			g := &out[j]
+			if _, ok := g.first[ref]; !ok {
+				g.first[ref] = i
+				g.rows = append(g.rows, ref.row)
+			}
+			g.counts[ref]++
+		}
+	}
+	return out
 }
 
 // Sources returns a table per source that has rejected rows, in the order
 // of their first rejected row. Source names are unique (D75). A table whose
-// raw columns clash with the info prefix carries a sticky plan error.
+// raw columns clash with the info prefix carries a sticky plan error. The
+// rows a writer in the plan took are not in it (D49).
 func (r RejectedRows) Sources() []SourceRejects {
-	var srcs []*rawSource
-	rows := map[*rawSource][]int{}
-	first := map[srcRef]int{}  // entry of the first error of a source row
-	counts := map[srcRef]int{} // errors of a source row
-	for i, e := range r.entries {
-		for _, ref := range e.orig.refs {
-			if _, ok := rows[ref.src]; !ok {
-				srcs = append(srcs, ref.src)
-				rows[ref.src] = nil
-			}
-			if _, ok := first[ref]; !ok {
-				first[ref] = i
-				rows[ref.src] = append(rows[ref.src], ref.row)
-			}
-			counts[ref]++
+	gs := r.groups()
+	out := make([]SourceRejects, len(gs))
+	for i, g := range gs {
+		if r.st.isClosed() {
+			out[i] = SourceRejects{g.src.name, closedTable()}
+			continue
 		}
-	}
-	out := make([]SourceRejects, len(srcs))
-	for i, src := range srcs {
-		out[i] = SourceRejects{src.name, r.sourceTable(src, rows[src], first, counts)}
+		out[i] = SourceRejects{g.src.name, r.sourceTable(g)}
 	}
 	return out
 }
@@ -157,7 +244,8 @@ func (r RejectedRows) Source(name string) (Table, bool) {
 	return Table{}, false
 }
 
-func (r RejectedRows) sourceTable(src *rawSource, rows []int, first, counts map[srcRef]int) Table {
+func (r RejectedRows) sourceTable(g sourceGroup) Table {
+	src, rows := g.src, g.rows
 	if err := prefixClash(src, r.prefix); err != nil {
 		return Table{err: &PlanError{Step: "rejected_rows", Err: err}}
 	}
@@ -168,7 +256,7 @@ func (r RejectedRows) sourceTable(src *rawSource, rows []int, first, counts map[
 	ib := newInfoBuilder(infoFields([]*rawSource{src}), len(rows))
 	for _, row := range rows {
 		ref := srcRef{src, row}
-		ib.sourceRow(r.entries[first[ref]], ref, counts[ref])
+		ib.sourceRow(r.entries[g.first[ref]], ref, g.counts[ref])
 	}
 	return NewTable(append(cols, ib.columns(r.prefix)...)...)
 }
@@ -177,6 +265,9 @@ func (r RejectedRows) sourceTable(src *rawSource, rows []int, first, counts map[
 // source row of the failed row, sharing its reject_id (D11, D15), and one
 // with an empty location for an aggregated row (D77).
 func (r RejectedRows) Overview() Table {
+	if r.st.isClosed() {
+		return closedTable()
+	}
 	perID := r.errorsPerID()
 	var srcs []*rawSource
 	for _, e := range r.entries {
@@ -232,6 +323,9 @@ func (r RejectedRows) Aggregated() []StepRejects {
 			ib.aggregatedRow(e, perID[e.ID])
 		}
 		rows := NewTable(append(cols, ib.columns(r.prefix)...)...)
+		if r.st.isClosed() {
+			rows = closedTable()
+		}
 		out[i] = StepRejects{st.name, rows}
 	}
 	return out

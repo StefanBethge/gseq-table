@@ -519,7 +519,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 |---|---|
 | [T1](#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) | `TestRejectsCarryRawStateNotWorkingState` |
 | [T2](#t2-aussortierte-zeilen-lassen-sich-mit-den-datei-writern-schreiben-und-mit-dem-passenden-reader-wieder-lesen) | ausstehend |
-| [T3](#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht) | ausstehend |
+| [T3](#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht) | `TestStopEndsTheRunAtTheFirstDataErrorAndRejectDoesNot` |
 | [T4](#t4-die-schwelle-markiert-den-lauf-als-fehlgeschlagen-und-lasst-ihn-standardmaig-zu-ende-laufen) | `TestThresholdFailsTheRunAndRunsToTheEnd` |
 | [T5](#t5-ohne-angaben-kommt-ein-lauf-uber-eine-schmutzige-lieferung-durch) | `TestDirtyDeliveryRunsThroughWithDefaults` |
 | [T6](#t6-eine-im-schritt-scheiternde-zeile-steht-einmal-in-ihrer-tabelle-je-quelle-hat-einen-ubersichtseintrag-je-spalte-und-erreicht-spatere-schritte-nicht) | `TestRowFailingInOneStepIsRejectedOnceWithAnEntryPerColumn` |
@@ -549,14 +549,14 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T30](#t30-der-http-writer-liefert-jede-zeile-trotz-vorubergehender-fehler-aus) | ausstehend |
 | [T31](#t31-die-offentliche-api-enthalt-keine-gseq-typen) | `TestPublicAPIHasNoGseqTypes` |
 | [T32](#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert) | ausstehend |
-| [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | ausstehend |
+| [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | `TestSinkThatRejectsABlockEndsTheRunWithSinkError` |
 | [T34](#t34-excel-zellen-tragen-den-gespeicherten-wert-in-fester-textform-aussortierte-zeilen-auch-den-angezeigten-text) | `TestExcelCellsCarryStoredValueAndDisplay` |
 | [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | ausstehend |
-| [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | ausstehend |
+| [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | `TestHighestStatusAppliesAndTheResultNamesAllCauses` |
 | [T37](#t37-die-kennung-einer-lieferung-steht-beim-offnen-fest-und-andert-sich-mit-der-datei) | `TestDeliveryIDIsFixedAtOpen` |
 | [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | ausstehend |
 | [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
-| [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | ausstehend |
+| [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | `TestRejectWritersWriteDuringTheRunElseTheResultHoldsTheRejectsUntilClose` |
 | [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | `TestTableCarriesRejectsAndStickyError` |
 | [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | `TestTwoSheetsAreTwoSourcesAndAMissingSheetIsADeliveryError` |
 | [T43](#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort) | `TestThresholdAbortsAfterTheMinimumForAShareAndAtOnceForAnAbsoluteLimit` |
@@ -576,8 +576,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | `TestSourceRowCountsOnce` |
 | [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | `TestDroppedRowsReleaseTheRawState` |
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
-| [T60](#t60-mit-einem-ziel-halt-das-ergebnis-keine-zeilen-und-das-ziel-wird-auch-nach-einem-abbruch-geschlossen) | ausstehend |
-| [T61](#t61-writer-je-quelle-bekommen-tabellen-mit-festen-spalten-und-nach-einem-vorzeitigen-ende-bleiben-nicht-geschriebene-aussortierte-zeilen-im-ergebnis) | ausstehend |
+| [T60](#t60-mit-einem-ziel-halt-das-ergebnis-keine-zeilen-und-das-ziel-wird-auch-nach-einem-abbruch-geschlossen) | `TestResultWithASinkHoldsNoRowsAndEverySinkIsClosed` |
+| [T61](#t61-writer-je-quelle-bekommen-tabellen-mit-festen-spalten-und-nach-einem-vorzeitigen-ende-bleiben-nicht-geschriebene-aussortierte-zeilen-im-ergebnis) | `TestRejectWritersPerSourceAndRejectsAfterAnEarlyEnd` |
 | [T62](#t62-ein-fachlicher-schlussel-ergibt-record_key-aus-den-werten-unzerlegbare-zeilen-behalten-den-positionsschlussel) | ausstehend |
-| [T63](#t63-nach-close-tragen-die-tabellen-aussortierter-zeilen-einen-haftenden-fehler-zahlungen-und-status-bleiben) | ausstehend |
+| [T63](#t63-nach-close-tragen-die-tabellen-aussortierter-zeilen-einen-haftenden-fehler-zahlungen-und-status-bleiben) | `TestCloseReleasesTheRejectedRowsAndKeepsTheCounts` |
 | [T64](#t64-der-excel-writer-schreibt-zahlen-wahrheitswerte-und-datumswerte-als-typisierte-zellen-und-text-nie-als-formel) | ausstehend |
