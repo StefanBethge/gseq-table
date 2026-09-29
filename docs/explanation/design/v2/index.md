@@ -13,9 +13,9 @@ Erprobung klärt, bevor ein v2.0-Release geplant wird.
 | Dokument | Inhalt | IDs |
 |---|---|---|
 | [Use Cases](05-use-cases.md) | Akteure und Abläufe, und die Fragen, die sie an das Design stellen | [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung) – [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets) |
-| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D89](10-design-decisions.md#d89-die-option-zum-sofortigen-abbruch-nimmt-die-mindestzahl-als-pflichtangabe) |
+| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D93](10-design-decisions.md#d93-spalten-einer-tabelle-als-quelle-gelten-als-geteilt-auch-im-modus-immer-andern) |
 | [Feature-Katalog](20-feature-catalogue.md) | Features, jedes auf seine Decisions gemappt | [F1](20-feature-catalogue.md#f1-blocke-aus-typisierten-spalten-mit-nullwerten) – [F24](20-feature-catalogue.md#f24-docs-gates-fur-das-design-set) |
-| [Test-Plan](30-test-plan.md) | T-Fälle, jeder an eine D- oder F-Eigenschaft gebunden | [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) – [T59](30-test-plan.md#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) |
+| [Test-Plan](30-test-plan.md) | T-Fälle, jeder an eine D- oder F-Eigenschaft gebunden | [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) – [T61](30-test-plan.md#t61-der-modus-immer-andern-andert-keine-tabelle-die-quelle-der-pipeline-ist) |
 | [Scope Prototyp](40-scope-prototype.md) | Selektion, Vereinfachungen und Exit-Kriterien des Prototyps | [P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren) – [P8](40-scope-prototype.md#p8-keine-formelmaskierung-im-csv-writer) |
 | [Failure Modes](50-failure-modes.md) | Was bei einem Lauf schiefgehen kann und wie reagiert wird | — |
 | [Security Boundaries](60-security-boundaries.md) | Grenzen für nicht vertrauenswürdige Lieferungen und ausgelagerte Daten | — |

@@ -464,6 +464,19 @@ Filtert ein Schritt vorher die Hälfte der Zeilen weg, meldet ein Schritt, in de
 Spalte unterdrückt den Befund. `missing_column` ergibt keinen `format_change`. Der Befund zeigt
 höchstens fünf verschiedene Werte.
 
+### T60 — Nach einem Zweig stehen die Zeilen in Eingangsreihenfolge, und Operationen über alle Zeilen im Zweig sind Planfehler
+
+**Beweist:** [D90](10-design-decisions.md#d90-zweige-enthalten-nur-blockweise-schritte-und-zeilen-behalten-nach-dem-zusammenfuhren-ihre-reihenfolge)
+Dieselbe Pipeline mit Fehlerzweig und `Split` liefert bei verschiedenen Blocklängen dieselben
+Zeilen in der Reihenfolge der Lieferung. Ein Sortieren im Zweig und ein Fehlerzweig an einer
+Gruppierung ergeben `plan_error`, bevor eine Zeile gelesen wird.
+
+### T61 — Der Modus "immer ändern" ändert keine Tabelle, die Quelle der Pipeline ist
+
+**Beweist:** [D93](10-design-decisions.md#d93-spalten-einer-tabelle-als-quelle-gelten-als-geteilt-auch-im-modus-immer-andern)
+Eine Pipeline im Modus "immer ändern" über eine Tabelle, deren Spalte schon umgewandelt ist,
+ändert diese Spalte. Die Tabelle hat danach ihre alten Werte, und der Trace vermerkt die Kopie.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -538,3 +551,5 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | `TestSourceRowCountsOnce` |
 | [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | `TestDroppedRowsReleaseTheRawState` |
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
+| [T60](#t60-nach-einem-zweig-stehen-die-zeilen-in-eingangsreihenfolge-und-operationen-uber-alle-zeilen-im-zweig-sind-planfehler) | ausstehend |
+| [T61](#t61-der-modus-immer-andern-andert-keine-tabelle-die-quelle-der-pipeline-ist) | ausstehend |
