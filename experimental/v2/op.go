@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
+	"github.com/stefanbethge/gseq-table/internal/cell"
 )
 
 // Op is an operation as a value (D31). The same Op runs immediately on a
@@ -352,21 +353,9 @@ func DateFormat(layout string) CastOption { return func(o *castOp) { o.layout = 
 
 // Lenient makes the cast behave like v1 (D74): it trims surrounding
 // whitespace before parsing and, without a DateFormat, tries the common
-// date layouts of v1 in order. Without it, Cast is strict.
+// date layouts of v1 (internal/cell, DateLayouts) in order. Without it,
+// Cast is strict.
 func Lenient() CastOption { return func(o *castOp) { o.lenient = true } }
-
-// lenientDateLayouts are the date layouts of v1 (internal/cell,
-// DateLayouts), in the order v1 tries them. The v1 package is internal to
-// the root module, so the list is repeated here.
-var lenientDateLayouts = []string{
-	time.RFC3339,
-	"2006-01-02T15:04:05",
-	"2006-01-02",
-	"02.01.2006",
-	"01/02/2006",
-	"02 Jan 2006",
-	"Jan 02, 2006",
-}
 
 // NullTexts sets texts that become null when cast from text, in addition to
 // empty text, such as "NULL", "n/a" or "-" (D30).
@@ -510,7 +499,7 @@ func (o castOp) parse(s string, i int, out *vec) string {
 	case block.Timestamp:
 		layouts := []string{"2006-01-02", time.RFC3339Nano}
 		if o.lenient {
-			layouts = lenientDateLayouts
+			layouts = cell.DateLayouts
 		}
 		if o.layout != "" {
 			layouts = []string{o.layout}
