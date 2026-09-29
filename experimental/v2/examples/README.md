@@ -27,7 +27,7 @@ API names below are sketches. The behavior follows the linked decisions.
 | Example | Status | Runnable with |
 |---|---|---|
 | `eager_table` | runnable | slice 2 (#46) |
-| `inspect_rejects` | planned | slice 4 (#48) |
+| `inspect_rejects` | runnable | slice 4 (#48) |
 | `fail_branch` | planned | slice 6 (#50) |
 | `onebrc_budget` | planned | slice 7 (#51), Docker runs in slice 9 (#53) |
 | `scheduled_excel` | planned | slice 8 (#52) |
@@ -37,15 +37,17 @@ API names below are sketches. The behavior follows the linked decisions.
 
 A `Table` used directly, without a pipeline: operations applied one after another, the
 rows the table rejected, and the sticky error that stops the chain after an unknown column.
-Run it with `go run ./examples/eager_table` in `experimental/v2`. Until the CSV reader of
-slice 4 (#48) exists, it reads its delivery with `encoding/csv` into raw text columns.
+Run it with `go run ./examples/eager_table` in `experimental/v2`. It reads its deliveries at
+once with the CSV reader into raw text columns (`csv.File(path).Table(ctx)`).
 Design: [D31](../../../docs/explanation/design/v2/10-design-decisions.md#d31-jede-operation-gibt-es-einmal-als-wert-mit-zwei-einstiegen-sofort-auf-einer-tabelle-oder-im-plan), [D50](../../../docs/explanation/design/v2/10-design-decisions.md#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler).
 
 ### inspect_rejects
 
 Inspecting the rejected rows of a run: the table per source with the raw state and the
 `_gseq_` info columns, and the overview with one entry per error. For an Excel source the
-rows also carry `display` and `cell`.
+rows also carry `display` and `cell`. Run it with `go run ./examples/inspect_rejects` in
+`experimental/v2`. It reads `orders.csv` with `csv.File` and the sheet `Kunden` of
+`customers.xlsx` with `excel.Sheet`; `testdata/gen.go` writes the Excel file.
 Design: [UC3](../../../docs/explanation/design/v2/05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [D1](../../../docs/explanation/design/v2/10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten), [D13](../../../docs/explanation/design/v2/10-design-decisions.md#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen), [D14](../../../docs/explanation/design/v2/10-design-decisions.md#d14-info-spalten-tragen-ein-reserviertes-einstellbares-prafix), [D44](../../../docs/explanation/design/v2/10-design-decisions.md#d44-die-tabelle-je-quelle-hat-eine-zeile-je-quellzeile-die-ubersicht-einen-eintrag-je-fehler), [D52](../../../docs/explanation/design/v2/10-design-decisions.md#d52-bei-excel-ist-der-rohzustand-der-angezeigte-zellinhalt-umgewandelt-wird-der-gespeicherte-wert), [D62](../../../docs/explanation/design/v2/10-design-decisions.md#d62-bei-excel-tragen-rohzustand-und-arbeitsspalte-den-gespeicherten-wert-in-fester-textform).
 
 ### fail_branch

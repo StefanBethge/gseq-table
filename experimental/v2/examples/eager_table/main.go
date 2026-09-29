@@ -3,13 +3,12 @@
 // error that stops the chain after an unknown column (design decisions D31,
 // D50).
 //
-// The prototype has no CSV reader yet (slice 4), so the example reads its
-// small synthetic delivery with encoding/csv and builds raw text columns,
-// the way a reader will deliver them (D29).
+// The small synthetic deliveries are read at once with the CSV reader into
+// tables of raw text columns (D29); each file is a source of its own (D53).
 package main
 
 import (
-	"encoding/csv"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +16,7 @@ import (
 	"path/filepath"
 
 	gtable "github.com/stefanbethge/gseq-table/experimental/v2"
+	"github.com/stefanbethge/gseq-table/experimental/v2/csv"
 )
 
 func main() {
@@ -69,29 +69,8 @@ func run(w io.Writer, dir string) error {
 	return nil
 }
 
-// load reads a CSV file with a header into a table of text columns.
+// load reads a CSV file with a header into a table of text columns, named
+// after the file.
 func load(path string) (gtable.Table, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return gtable.Table{}, err
-	}
-	defer f.Close()
-	records, err := csv.NewReader(f).ReadAll()
-	if err != nil {
-		return gtable.Table{}, fmt.Errorf("%s: %w", path, err)
-	}
-	if len(records) == 0 {
-		return gtable.Table{}, fmt.Errorf("%s: no header", path)
-	}
-	cols := make([]gtable.Column, len(records[0]))
-	for j, name := range records[0] {
-		values := make([]string, len(records)-1)
-		for i, rec := range records[1:] {
-			values[i] = rec[j]
-		}
-		cols[j] = gtable.Texts(name, values...)
-	}
-	// Each file is a source of its own, named after the file (D75).
-	t := gtable.NewTable(cols...).AsSource(filepath.Base(path))
-	return t, t.Err()
+	return csv.File(path).Table(context.Background())
 }
