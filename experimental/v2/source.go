@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/stefanbethge/gseq-table/experimental/v2/internal/benchknob"
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
 
@@ -491,7 +492,10 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 			cols[i] = b.Build()
 			continue
 		}
-		col := c.cols[j].Share()
+		col := c.cols[j]
+		if !benchknob.NoRawState.Load() {
+			col = col.Share() // with the raw state (D55)
+		}
 		if len(keep) < len(c.recs) {
 			col = col.Take(keep)
 		}

@@ -1684,3 +1684,16 @@ Unit-Test darauf wäre unzuverlässig. Die Zählung der Engine ist genau und zei
 rechtzeitig auslagert. Ob das Budget im Container reicht, zeigt erst der Lauf mit echten Limits.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #51, Teil-Auflösung von [G59](70-gap-ledger.md#g59-vergleichbarkeit-der-bestehkriterien))
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D105 — Ein interner Mess-Schalter lässt den Rohzustand für die Benchmarks weg
+
+**Entscheidung:** Für die Messungen zu [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) hat die Engine einen Schalter, der den Rohzustand gelesener
+Zeilen nicht hält: Die Blöcke eines Readers werden nicht als Rohzustand gespeichert, nicht im
+Budget gezählt und gelten nicht als geteilt. Fundstelle und Zählungen bleiben. Der Schalter liegt
+in einem Paket unter `internal/` und ist keine öffentliche API. Nur Benchmark- und Testcode des
+Moduls setzt ihn. Aussortierte Zeilen eines Laufs mit diesem Schalter tragen keine Rohwerte.
+**Begründung:** [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) verlangt Spitzenspeicher und Auslagern mit und ohne Rohzustand. [D9](#d9-der-rohzustand-wird-getrennt-gehalten-an-verzweigungen-wird-immer-kopiert), [D55](#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert) und
+[D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie) halten ihn immer. Ohne Schalter ließen sich seine Kosten nicht von denen der Blöcke
+trennen. Als Option für Pipelines würde er das Fehlermodell aus [D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) aushebeln.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #53)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
