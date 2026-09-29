@@ -17,8 +17,10 @@ const (
 	CodeExpr   = "expr"   // an expression failed at run time (D54)
 	CodeCustom = "custom" // a closure returned an error or panicked (D32, D39)
 
-	// Delivery errors (D42). The readers that report them follow in
-	// slice 4 (#48); the error policy already takes them.
+	CodeUnparseableLine = "unparseable_line" // a reader could not split a line into cells (D10)
+	CodeFieldTooLarge   = "field_too_large"  // a field is over the limit (D56)
+
+	// Delivery errors (D42).
 	CodeMissingColumn = "missing_column"
 	CodeMissingSheet  = "missing_sheet"
 	CodeMissingFile   = "missing_file"
@@ -199,7 +201,8 @@ type snapshot struct {
 }
 
 // rejector collects the rejects of one run under its error policy. An
-// error whose code is set to ModeStop becomes a DataError.
+// error whose code is set to ModeStop becomes a DataError, or a
+// DeliveryError for a delivery error.
 type rejector struct {
 	policy  errorPolicy
 	run     *runInfo
@@ -208,6 +211,13 @@ type rejector struct {
 
 func (rx *rejector) add(e rejectEntry) error {
 	if rx.policy.modeFor(e.Code) == ModeStop {
+		if kindOfCode(e.Code) == KindDelivery {
+			src := ""
+			if len(e.orig.refs) > 0 {
+				src = e.orig.refs[0].src.name
+			}
+			return &DeliveryError{Source: src, Code: e.Code, Err: errors.New(e.Reason)}
+		}
 		return &DataError{Reject: e.Reject}
 	}
 	rx.entries = append(rx.entries, e)

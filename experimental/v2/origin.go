@@ -15,24 +15,62 @@ import (
 
 // rawSource is the raw state of one source (D9): its columns as they were
 // read or created, held apart from the working data. No step changes them;
-// the working data shares them until a step replaces a column (D55).
+// the working data shares them until a step replaces a column (D55). A
+// source read by a Reader holds its rows in chunks as they are read, with
+// their location (D10).
 type rawSource struct {
-	name string // location source; "code" for a table built in code (D50, D75)
-	s    schema
-	cols []block.Column
+	name   string // location source; "code" for a table built in code (D50, D75)
+	sheet  string
+	s      schema
+	chunks [][]block.Column
+	n      int
+	loc    *readLoc // nil for a table built in code
 
 	fpOnce sync.Once
 	fp     string
+}
+
+// readLoc is the location and the keys of the rows of a source read by a
+// Reader, by row (D10, D18, D81).
+type readLoc struct {
+	id       string // delivery identifier (D61)
+	cells    bool   // cells located by address (D52)
+	lines    []int
+	offsets  []int64                // -1: none
+	display  map[int]map[int]string // row, raw column: displayed text (D62)
+	rawLines map[int]string         // row: raw bytes of a rejected line
+	keys     []string               // record_key taken from a rejects table (D82); nil if formed
+	hashes   []string               // record_hash; nil unless the source has them
 }
 
 // newRawSource returns the raw state of a source with the given columns,
 // sharing their values.
 func newRawSource(name string, s schema, cols []block.Column) *rawSource {
 	shared := make([]block.Column, len(cols))
+	n := 0
 	for i, c := range cols {
 		shared[i] = c.Share()
+		n = c.Len()
 	}
-	return &rawSource{name: name, s: s, cols: shared}
+	return &rawSource{name: name, s: s, chunks: [][]block.Column{shared}, n: n}
+}
+
+// rows returns the number of rows of the raw state.
+func (r *rawSource) rows() int { return r.n }
+
+// column returns raw column j over all rows.
+func (r *rawSource) column(j int) block.Column {
+	switch len(r.chunks) {
+	case 0:
+		return block.NewBuilder(r.s[j].kind, 0).Build()
+	case 1:
+		return r.chunks[0][j]
+	}
+	parts := make([]block.Column, len(r.chunks))
+	for i, c := range r.chunks {
+		parts[i] = c[j]
+	}
+	return block.Concat(r.s[j].kind, parts...)
 }
 
 // fingerprint identifies a source built in code: the first 16 hex characters
@@ -43,7 +81,7 @@ func (r *rawSource) fingerprint() string {
 		field := func(s string) { fmt.Fprintf(h, "%d:%s;", len(s), s) }
 		for i, f := range r.s {
 			field(f.name)
-			v := vecOf(r.cols[i])
+			v := vecOf(r.column(i))
 			for j := range v.n {
 				if s, ok := v.format(j); ok {
 					field(s)
@@ -57,9 +95,47 @@ func (r *rawSource) fingerprint() string {
 	return r.fp
 }
 
-// recordKey is the record_key of a row: the fingerprint and the row index
-// (D18, D76).
-func (r *rawSource) recordKey(row int) string { return r.fingerprint() + ":" + strconv.Itoa(row) }
+// recordKey is the record_key of a row: for a table built in code the
+// fingerprint and the row index (D76), for a read row the delivery
+// identifier and the line (D81), or the key taken from a rejects table
+// (D82).
+func (r *rawSource) recordKey(row int) string {
+	if r.loc == nil {
+		return r.fingerprint() + ":" + strconv.Itoa(row)
+	}
+	if r.loc.keys != nil && r.loc.keys[row] != "" {
+		return r.loc.keys[row]
+	}
+	return r.loc.id + ":" + strconv.Itoa(r.loc.lines[row])
+}
+
+// line returns the line of a row: its index for a table built in code.
+func (r *rawSource) line(row int) int {
+	if r.loc == nil {
+		return row
+	}
+	return r.loc.lines[row]
+}
+
+// cell returns the address and the displayed text of the cell of raw
+// column col in a row, for a source whose cells are located by address
+// (D52, D80).
+func (r *rawSource) cell(row int, col string) (addr, display string, ok bool) {
+	if r.loc == nil || !r.loc.cells {
+		return "", "", false
+	}
+	j := r.s.index(col)
+	if j < 0 {
+		return "", "", false
+	}
+	addr = columnLetters(j) + strconv.Itoa(r.loc.lines[row])
+	if d, ok := r.loc.display[row][j]; ok {
+		return addr, d, true
+	}
+	c := r.column(j)
+	display, _ = c.Text(row)
+	return addr, display, true
+}
 
 // srcRef is one source row.
 type srcRef struct {

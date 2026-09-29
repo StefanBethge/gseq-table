@@ -16,8 +16,10 @@ type countingSource struct {
 	read int
 }
 
-func (s *countingSource) blocks(n int, yield func(batch) error) error {
-	return s.tableSource.blocks(n, func(b batch) error {
+func (s *countingSource) open() (opened, error) { return s, nil }
+
+func (s *countingSource) blocks(n int, rx *rejector, yield func(batch) error) error {
+	return s.tableSource.blocks(n, rx, func(b batch) error {
 		s.read += b.blk.Len()
 		return yield(b)
 	})
