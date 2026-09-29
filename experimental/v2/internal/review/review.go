@@ -46,6 +46,13 @@ func casts(cols ...string) gtable.Op {
 	return gtable.CastAll(ops...)
 }
 
+// deliveryID is the identifier of a sample delivery (D61). The reader's
+// fingerprint includes the modification time of the file, which a git
+// checkout changes, so the review sets the identifier itself, as a
+// pipeline does for a delivery over HTTP. A row without key cells keeps
+// the key from this identifier and its line (D81).
+func deliveryID(name string) string { return "sample-" + name }
+
 // Run runs the pipelines over the deliveries in dir and prints the review
 // to w. Every run gets its own run ID; runIDs replaces it so the output is
 // the same on every run.
@@ -53,7 +60,8 @@ func Run(ctx context.Context, w io.Writer, dir string) error {
 	for _, name := range []string{"01-placeholders.csv", "02-formats.csv", "03-columns.csv"} {
 		src := csv.File(filepath.Join(dir, name), csv.Comma(';'), csv.MaxFieldSize(maxField)).
 			Expect(columns...).
-			Key("sku")
+			Key("sku").
+			DeliveryID(deliveryID(name))
 		p := gtable.FromSource(src, blockLen).
 			Then(casts("price", "stock", "valid_from")).
 			Then(gtable.With("value", gtable.Col("price").Mul(gtable.Col("stock")).Round(2)))
@@ -71,6 +79,7 @@ func multiSheet(ctx context.Context, w io.Writer, path string) error {
 	prices, err := excel.Sheet(path, "Preise", excel.MaxFieldSize(maxField)).
 		Expect("sku", "price", "stock").
 		Key("sku").
+		DeliveryID(deliveryID(filepath.Base(path))).
 		Table(ctx)
 	if err != nil {
 		return err
@@ -79,7 +88,8 @@ func multiSheet(ctx context.Context, w io.Writer, path string) error {
 
 	src := excel.Sheet(path, "Artikel", excel.MaxFieldSize(maxField)).
 		Expect("sku", "name", "valid_from").
-		Key("sku")
+		Key("sku").
+		DeliveryID(deliveryID(filepath.Base(path)))
 	// The working columns of Excel hold dates in a fixed text form (D62),
 	// so valid_from casts without a DateFormat.
 	p := gtable.FromSource(src, blockLen).
