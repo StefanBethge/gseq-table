@@ -477,6 +477,44 @@ Gruppierung ergeben `plan_error`, bevor eine Zeile gelesen wird.
 Eine Pipeline im Modus "immer ändern" über eine Tabelle, deren Spalte schon umgewandelt ist,
 ändert diese Spalte. Die Tabelle hat danach ihre alten Werte, und der Trace vermerkt die Kopie.
 
+### T62 — Mit einem Ziel hält das Ergebnis keine Zeilen, und das Ziel wird auch nach einem Abbruch geschlossen
+
+**Beweist:** [D94](10-design-decisions.md#d94-mit-einem-ziel-fur-ergebnisse-halt-die-ergebnistabelle-keine-zeilen), [D100](10-design-decisions.md#d100-run-beendet-jedes-ziel-des-plans-mit-close-auch-nach-einem-abbruch)
+Ein Lauf mit Ziel liefert eine Ergebnistabelle mit den Spalten des Plans und ohne Zeilen, und
+die Zeilen stehen im Ziel. Ein Lauf ohne Ergebniszeilen schreibt einen leeren Block. Nach einem
+Stopp und nach einem Schreibfehler ist jedes Ziel geschlossen, und ein Fehler aus `Close` ergibt
+`sink_error`. Die Zeilen eines abgelehnten Blocks zählen als nicht verarbeitet.
+
+### T63 — Writer je Quelle bekommen Tabellen mit festen Spalten, und nach einem vorzeitigen Ende bleiben nicht geschriebene aussortierte Zeilen im Ergebnis
+
+**Beweist:** [D95](10-design-decisions.md#d95-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht), [D96](10-design-decisions.md#d96-nach-einem-vorzeitigen-ende-wird-in-kein-ziel-mehr-geschrieben-und-nicht-geschriebene-aussortierte-zeilen-bleiben-im-ergebnis)
+Die Fabrik liefert je Quelle einen Writer, ein Writer für eine benannte Quelle geht ihr vor,
+und eine Quelle ohne Writer bleibt im Ergebnis. Die Übersicht bleibt im Ergebnis. Nach einem
+Stopp bekommt kein Ziel mehr einen Block, und die aussortierten Zeilen des scheiternden Blocks
+stehen im Ergebnis, auch für eine Quelle mit Writer.
+
+### T64 — Ein fachlicher Schlüssel ergibt record_key aus den Werten, unzerlegbare Zeilen behalten den Positionsschlüssel
+
+**Beweist:** [D97](10-design-decisions.md#d97-ein-fachlicher-schlussel-bildet-record_key-als-hash-uber-die-namen-und-werte-seiner-spalten)
+Zwei Lieferungen mit verschiedenem Namen und verschiedener Zeilenfolge ergeben für dieselben
+Schlüsselwerte denselben `record_key` aus 16 Hex-Zeichen. Eine unzerlegbare Zeile trägt
+`<fingerprint>:<zeile>`. Eine Schlüsselspalte, die weder im Kopf noch im erwarteten Aufbau steht,
+ist ein Planfehler.
+
+### T65 — Nach Close tragen die Tabellen aussortierter Zeilen einen haftenden Fehler, Zählungen und Status bleiben
+
+**Beweist:** [D98](10-design-decisions.md#d98-close-gibt-die-aussortierten-zeilen-eines-ergebnisses-frei-danach-tragen-ihre-tabellen-einen-haftenden-fehler)
+Vor `Close` sind die aussortierten Zeilen lesbar. Danach tragen Tabelle je Quelle, Übersicht
+und Tabellen aggregierter Zeilen einen haftenden Fehler, während Status, Zählungen und
+Änderungsbericht gleich bleiben. Ein zweites `Close` gibt keinen Fehler.
+
+### T66 — Der Excel-Writer schreibt Zahlen, Wahrheitswerte und Datumswerte als typisierte Zellen und Text nie als Formel
+
+**Beweist:** [D99](10-design-decisions.md#d99-der-excel-writer-schreibt-typisierte-zellen-text-nie-als-formel)
+Eine geschriebene Datei hat Zahlen-, Wahrheitswert- und Datumszellen, ein Text `=1+1` steht
+als Text in seiner Zelle und nicht als Formel, und ein Nullwert ist eine leere Zelle. Mit dem
+Excel-Reader gelesen, ergeben die Zellen die Textformen nach [D80](10-design-decisions.md#d80-jeder-zelltyp-einer-excel-lieferung-hat-eine-feste-textform).
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -493,8 +531,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | T-Fall | Tests |
 |---|---|
 | [T1](#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) | `TestRejectsCarryRawStateNotWorkingState` |
-| [T2](#t2-aussortierte-zeilen-lassen-sich-mit-den-datei-writern-schreiben-und-mit-dem-passenden-reader-wieder-lesen) | ausstehend |
-| [T3](#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht) | ausstehend |
+| [T2](#t2-aussortierte-zeilen-lassen-sich-mit-den-datei-writern-schreiben-und-mit-dem-passenden-reader-wieder-lesen) | `TestRejectsWrittenWithTheCSVWriterReadBack`, `TestRejectsWrittenWithTheExcelWriterReadBack` |
+| [T3](#t3-im-modus-stoppen-endet-der-lauf-beim-ersten-datenfehler-im-modus-aussortieren-nicht) | `TestStopEndsTheRunAtTheFirstDataErrorAndRejectDoesNot` |
 | [T4](#t4-die-schwelle-markiert-den-lauf-als-fehlgeschlagen-und-lasst-ihn-standardmaig-zu-ende-laufen) | `TestThresholdFailsTheRunAndRunsToTheEnd` |
 | [T5](#t5-ohne-angaben-kommt-ein-lauf-uber-eine-schmutzige-lieferung-durch) | `TestDirtyDeliveryRunsThroughWithDefaults` |
 | [T6](#t6-eine-im-schritt-scheiternde-zeile-steht-einmal-in-ihrer-tabelle-je-quelle-hat-einen-ubersichtseintrag-je-spalte-und-erreicht-spatere-schritte-nicht) | `TestRowFailingInOneStepIsRejectedOnceWithAnEntryPerColumn` |
@@ -503,8 +541,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T9](#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) | ausstehend |
 | [T10](#t10-unzerlegbare-zeilen-werden-mit-rohbytes-und-richtiger-fundstelle-aussortiert) | `TestUnparseableLinesAreRejectedWithRawBytes` |
 | [T11](#t11-die-fundstelle-bleibt-uber-sortieren-und-filtern-richtig) | `TestLocationStaysRightOverSortAndFilter` |
-| [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | ausstehend |
-| [T13](#t13-record_key-ist-innerhalb-einer-lieferung-stabil-ein-fachlicher-schlussel-daruber-hinaus) | ausstehend |
+| [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | `TestReprocessingKeepsTheOriginalLocationAndKeys` |
+| [T13](#t13-record_key-ist-innerhalb-einer-lieferung-stabil-ein-fachlicher-schlussel-daruber-hinaus) | `TestRecordKeyIsStableWithinADeliveryAndABusinessKeyBeyond` |
 | [T14](#t14-die-prufung-des-kopfs-erkennt-fehlende-neue-und-umbenannte-spalten) | `TestHeaderCheckFindsMissingNewAndRenamedColumns` |
 | [T15](#t15-planfehler-verhindern-den-lauf-liefer-und-datenfehler-folgen-der-konfiguration-je-code) | `TestPlanErrorsStopTheRunAndOtherErrorsFollowTheirCode` |
 | [T16](#t16-status-und-zahlungen-sind-konsistent-und-bilden-auf-exit-codes-ab) | `TestStatusAndCountsAreConsistent` |
@@ -524,14 +562,14 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T30](#t30-der-http-writer-liefert-jede-zeile-trotz-vorubergehender-fehler-aus) | ausstehend |
 | [T31](#t31-die-offentliche-api-enthalt-keine-gseq-typen) | `TestPublicAPIHasNoGseqTypes` |
 | [T32](#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert) | ausstehend |
-| [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | ausstehend |
+| [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | `TestSinkThatRejectsABlockEndsTheRunWithSinkError` |
 | [T34](#t34-excel-zellen-tragen-den-gespeicherten-wert-in-fester-textform-aussortierte-zeilen-auch-den-angezeigten-text) | `TestExcelCellsCarryStoredValueAndDisplay` |
 | [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | ausstehend |
-| [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | ausstehend |
+| [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | `TestHighestStatusAppliesAndTheResultNamesAllCauses` |
 | [T37](#t37-die-kennung-einer-lieferung-steht-beim-offnen-fest-und-andert-sich-mit-der-datei) | `TestDeliveryIDIsFixedAtOpen` |
 | [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | `TestInPlaceCopiesARawColumnOnce` |
 | [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
-| [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | ausstehend |
+| [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | `TestRejectWritersWriteDuringTheRunElseTheResultHoldsTheRejectsUntilClose` |
 | [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | `TestTableCarriesRejectsAndStickyError` |
 | [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | `TestTwoSheetsAreTwoSourcesAndAMissingSheetIsADeliveryError` |
 | [T43](#t43-die-schwelle-bricht-bei-einem-anteil-erst-nach-der-mindestzahl-ab-bei-einer-absoluten-grenze-sofort) | `TestThresholdAbortsAfterTheMinimumForAShareAndAtOnceForAnAbsoluteLimit` |
@@ -553,3 +591,8 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
 | [T60](#t60-nach-einem-zweig-stehen-die-zeilen-in-eingangsreihenfolge-und-operationen-uber-alle-zeilen-im-zweig-sind-planfehler) | `TestBranchesKeepTheInputOrderAndHoldOnlyBlockSteps` |
 | [T61](#t61-der-modus-immer-andern-andert-keine-tabelle-die-quelle-der-pipeline-ist) | `TestInPlaceDoesNotChangeASourceTable` |
+| [T62](#t62-mit-einem-ziel-halt-das-ergebnis-keine-zeilen-und-das-ziel-wird-auch-nach-einem-abbruch-geschlossen) | `TestResultWithASinkHoldsNoRowsAndEverySinkIsClosed` |
+| [T63](#t63-writer-je-quelle-bekommen-tabellen-mit-festen-spalten-und-nach-einem-vorzeitigen-ende-bleiben-nicht-geschriebene-aussortierte-zeilen-im-ergebnis) | `TestRejectWritersPerSourceAndRejectsAfterAnEarlyEnd` |
+| [T64](#t64-ein-fachlicher-schlussel-ergibt-record_key-aus-den-werten-unzerlegbare-zeilen-behalten-den-positionsschlussel) | `TestBusinessKeyFormsRecordKeyFromTheValues` |
+| [T65](#t65-nach-close-tragen-die-tabellen-aussortierter-zeilen-einen-haftenden-fehler-zahlungen-und-status-bleiben) | `TestCloseReleasesTheRejectedRowsAndKeepsTheCounts` |
+| [T66](#t66-der-excel-writer-schreibt-zahlen-wahrheitswerte-und-datumswerte-als-typisierte-zellen-und-text-nie-als-formel) | `TestExcelWriterWritesTypedCellsAndTextNeverAsFormula` |

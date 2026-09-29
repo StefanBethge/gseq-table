@@ -34,7 +34,8 @@ type Table struct {
 	policy  errorPolicy
 	prefix  string // info column prefix; empty means DefaultInfoPrefix
 	run     *runInfo
-	fresh   bool // built by NewTable, no operation applied yet
+	fresh   bool         // built by NewTable, no operation applied yet
+	rs      *rejectState // of a result, shared by the tables derived from it
 }
 
 // NewTable returns a table of the given columns. Columns of different
@@ -239,14 +240,14 @@ func (t Table) Apply(op Op) Table {
 			}
 		}
 		return nil
-	}, steps, rx, 0)
+	}, steps, rx, 0, &collector{t: rx.tally}, nil)
 	if err != nil {
 		t.err = err
 		return t
 	}
 	rejects := append(append([]rejectEntry(nil), t.rejects...), rx.entries...)
 	return Table{s: out, blocks: blocksOf(res), orig: originsOf(res), srcs: srcs, rejects: rejects, finds: finds,
-		policy: t.policy, prefix: t.prefix, run: t.run}
+		policy: t.policy, prefix: t.prefix, run: t.run, rs: t.rs}
 }
 
 func blocksOf(bs []batch) []block.Block {

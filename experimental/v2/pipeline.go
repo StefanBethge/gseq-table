@@ -32,6 +32,8 @@ type Pipeline struct {
 	abortMin   int
 	formats    formatLimits
 	copyMode   CopyMode
+
+	sinks sinks
 }
 
 // source is the input of a pipeline: a table, or a delivery read by a
@@ -264,6 +266,9 @@ func (p *Pipeline) check(o opened) ([]planned, schema, error) {
 		}
 		srcs = unionSources(srcs, j.right.srcs)
 	}
+	if err := p.sinks.check(srcs); err != nil {
+		return nil, nil, &PlanError{Step: "sink", Err: err}
+	}
 	prefix := infoPrefix(p.prefix)
 	for _, src := range srcs {
 		if err := prefixClash(src, prefix); err != nil {
@@ -284,11 +289,29 @@ func (p *Pipeline) check(o opened) ([]planned, schema, error) {
 // Run also returns an error if the run did not run to the end: a
 // *PlanError before any row is read, a *DeliveryError if the source cannot
 // be read or a delivery error is set to ModeStop, a *DataError for a data
-// error set to ModeStop, a *ThresholdError with AbortOnThreshold, or the
-// context's error. The result table carries the rejects of the source,
-// then those of the reading and the steps, and the findings of the header
-// check.
+// error set to ModeStop, a *ThresholdError with AbortOnThreshold, a
+// *SinkError if a sink failed (D40), or the context's error. The result
+// table carries the rejects of the source, then those of the reading and
+// the steps, and the findings of the header check. With a sink for the
+// results it has no rows (D94). At the end Run closes every sink of the
+// plan, also after an early end (D100).
 func (p *Pipeline) Run(ctx context.Context) (Result, error) {
+	st := &rejectState{}
+	rw := newRejectWriters(p.sinks, infoPrefix(p.prefix), st)
+	res, err := p.run(ctx, rw)
+	res.Table.rs = st
+	for _, e := range closeSinks(p.sinks, rw) {
+		if err == nil {
+			err = e
+			res.Table.err = e
+		}
+		res.Causes = append(res.Causes, Cause{StatusSinkError, e})
+	}
+	res.Status = status(res.Causes)
+	return res, err
+}
+
+func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 	if err := p.checkParams(); err != nil {
 		return failed(err, nil)
 	}
@@ -319,6 +342,8 @@ func (p *Pipeline) Run(ctx context.Context) (Result, error) {
 		read.cnt = t.step(read.ref)
 	}
 	rx.carry(o.rejects())
+	c := &collector{t: t, sink: p.sinks.result, s: out}
+	flush := func() error { return rw.flush(ctx, rx.entries) }
 	bs, runErr := run(ctx, func(yield func(batch) error) error {
 		n := 0
 		err := o.blocks(p.blockLen, read, func(b batch) error {
@@ -329,7 +354,10 @@ func (p *Pipeline) Run(ctx context.Context) (Result, error) {
 			err = yield(batch{emptyBlock(o.schema()), nil})
 		}
 		return err
-	}, steps, rx, p.blockLen)
+	}, steps, rx, p.blockLen, c, flush)
+	if runErr == nil {
+		runErr = flush()
+	}
 	srcs, finds := o.sources(), o.findingList()
 	for _, st := range steps {
 		if j, ok := st.op.impl.(joinOp); ok {

@@ -30,8 +30,8 @@ API names below are sketches. The behavior follows the linked decisions.
 | `inspect_rejects` | runnable | slice 4 (#48) |
 | `fail_branch` | runnable | slice 6 (#50) |
 | `onebrc_budget` | planned | slice 7 (#51), Docker runs in slice 9 (#53) |
-| `scheduled_excel` | planned | slice 8 (#52) |
-| `reprocess_rejects` | planned | slice 8 (#52) |
+| `scheduled_excel` | runnable | slice 8 (#52) |
+| `reprocess_rejects` | runnable | slice 8 (#52) |
 
 ### eager_table
 
@@ -73,16 +73,24 @@ Design: [UC6](../../../docs/explanation/design/v2/05-use-cases.md#uc6-eine-umfan
 ### scheduled_excel
 
 A scheduled run over an Excel delivery: an expected schema and a business key for the
-source, `Cast`/`With`/`Where` steps, a threshold, a reject writer in the plan, a sink for the
-results, the change report, and an exit code for cron. The prototype writes to a CSV sink;
-a database sink needs the writers of [F20](../../../docs/explanation/design/v2/20-feature-catalogue.md#f20-writer-fur-datenbank-und-http), which are not part of the prototype.
+source (`Expect`, `Key`), `Cast`/`With`/`Where` steps, a threshold, a reject writer in the
+plan for every source (`RejectsToEach`) and one for the overview (`OverviewTo`), a CSV
+sink for the results (`To(csv.Create(...))`), the change report, and the exit code for
+cron. Run it with `go run ./examples/scheduled_excel -delivery <file> -out <dir>` in
+`experimental/v2`. `testdata/gen.go` writes three deliveries: a normal day (exit code 0),
+amounts as text with a decimal comma (1, `format_change`) and a renamed column (3,
+`probably_renamed`). The prototype writes to a CSV sink; a database sink needs the writers
+of [F20](../../../docs/explanation/design/v2/20-feature-catalogue.md#f20-writer-fur-datenbank-und-http), which are not part of the prototype.
 Design: [UC1](../../../docs/explanation/design/v2/05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC2](../../../docs/explanation/design/v2/05-use-cases.md#uc2-datenlieferant-andert-das-lieferformat-unangekundigt), [D18](../../../docs/explanation/design/v2/10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), [D20](../../../docs/explanation/design/v2/10-design-decisions.md#d20-die-schwelle-ist-absolut-oder-als-anteil-je-lauf-oder-je-schritt-und-lasst-den-lauf-per-voreinstellung-zu-ende-laufen), [D21](../../../docs/explanation/design/v2/10-design-decisions.md#d21-ein-lauf-liefert-einen-status-und-zahlungen-aus-denen-sich-ein-exit-code-ableiten-lasst), [D22](../../../docs/explanation/design/v2/10-design-decisions.md#d22-eine-quelle-kann-einen-erwarteten-aufbau-haben-gegen-den-die-lieferung-beim-lesen-gepruft-wird), [D23](../../../docs/explanation/design/v2/10-design-decisions.md#d23-das-laufergebnis-enthalt-einen-anderungsbericht), [D42](../../../docs/explanation/design/v2/10-design-decisions.md#d42-jeder-lieferfehler-setzt-den-status-delivery_error), [D45](../../../docs/explanation/design/v2/10-design-decisions.md#d45-die-schwelle-bezieht-anteile-auf-bisher-gelesene-zeilen-gilt-bei-einer-der-grenzen-und-bricht-erst-nach-einer-mindestzahl-ab), [D49](../../../docs/explanation/design/v2/10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close), [D63](../../../docs/explanation/design/v2/10-design-decisions.md#d63-es-gilt-der-hochste-zutreffende-status-und-das-ergebnis-nennt-alle-befunde).
 
 ### reprocess_rejects
 
-Reprocessing the rejected rows of an earlier run after fixing the pipeline:
-`ReplaceSource` with `FromRejects`, stable `record_key` and `row_key`, and an upsert on
-`row_key` that leaves no duplicates in the target. Because the prototype has no database
+Reprocessing the rejected rows of an earlier run after fixing the pipeline: the first run
+writes its rejects to a CSV file with `RejectsTo`, the file is read back (under another
+info prefix, see [G66](../../../docs/explanation/design/v2/70-gap-ledger.md#g66-eine-datei-aussortierter-zeilen-lasst-sich-nur-mit-einem-anderen-prafix-zurucklesen)), and the fixed pipeline runs it with
+`ReplaceSource(FromRejects(...))`, reading the broken line again with `csv.Reparse`. The rows
+keep `record_key` and `row_key`, and an upsert on `row_key` leaves no duplicates in the
+target, also when the whole delivery runs once more. Because the prototype has no database
 writer ([F20](../../../docs/explanation/design/v2/20-feature-catalogue.md#f20-writer-fur-datenbank-und-http)), the example upserts into a small sink it defines itself on the `Sink`
-interface of [D35](../../../docs/explanation/design/v2/10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http).
+interface of [D35](../../../docs/explanation/design/v2/10-design-decisions.md#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http). Run it with `go run ./examples/reprocess_rejects -out <dir>` in `experimental/v2`.
 Design: [UC4](../../../docs/explanation/design/v2/05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [D16](../../../docs/explanation/design/v2/10-design-decisions.md#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle), [D18](../../../docs/explanation/design/v2/10-design-decisions.md#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash), [D47](../../../docs/explanation/design/v2/10-design-decisions.md#d47-ergebniszeilen-tragen-einen-row_key-aus-ihren-quellzeilen-und-bei-1n-joins-scheitern-nur-die-betroffenen-ergebniszeilen), [D61](../../../docs/explanation/design/v2/10-design-decisions.md#d61-die-kennung-einer-lieferung-ist-ein-fingerabdruck-der-beim-offnen-feststeht).

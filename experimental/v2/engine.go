@@ -190,28 +190,69 @@ func (s *fullStage) finish(ctx context.Context) error {
 	return s.next.finish(ctx)
 }
 
-// collector is the end of a plan: it keeps the output blocks in memory.
-// Its rows have passed the run (D43) and keep their raw state (D87).
+// collector is the end of a plan: it keeps the output blocks in memory, or
+// writes them to the sink for the results. Its rows have passed the run
+// (D43). In memory they keep their raw state (D87); written, they leave the
+// plan and let go of it, and only then count as passed (D84, D94).
 type collector struct {
 	t       *tally
 	batches []batch
+	sink    Sink
+	s       schema // output schema, for the blocks of the sink
+	written int
 }
 
-func (c *collector) push(_ context.Context, b batch) error {
-	if c.t != nil {
-		for _, o := range b.orig {
-			for _, r := range o.rows() {
-				c.t.run.mark(r, stPassed)
-			}
+func (c *collector) push(ctx context.Context, b batch) error {
+	if c.sink != nil {
+		if b.blk.Len() == 0 {
+			return nil
 		}
+		return c.write(ctx, b)
 	}
+	c.pass(b, false)
 	if b.blk.Len() > 0 || len(c.batches) == 0 {
 		c.batches = append(c.batches, b)
 	}
 	return nil
 }
 
-func (c *collector) finish(context.Context) error { return nil }
+func (c *collector) write(ctx context.Context, b batch) error {
+	if err := c.sink.Write(ctx, sinkBlock(c.s, b)); err != nil {
+		return &SinkError{Sink: "result", Err: err}
+	}
+	c.written++
+	c.pass(b, true)
+	return nil
+}
+
+// pass counts the rows of b as passed, and with release lets go of their
+// raw state.
+func (c *collector) pass(b batch, release bool) {
+	if c.t == nil {
+		return
+	}
+	for _, o := range b.orig {
+		for _, r := range o.rows() {
+			c.t.run.mark(r, stPassed)
+		}
+		if release {
+			for _, r := range o.refs {
+				if c.t.owns(r) {
+					r.src.drop(r.row)
+				}
+			}
+		}
+	}
+}
+
+// finish writes an empty block if the sink got none, so a file gets its
+// header (D100).
+func (c *collector) finish(ctx context.Context) error {
+	if c.sink != nil && c.written == 0 {
+		return c.write(ctx, batch{blk: emptyBlock(c.s)})
+	}
+	return nil
+}
 
 // build links the stages of the planned steps, ending in c. The counters
 // of the steps are created in plan order, a branch after its step.
@@ -267,10 +308,10 @@ func buildChain(b *plannedBranch, parent *stepRef, rx *rejector) *chain {
 	return c
 }
 
-// run pushes the batches from src through the planned steps. If it ends
-// early, it returns the batches that passed until then with the error.
-func run(ctx context.Context, src func(yield func(batch) error) error, steps []planned, rx *rejector, blockLen int) ([]batch, error) {
-	c := &collector{t: rx.tally}
+// run pushes the batches from src through the planned steps into c, and
+// calls after once a batch went through, if set. If it ends early, it
+// returns the batches that passed until then with the error.
+func run(ctx context.Context, src func(yield func(batch) error) error, steps []planned, rx *rejector, blockLen int, c *collector, after func() error) ([]batch, error) {
 	first := build(steps, rx, blockLen, c)
 	err := src(func(b batch) error {
 		if err := ctx.Err(); err != nil {
@@ -280,7 +321,13 @@ func run(ctx context.Context, src func(yield func(batch) error) error, steps []p
 		if err := first.push(ctx, b); err != nil {
 			return err
 		}
-		return rx.tally.checkSteps()
+		if err := rx.tally.checkSteps(); err != nil {
+			return err
+		}
+		if after != nil {
+			return after()
+		}
+		return nil
 	})
 	if err == nil {
 		err = first.finish(ctx)

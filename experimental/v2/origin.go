@@ -145,8 +145,11 @@ func (r *rawSource) text(row, j int) (string, bool) {
 	if cols := r.chunks[c]; cols != nil {
 		return cols[j].Text(row - r.starts[c])
 	}
-	k := r.rel.kept[row][j]
-	return k.s, k.ok
+	k, ok := r.rel.kept[row]
+	if !ok {
+		return "", false // released by Result.Close or a writer (D49, D98)
+	}
+	return k[j].s, k[j].ok
 }
 
 // rawColumn returns raw column j for the given rows.

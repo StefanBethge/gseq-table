@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -135,6 +136,7 @@ type Source struct {
 	newCols NewColumnMode
 	id      string
 	hash    bool
+	key     []string
 }
 
 // NewSource returns a source that reads with r. Readers come from the
@@ -173,6 +175,16 @@ func (s Source) DeliveryID(id string) Source {
 // D81). It helps to recognize a delivery loaded twice.
 func (s Source) WithRecordHash() Source {
 	s.hash = true
+	return s
+}
+
+// Key sets a business key from the given columns: record_key is then the
+// first 16 hex characters of SHA-256 over the names of the columns and
+// their values as read, the same across deliveries (D18, D97). A line
+// without cells keeps the key from fingerprint and line (D81). A key
+// column that is neither in the header nor expected is a plan error.
+func (s Source) Key(cols ...string) Source {
+	s.key = append([]string(nil), cols...)
 	return s
 }
 
@@ -230,6 +242,7 @@ type openedReader struct {
 	s        schema
 	missing  []string
 	findings []Finding
+	keyCols  []int // raw column per business key column, -1 for a missing one (D97)
 }
 
 func newOpenedReader(src Source, h Header) (*openedReader, error) {
@@ -261,6 +274,13 @@ func newOpenedReader(src Source, h Header) (*openedReader, error) {
 	o.raw = &rawSource{name: h.Source, sheet: h.Sheet, s: rs, loc: &readLoc{id: h.ID, cells: h.Cells}, rel: &release{}}
 	if src.hash {
 		o.raw.loc.hashes = []string{}
+	}
+	for _, k := range src.key {
+		j := slices.Index(cols, k)
+		if j < 0 && !slices.Contains(src.expect, k) {
+			return nil, &PlanError{Step: "source", Err: fmt.Errorf("key column %q is neither in the header of %q nor expected", k, h.Source)}
+		}
+		o.keyCols = append(o.keyCols, j)
 	}
 
 	expected := make(map[string]bool, len(src.expect))
@@ -396,13 +416,15 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 			}
 			loc.display[row] = r.Display
 		}
-		if r.key != "" {
-			if loc.keys == nil {
-				loc.keys = make([]string, row, row+1)
-			}
+		key := r.key
+		if key == "" && o.keyCols != nil && fields != nil {
+			key = businessKey(o.src.key, o.keyCols, fields)
+		}
+		if key != "" && loc.keys == nil {
+			loc.keys = make([]string, row, row+1)
 		}
 		if loc.keys != nil {
-			loc.keys = append(loc.keys, r.key)
+			loc.keys = append(loc.keys, key)
 		}
 		if loc.hashes != nil {
 			h := r.hash
@@ -496,6 +518,22 @@ func recordHash(fields []string, raw []byte) string {
 	} else {
 		for _, f := range fields {
 			fmt.Fprintf(h, "%d:%s;", len(f), f)
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// businessKey is the record_key of a row with a business key: the first 16
+// hex characters of SHA-256 over the names of the key columns and their
+// values (D97).
+func businessKey(names []string, cols []int, fields []string) string {
+	h := sha256.New()
+	for i, name := range names {
+		fmt.Fprintf(h, "%d:%s;", len(name), name)
+		if j := cols[i]; j >= 0 {
+			fmt.Fprintf(h, "%d:%s;", len(fields[j]), fields[j])
+		} else {
+			h.Write([]byte("n;"))
 		}
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]

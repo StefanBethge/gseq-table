@@ -1529,3 +1529,100 @@ Tabelle ändert sich in keinem Modus.
 Lauf weiter verwenden. Der Modus behält seinen Nutzen für alle weiteren Änderungen im Lauf.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #50)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D94 — Mit einem Ziel für Ergebnisse hält die Ergebnistabelle keine Zeilen
+
+**Entscheidung:** Hat eine Pipeline ein Ziel für ihre Ergebnisse nach [D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http), verlassen die
+Ergebniszeilen den Plan mit dem Schreiben und geben ihren Rohzustand frei. Die Ergebnistabelle
+des `Result` nach [D88](#d88-run-liefert-immer-ein-result-und-einen-fehler-nur-wenn-der-lauf-nicht-zu-ende-lief) hat dann die Spalten des Plans, aber keine Zeilen. Sie trägt weiter die
+aussortierten Zeilen, die Befunde und den haftenden Fehler. Eine Zeile zählt nach [D84](#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen) erst als
+durchgelaufen, wenn das Ziel ihren Block angenommen hat. Das präzisiert [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie) für Läufe mit Ziel.
+**Begründung:** Hielte das Ergebnis die geschriebenen Zeilen zusätzlich, läge eine umfangreiche
+Lieferung am Ende doch im Speicher, gegen [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen). Ohne Ziel bleibt die Ergebnistabelle nach [D87](#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie) der bequeme
+Weg für kleine Läufe und Tests.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D95 — Writer für aussortierte Zeilen im Plan gibt es je Quelle, als Fabrik für alle Quellen und für die Übersicht
+
+**Entscheidung:** Ein Writer für aussortierte Zeilen nach [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) wird im Plan auf drei Arten angegeben:
+für eine benannte Quelle, als Fabrik für alle Quellen und für die Übersicht. Die Fabrik bekommt
+den Namen einer Quelle und liefert deren eigenen Writer, wenn die erste Zeile dieser Quelle
+aussortiert wird. Ein Writer für eine benannte Quelle geht der Fabrik vor. Jeder Writer bekommt
+so Blöcke mit den festen Spalten einer Tabelle je Quelle nach [D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen). Eine Quelle ohne Writer
+bleibt im Ergebnis. Die Übersicht bleibt im Ergebnis, auch mit einem Writer für sie, weil
+Zählungen und Änderungsbericht auf ihr beruhen.
+**Begründung:** Ein einziger Writer für die Tabellen aller Quellen bekäme wechselnde Spalten,
+was [D13](#d13-aussortierte-zeilen-gibt-es-je-quelle-dazu-eine-ubersicht-uber-alle-quellen) verworfen hat. Mit der Fabrik schreibt eine Pipeline die aussortierten Zeilen jeder
+Quelle in ein eigenes Ziel, etwa eine Datei je Quelle, ohne die Quellen vorab aufzuzählen.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52, Teilauflösung von [G54](70-gap-ledger.md#g54-lucken-bei-writern-fur-aussortierte-zeilen-im-plan))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D96 — Nach einem vorzeitigen Ende wird in kein Ziel mehr geschrieben, und nicht geschriebene aussortierte Zeilen bleiben im Ergebnis
+
+**Entscheidung:** Endet ein Lauf vorzeitig, etwa durch einen Stopp nach [D3](#d3-das-fehlerverhalten-ist-pro-pipeline-wahlbar-aussortieren-oder-sofort-stoppen) oder einen
+Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab), schreibt die Engine danach in kein Ziel mehr, weder Ergebnisse noch
+aussortierte Zeilen. Bereits Geschriebenes bleibt nach [D51](#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben). Aussortierte Zeilen, die noch in keinen
+Writer gegangen sind, auch die des scheiternden Blocks, bleiben im Ergebnis lesbar, auch für
+Quellen mit Writer nach [D95](#d95-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht).
+**Begründung:** Der Abbruch wirkt so sofort, wie [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab) es verlangt, und ein Ziel, das
+gerade gescheitert ist, bekommt keine weiteren Blöcke. Weil die nicht geschriebenen
+aussortierten Zeilen im Ergebnis bleiben, geht nichts verloren, was [D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) bewahren soll.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52, Teilauflösung von [G54](70-gap-ledger.md#g54-lucken-bei-writern-fur-aussortierte-zeilen-im-plan))
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen)
+
+### D97 — Ein fachlicher Schlüssel bildet record_key als Hash über die Namen und Werte seiner Spalten
+
+**Entscheidung:** Gibt eine Quelle einen fachlichen Schlüssel aus Spalten an ([D18](#d18-jede-quellzeile-tragt-einen-stabilen-schlussel-optional-einen-inhalts-hash)), besteht
+`record_key` aus den ersten 16 Hex-Zeichen von SHA-256 über die Namen der Schlüsselspalten und
+ihre gelesenen Werte, ohne Quellname und Fingerabdruck. Eine Zeile ohne Zellen, weil der Reader
+sie nicht zerlegen konnte, behält den Schlüssel aus Fingerabdruck und Zeile nach [D81](#d81-eine-gelesene-zeile-wird-uber-ihre-physische-zeile-gefunden-und-record_key-besteht-aus-fingerabdruck-und-zeile). Eine
+Schlüsselspalte, die weder im Kopf noch im erwarteten Aufbau steht, ist ein Planfehler. Fehlt
+eine erwartete Schlüsselspalte, gilt [D19](#d19-es-gibt-drei-fehlerarten-planfehler-lieferfehler-und-datenfehler) für die fehlende Spalte.
+**Begründung:** Ohne Quellname und Fingerabdruck ist der Schlüssel über Lieferungen hinweg gleich,
+auch wenn jede Lieferung einen eigenen Dateinamen hat. Der Hash hat eine feste Länge wie die
+Kennungen nach [D76](#d76-kennungen-von-lauf-fehler-und-zeile-haben-eine-feste-form) und kann das `+` nicht enthalten, das in `row_key` die Schlüssel verbindet.
+Die Namen im Hash halten zwei Schlüssel aus verschiedenen Spalten auseinander.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
+**Betroffene Use Cases:** [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet), [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
+
+### D98 — Close gibt die aussortierten Zeilen eines Ergebnisses frei, danach tragen ihre Tabellen einen haftenden Fehler
+
+**Entscheidung:** `Close` auf einem `Result` gibt den Rohzustand und die Tabellen der
+aussortierten Zeilen frei, die das Ergebnis nach [D49](#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) hält, und das ausgelagerte davon. Danach tragen
+alle Tabellen aussortierter Zeilen des Ergebnisses, auch die Übersicht, einen haftenden Fehler.
+Status, Befunde, Zählungen und Änderungsbericht bleiben. `Close` darf mehrfach aufgerufen werden.
+**Begründung:** Ein haftender Fehler nach [D50](#d50-eine-tabelle-tragt-ihre-aussortierten-zeilen-und-einen-haftenden-fehler) macht einen Zugriff nach `Close` sichtbar, statt
+leere Tabellen zu liefern, die wie ein Lauf ohne aussortierte Zeilen aussehen. Was der
+Scheduler braucht, bleibt auch nach `Close` erhalten.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
+**Betroffene Use Cases:** [UC3](05-use-cases.md#uc3-pipeline-entwickler-untersucht-aussortierte-zeilen), [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D99 — Der Excel-Writer schreibt typisierte Zellen, Text nie als Formel
+
+**Entscheidung:** Der Excel-Writer nach [D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http) schreibt Ganzzahlen und Gleitkommazahlen als Zahl,
+Wahrheitswerte als Wahrheitswert und Zeitpunkte als Datumszelle mit Datumsformat. Text wird
+immer als Text geschrieben, auch wenn er mit `=` beginnt, nie als Formel. Ein Nullwert wird eine
+leere Zelle. Beim Zurücklesen gelten die Textformen nach [D80](#d80-jeder-zelltyp-einer-excel-lieferung-hat-eine-feste-textform).
+**Begründung:** In Excel soll mit den Ergebnissen gerechnet werden können. Rohspalten
+aussortierter Zeilen sind nach [D29](#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) Text und kommen deshalb unverändert zurück, was die
+Nachverarbeitung nach [D16](#d16-aussortierte-zeilen-konnen-quelle-eines-laufs-sein-und-behalten-ihre-ursprungliche-fundstelle) braucht. Text als Formel zu schreiben würde Werte einer nicht
+vertrauenswürdigen Lieferung ausführbar machen.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung), [UC4](05-use-cases.md#uc4-aussortierte-zeilen-werden-nach-einer-anpassung-nachverarbeitet)
+
+### D100 — Run beendet jedes Ziel des Plans mit Close, auch nach einem Abbruch
+
+**Entscheidung:** Ein Ziel nach [D35](#d35-ziele-werden-uber-eine-sink-schnittstelle-beschrieben-mit-datei-writern-und-kleinen-paketen-fur-datenbank-und-http) nimmt Blöcke mit `Write` entgegen und wird mit `Close`
+beendet. `Run` ruft `Close` für jedes Ziel des Plans am Ende des Laufs auf, auch nach einem
+vorzeitigen Ende, ein Ziel aus der Fabrik nach [D95](#d95-writer-fur-aussortierte-zeilen-im-plan-gibt-es-je-quelle-als-fabrik-fur-alle-quellen-und-fur-die-ubersicht) nur, wenn sie es geliefert hat, damit Geschriebenes nach [D51](#d51-im-modus-stoppen-wird-der-scheiternde-block-nicht-geschrieben-bereits-geschriebene-blocke-bleiben) bleibt. Ein
+Fehler aus `Close` ist ein Schreibfehler nach [D40](#d40-ein-fehler-beim-schreiben-in-ein-ziel-bricht-den-lauf-sofort-mit-dem-status-sink_error-ab). Datei-Writer legen ihre Datei beim ersten
+Block an und überschreiben eine vorhandene; ohne Block legen sie keine Datei an. Das Ziel für Ergebnisse bekommt bei einem Lauf
+ohne Ergebniszeilen einen leeren Block, damit eine Datei ihren Kopf erhält. Ein Writer für
+aussortierte Zeilen bekommt nur Blöcke mit Zeilen.
+**Begründung:** Liegt das Schließen beim Lauf, vergisst keine Pipeline, eine Datei nach einem
+Abbruch zu schließen, und der Fehler beim Schließen, etwa eine volle Platte beim Leeren eines
+Puffers, landet im Status. Eine Ergebnisdatei nur mit Kopf zeigt, dass der Lauf durchgelaufen
+ist und nichts geliefert hat.
+**Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #52)
+**Betroffene Use Cases:** [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung)
