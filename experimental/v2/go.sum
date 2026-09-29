@@ -9,6 +9,8 @@ github.com/richardlehane/mscfb v1.0.4/go.mod h1:YzVpcZg9czvAuhk9T+a3avCpcFPMUWm7
 github.com/richardlehane/msoleps v1.0.1/go.mod h1:BWev5JBpU9Ko2WAgmZEuiz4/u3ZYTKbjLycmwiWUfWg=
 github.com/richardlehane/msoleps v1.0.4 h1:WuESlvhX3gH2IHcd8UqyCuFY5yiq/GR/yqaSM/9/g00=
 github.com/richardlehane/msoleps v1.0.4/go.mod h1:BWev5JBpU9Ko2WAgmZEuiz4/u3ZYTKbjLycmwiWUfWg=
+github.com/stefanbethge/gseq v1.0.0 h1:LkPZkysmbWJRwWFHSoE8DbE5dCn8JK0su731nYPqK68=
+github.com/stefanbethge/gseq v1.0.0/go.mod h1:710nkPaMphDHdvEhUQGdLDkzrbRJvY9AYzM6JY0kTG0=
 github.com/stefanbethge/gseq-table v1.3.0 h1:upYJzXpswDbJzJ0n7ia7YSJO2t7KGwPVFObuM1yfo60=
 github.com/stefanbethge/gseq-table v1.3.0/go.mod h1:4crAimOeeDiBhM1DGRJHuJV1nHuHU55g+wOlEAr2tvs=
 github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcUk=
