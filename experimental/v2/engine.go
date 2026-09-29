@@ -316,8 +316,6 @@ func (s *fullStage) finishSorted(ctx context.Context) error {
 // finishJoin probes the spilled left rows block by block against the right
 // side; the join rows keep the order of the left rows (D6).
 func (s *fullStage) finishJoin(ctx context.Context, op joinOp) error {
-	t := s.sc.rx.tally
-	_ = t
 	ix := op.prepare()
 	return s.mergeInBlocks(s.x, s.full, func(b batch, _ []int64) error {
 		return s.emit(ctx, s.joinRows(op, ix, b.blk, b.orig))
