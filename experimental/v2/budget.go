@@ -65,6 +65,10 @@ func (p *memPool) budget() int64 {
 
 func (p *memPool) add(n int64) {
 	u := p.used.Add(n)
+	p.notePeak(u)
+}
+
+func (p *memPool) notePeak(u int64) {
 	for {
 		peak := p.peak.Load()
 		if u <= peak || p.peak.CompareAndSwap(peak, u) {
@@ -163,6 +167,30 @@ func (m *runMem) over() bool {
 		return false
 	}
 	return (m.cap > 0 && m.used > m.cap) || (m.limit > 0 && m.pool.used.Load() > m.limit)
+}
+
+// claim counts between lo and hi bytes for the run at once, as much as
+// its cap and the budget of the process leave, and returns what it
+// counted. The check and the count are one atomic step on the pool, so
+// that two runs cannot take the same room (D65, D94).
+func (m *runMem) claim(lo, hi int64) int64 {
+	if m.cap > 0 {
+		hi = min(hi, m.cap-m.used)
+	}
+	for {
+		u := m.pool.used.Load()
+		n := hi
+		if m.limit > 0 {
+			n = min(n, m.limit-u)
+		}
+		n = max(n, lo)
+		if m.pool.used.CompareAndSwap(u, u+n) {
+			m.pool.notePeak(u + n)
+			m.used += n
+			m.peak = max(m.peak, m.used)
+			return n
+		}
+	}
 }
 
 // relieve spills while the run is over its cap or the budget: first the

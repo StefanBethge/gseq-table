@@ -164,7 +164,8 @@ type sorter struct {
 	rows     int64
 	next     int64
 	file     *spillFile
-	rowBytes int64 // bytes per spilled row, for the fan-in of a merge
+	rowBytes int64 // bytes per row of a spilled frame
+	claimed  int64 // counted for the frames of the current merge
 }
 
 // add collects b; its rows are numbered in order.
@@ -254,7 +255,11 @@ func (x *sorter) spill() error {
 	}
 	x.file.begin()
 	for _, c := range chunkRows(b.blk.Len(), x.frameLen) {
-		x.m.writeFrame(x.file.w, batch{b.blk.Take(c), pick(b.orig, c)}, pickSeq(seq, c))
+		f := batch{b.blk.Take(c), pick(b.orig, c)}
+		x.m.writeFrame(x.file.w, f, pickSeq(seq, c))
+		// A frame read back holds all its columns, also those the buffer
+		// shared with the raw state.
+		x.rowBytes = max(x.rowBytes, batchBytes(f)/int64(len(c)))
 	}
 	endFrames(x.file.w)
 	seg, err := x.file.end()
@@ -262,7 +267,6 @@ func (x *sorter) spill() error {
 		return err
 	}
 	x.file.segs = append(x.file.segs, seg)
-	x.rowBytes = max(x.rowBytes, x.bytes/max(x.rows, 1))
 	if x.onSpill != nil {
 		if err := x.onSpill(b.orig); err != nil {
 			return err
@@ -334,29 +338,47 @@ func (x *sorter) merge(yield func(row) error) error {
 	}
 	segs := x.file.segs
 	// Merging many runs at once would hold a frame of each; merge them in
-	// passes, earlier runs first so that equal keys keep their order.
-	if fan := x.fanIn(); len(segs) > fan {
-		for len(segs) > fan {
-			seg, err := x.mergeInto(segs[:fan])
-			if err != nil {
-				return err
-			}
-			segs = append([]segment{seg}, segs[fan:]...)
+	// passes, earlier runs first so that equal keys keep their order. The
+	// frames of a merge cannot be spilled: make room first, and claim them
+	// before loading them (D65, D94).
+	for {
+		if err := x.m.relieve(); err != nil {
+			return err
 		}
+		fan := x.claimFrames(len(segs))
+		if len(segs) <= fan {
+			defer x.releaseFrames()
+			return x.mergeSegs(segs, yield)
+		}
+		seg, err := x.mergeInto(segs[:fan])
+		x.releaseFrames()
+		if err != nil {
+			return err
+		}
+		segs = append([]segment{seg}, segs[fan:]...)
 	}
-	return x.mergeSegs(segs, yield)
 }
 
-// fanIn is the number of runs merged at once: as many frames as fit in an
-// eighth of the budget, at least two, so that the runs of a process can
-// merge at the same time.
-func (x *sorter) fanIn() int {
+// frameBytes estimates the memory of a frame read back.
+func (x *sorter) frameBytes() int64 { return max(x.rowBytes, 1) * int64(max(x.frameLen, 1)) }
+
+// claimFrames claims the frames of a merge of up to runs runs and returns
+// how many runs to merge at once: as many as fit in what the run and the
+// process have left, at most an eighth of the budget, and at least two.
+func (x *sorter) claimFrames(runs int) int {
 	b := x.m.budget()
-	frame := x.rowBytes * int64(max(x.frameLen, 1))
-	if b <= 0 || frame <= 0 {
-		return 1 << 20
+	if b <= 0 {
+		return runs
 	}
-	return int(max(2, b/8/frame))
+	frame := x.frameBytes()
+	hi := min(b/8, int64(runs)*frame)
+	x.claimed = x.m.claim(min(2, int64(runs))*frame, hi)
+	return int(max(2, x.claimed/frame))
+}
+
+func (x *sorter) releaseFrames() {
+	x.m.shrink(x.claimed)
+	x.claimed = 0
 }
 
 // mergeInto merges segs into a new segment at the end of the file.
@@ -371,7 +393,7 @@ func (x *sorter) mergeInto(segs []segment) (segment, error) {
 		if rb.add(r); rb.len() >= x.frameLen {
 			write()
 		}
-		return nil
+		return x.m.relieve()
 	})
 	if err != nil {
 		return segment{}, err
@@ -396,6 +418,8 @@ type cursor struct {
 	per   int64 // per row
 }
 
+// load reads the next frame. The claim of the merge covers a frame of the
+// estimated size; only what a frame holds beyond it is counted here.
 func (c *cursor) load() (bool, error) {
 	c.x.m.shrink(c.bytes)
 	c.bytes = 0
@@ -405,8 +429,12 @@ func (c *cursor) load() (bool, error) {
 	}
 	c.b, c.seq, c.i = b, seq, 0
 	c.kv = keyVecs(b.blk, c.x.s, c.x.keys)
-	c.bytes = batchBytes(b)
-	c.per = c.bytes / int64(max(b.blk.Len(), 1))
+	n := batchBytes(b)
+	c.per = n / int64(max(b.blk.Len(), 1))
+	if c.x.claimed > 0 {
+		n = max(0, n-c.x.frameBytes())
+	}
+	c.bytes = n
 	c.x.m.grow(c.bytes)
 	return true, nil
 }
