@@ -37,8 +37,8 @@ func (s Status) String() string {
 func (s Status) ExitCode() int { return int(s) }
 
 // Cause is one status that applies to a run, with the error behind it
-// (D63): a *PlanError, a *DeliveryError, a *DataError, a *ThresholdError or
-// the error of the context.
+// (D63): a *PlanError, a *DeliveryError, a *DataError, a *ThresholdError,
+// a *SinkError (D40) or the error of the context.
 type Cause struct {
 	Status Status
 	Err    error
@@ -96,6 +96,22 @@ type Result struct {
 
 	mem    *runMem
 	closer *resultCloser // spilled rejected rows until Close (D49)
+}
+
+// Close releases the rejected rows the result holds (D49, D98). After
+// Close, the tables of RejectedRows of the result table, and of the
+// tables derived from it, carry the sticky error ErrClosed. Status,
+// causes, counts and the change report stay. Close may be called more
+// than once.
+func (r Result) Close() error {
+	if r.Table.rs != nil {
+		r.Table.rs.close(r.Table.rejects)
+	}
+	// The spilled copies go with the run's spill directory (D28, D103).
+	if r.closer != nil {
+		return r.closer.close()
+	}
+	return nil
 }
 
 // ExitCode returns the exit code of the status (D86).
@@ -544,7 +560,10 @@ func causeOf(err error) Cause {
 	var pe *PlanError
 	var de *DeliveryError
 	var te *ThresholdError
+	var se *SinkError
 	switch {
+	case errors.As(err, &se):
+		return Cause{StatusSinkError, err}
 	case errors.As(err, &pe):
 		return Cause{StatusPlanError, err}
 	case errors.As(err, &de):

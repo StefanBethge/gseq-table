@@ -37,6 +37,8 @@ type Pipeline struct {
 	formats    formatLimits
 	copyMode   CopyMode
 
+	sinks sinks
+
 	memCap    int64
 	managed   bool
 	spillRoot string
@@ -205,7 +207,7 @@ func (p *Pipeline) FormatChangeLimitFor(column string, share float64) *Pipeline 
 }
 
 // MemoryBudget caps the memory the run may count, in bytes, within the
-// budget of the process (D94). The run spills when it reaches its cap or
+// budget of the process (D101). The run spills when it reaches its cap or
 // when all runs of the process reach the budget of the process; see
 // SetMemoryBudget. 0 means no cap of its own.
 func (p *Pipeline) MemoryBudget(bytes int64) *Pipeline {
@@ -215,7 +217,7 @@ func (p *Pipeline) MemoryBudget(bytes int64) *Pipeline {
 
 // WithManagedMemory lets the engine set GOMEMLIMIT for the process to 90 %
 // of the detected memory limit, unless the environment or the program has
-// set it already. The engine never resets it (D65, D95).
+// set it already. The engine never resets it (D65, D102).
 func (p *Pipeline) WithManagedMemory() *Pipeline {
 	p.managed = true
 	return p
@@ -226,7 +228,7 @@ func (p *Pipeline) WithManagedMemory() *Pipeline {
 // own, only accessible to the running user, and removes it at the end of
 // the run, or at Close of the result if it holds spilled rejected rows. At
 // its start a run removes the subdirectories of runs that ended without
-// cleaning up (D28, D38, D56, D96).
+// cleaning up (D28, D38, D56, D103).
 func (p *Pipeline) SpillDir(path string) *Pipeline {
 	p.spillRoot = path
 	return p
@@ -304,6 +306,9 @@ func (p *Pipeline) check(o opened) ([]planned, schema, error) {
 		}
 		srcs = unionSources(srcs, j.right.srcs)
 	}
+	if err := p.sinks.check(srcs); err != nil {
+		return nil, nil, &PlanError{Step: "sink", Err: err}
+	}
 	prefix := infoPrefix(p.prefix)
 	for _, src := range srcs {
 		if err := prefixClash(src, prefix); err != nil {
@@ -324,11 +329,29 @@ func (p *Pipeline) check(o opened) ([]planned, schema, error) {
 // Run also returns an error if the run did not run to the end: a
 // *PlanError before any row is read, a *DeliveryError if the source cannot
 // be read or a delivery error is set to ModeStop, a *DataError for a data
-// error set to ModeStop, a *ThresholdError with AbortOnThreshold, or the
-// context's error. The result table carries the rejects of the source,
-// then those of the reading and the steps, and the findings of the header
-// check.
+// error set to ModeStop, a *ThresholdError with AbortOnThreshold, a
+// *SinkError if a sink failed (D40), or the context's error. The result
+// table carries the rejects of the source, then those of the reading and
+// the steps, and the findings of the header check. With a sink for the
+// results it has no rows (D94). At the end Run closes every sink of the
+// plan, also after an early end (D100).
 func (p *Pipeline) Run(ctx context.Context) (Result, error) {
+	st := &rejectState{}
+	rw := newRejectWriters(p.sinks, infoPrefix(p.prefix), st)
+	res, err := p.run(ctx, rw)
+	res.Table.rs = st
+	for _, e := range closeSinks(p.sinks, rw) {
+		if err == nil {
+			err = e
+			res.Table.err = e
+		}
+		res.Causes = append(res.Causes, Cause{StatusSinkError, e})
+	}
+	res.Status = status(res.Causes)
+	return res, err
+}
+
+func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 	if err := p.checkParams(); err != nil {
 		return failed(err, nil)
 	}
@@ -378,6 +401,8 @@ func (p *Pipeline) Run(ctx context.Context) (Result, error) {
 		read.cnt = t.step(read.ref)
 	}
 	rx.carry(o.rejects())
+	c := &collector{t: t, sink: p.sinks.result, s: out}
+	flush := func() error { return rw.flush(ctx, rx.entries) }
 	bs, runErr := run(ctx, func(yield func(batch) error) error {
 		n := 0
 		err := o.blocks(p.blockLen, read, func(b batch) error {
@@ -388,7 +413,12 @@ func (p *Pipeline) Run(ctx context.Context) (Result, error) {
 			err = yield(batch{emptyBlock(o.schema()), nil})
 		}
 		return err
-	}, steps, rx, p.blockLen)
+	}, steps, rx, p.blockLen, c, flush)
+	if runErr == nil {
+		runErr = flush()
+	}
+	// The writers of rejected rows have read the copies of the raw state
+	// before the spilled part of the run is removed (D49).
 	closer, err := mem.finish()
 	if runErr == nil && err != nil {
 		runErr = err

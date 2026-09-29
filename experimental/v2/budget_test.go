@@ -178,7 +178,7 @@ func TestSamePipelineGivesTheSameResultInMemoryBlockwiseAndSpilled(t *testing.T)
 func TestGroupByRejectsAggregatedRowsAndStaysInTheBudget(t *testing.T) {
 	testutil.Proves(t, "T9")
 	const budget = 64 << 10
-	// Groups of 100 rows: one group must fit in memory (G67).
+	// Groups of 100 rows: one group must fit in memory (G68).
 	p := FromSource(NewSource(measurements(20000, 200)), 32).
 		Then(Cast("value", TypeFloat)).
 		Then(Cast("big", TypeInt)).
@@ -338,6 +338,10 @@ func TestNothingIsLeftNextToTheTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantEmpty(t, tmp)
+	// Afterwards the tables of rejected rows carry the sticky error (D98).
+	if tbl, _ := held.Table.RejectedRows().Source("m.csv"); !errors.Is(tbl.Err(), ErrClosed) {
+		t.Errorf("after Close: %v, want ErrClosed", tbl.Err())
+	}
 }
 
 // manyRejects returns a pipeline in which every second of n rows is
@@ -472,7 +476,7 @@ func TestGOMEMLIMITOnlyOnRequestAndRunsShareOneBudget(t *testing.T) {
 }
 
 func TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup(t *testing.T) {
-	testutil.Proves(t, "T62")
+	testutil.Proves(t, "T67")
 	const cap = 48 << 10
 	res, err := isolated(t, spillingRun(6000), 1<<40).MemoryBudget(cap).Run(context.Background())
 	if err != nil {
@@ -524,7 +528,7 @@ func TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup(t *testing.T) {
 }
 
 func TestManagedMemorySetsGOMEMLIMITToNinetyPercent(t *testing.T) {
-	testutil.Proves(t, "T63")
+	testutil.Proves(t, "T68")
 	t.Setenv("GOMEMLIMIT", "")
 	withDetectedLimit(t, 10<<30)
 	withMemoryLimit(t, math.MaxInt64)
@@ -540,7 +544,7 @@ func TestManagedMemorySetsGOMEMLIMITToNinetyPercent(t *testing.T) {
 }
 
 func TestLaterRunRemovesEndedRunsButNotOpenResults(t *testing.T) {
-	testutil.Proves(t, "T64")
+	testutil.Proves(t, "T69")
 	ctx := context.Background()
 	root := t.TempDir()
 	// Remains of a run whose process ended: no one holds the lock.

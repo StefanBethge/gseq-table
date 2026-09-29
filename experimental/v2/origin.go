@@ -184,7 +184,7 @@ func (r *rawSource) text(row, j int) (string, bool) {
 	if cols := r.spilledChunk(c); cols != nil {
 		return cols[j].Text(row - r.starts[c])
 	}
-	return "", false
+	return "", false // released by Result.Close or a writer (D49, D98)
 }
 
 // rawColumn returns raw column j for the given rows.

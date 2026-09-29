@@ -1,6 +1,6 @@
 // Package spill holds what the v2 engine needs to spill to disk (design
 // decisions D6, D28): a directory per run that is marked in use by a lock
-// (D38, D96) and only accessible to the running user (D56), and an encoding
+// (D38, D103) and only accessible to the running user (D56), and an encoding
 // of blocks for spill files.
 package spill
 
@@ -19,7 +19,7 @@ const prefix = "gtable-spill-"
 
 // Dir is the spill directory of one run. Its lock file sits next to it and
 // is locked while the directory is in use: by the run, and then by a result
-// that holds spilled rejects until Close (D96).
+// that holds spilled rejects until Close (D103).
 type Dir struct {
 	path string
 	lock *os.File
@@ -92,7 +92,7 @@ func (d *Dir) Remove() error {
 }
 
 // CleanOrphans removes the run directories in root whose lock no one holds:
-// their process has ended, or their result was closed (D38, D96). It is
+// their process has ended, or their result was closed (D38, D103). It is
 // best effort; a directory it cannot remove stays for the next run.
 func CleanOrphans(root string) {
 	entries, err := os.ReadDir(root)

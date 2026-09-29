@@ -1,7 +1,7 @@
 // Package memlimit detects the memory the process may use: the limit of its
 // cgroup, as in a container, or else the physical memory (design decision
-// D94). The engine takes its default memory budget and the value for
-// GOMEMLIMIT from it (D94, D95).
+// D101). The engine takes its default memory budget and the value for
+// GOMEMLIMIT from it (D101, D102).
 package memlimit
 
 import (

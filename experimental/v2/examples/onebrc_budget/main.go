@@ -3,7 +3,7 @@
 // It groups by station with min, mean and max and sorts by station, under a
 // memory budget (UC6; design decisions D6, D28, D60). Sort and group by
 // spill to disk when the budget is reached, and the engine sets GOMEMLIMIT
-// on request (D65, D94, D95).
+// on request (D65, D101, D102).
 //
 // In CI it runs on testdata/measurements.txt, a small synthetic file with
 // placeholders, a decimal comma and a line with a third field;

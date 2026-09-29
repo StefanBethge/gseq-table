@@ -136,7 +136,7 @@ func (m *runMem) readFrame(r *spill.Reader) (b batch, seq []int64, ok bool) {
 }
 
 // originBytes estimates the memory of an origin. The source rows an
-// aggregated row stands for are not counted (G66).
+// aggregated row stands for are not counted (G67).
 func originBytes(o origin) int64 { return 48 + 16*int64(len(o.refs)) }
 
 func batchBytes(b batch) int64 {
@@ -340,7 +340,7 @@ func (x *sorter) merge(yield func(row) error) error {
 	// Merging many runs at once would hold a frame of each; merge them in
 	// passes, earlier runs first so that equal keys keep their order. The
 	// frames of a merge cannot be spilled: make room first, and claim them
-	// before loading them (D65, D94).
+	// before loading them (D65, D101).
 	for {
 		if err := x.m.relieve(); err != nil {
 			return err
@@ -647,7 +647,7 @@ func (r *rawSource) spilledKept(row int) ([]keptCell, bool) {
 		return nil, false
 	}
 	if sp.closed {
-		panic("gtable: the spilled rejected rows of this result were closed")
+		return nil, false // released by Result.Close (D98)
 	}
 	rd := sp.kept.reader(seg)
 	cells := make([]keptCell, rd.Int())

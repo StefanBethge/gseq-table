@@ -81,10 +81,11 @@ func (r *rejectsReader) Open() (Header, error) {
 		case src != h.Source:
 			return Header{}, &PlanError{Step: "source", Err: fmt.Errorf("rejected rows of two sources, %q and %q", h.Source, src)}
 		}
-		if sheet, ok := r.text("sheet", i); ok {
+		// A file without null, such as CSV, holds empty text instead.
+		if sheet, ok := r.text("sheet", i); ok && sheet != "" {
 			h.Sheet = sheet
 		}
-		if _, ok := r.text("cell", i); ok {
+		if cell, ok := r.text("cell", i); ok && cell != "" {
 			h.Cells = true
 		}
 	}
@@ -135,7 +136,11 @@ func (r *rejectsReader) Next() (Record, error) {
 		fields[j], complete = v, complete && ok
 	}
 	raw, hasRaw := r.text("raw_line", i)
-	if complete || !hasRaw {
+	// A line that was never split has raw_line; read back from a file
+	// without null, its raw columns are empty text instead of null.
+	code, _ := r.text("code", i)
+	unsplit := hasRaw && raw != "" && (code == CodeUnparseableLine || code == CodeFieldTooLarge)
+	if !unsplit && (complete || !hasRaw) {
 		rec.Fields = fields
 		return rec, nil
 	}
@@ -150,7 +155,7 @@ func (r *rejectsReader) Next() (Record, error) {
 		rec.Code, rec.Reason = CodeUnparseableLine, err.Error()
 		return rec, nil
 	}
-	rec.Code, _ = r.text("code", i)
+	rec.Code = code
 	if rec.Code != CodeFieldTooLarge {
 		rec.Code = CodeUnparseableLine
 	}

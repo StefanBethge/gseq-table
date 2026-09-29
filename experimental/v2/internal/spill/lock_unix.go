@@ -8,7 +8,7 @@ import (
 )
 
 // lockOwn locks the lock file of a new run directory without waiting. The
-// system gives the lock up when f is closed or the process ends (D96).
+// system gives the lock up when f is closed or the process ends (D103).
 func lockOwn(f *os.File) bool { return flock(f) }
 
 // lockOrphan locks the lock file of another run's directory without

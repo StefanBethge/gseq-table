@@ -66,6 +66,18 @@ func (c Column) Bool(i int) (v bool, ok bool) { return c.col.Bool(i) }
 // Timestamp returns cell i of a TypeTimestamp column; ok is false for null.
 func (c Column) Timestamp(i int) (v time.Time, ok bool) { return c.col.Timestamp(i) }
 
+// Format returns cell i as text, in the form Table.String shows: integers
+// in decimal, floats in the shortest form, timestamps in RFC 3339; ok is
+// false for null.
+func (c Column) Format(i int) (v string, ok bool) {
+	if c.col.IsNull(i) {
+		return "", false
+	}
+	vv := &vec{kind: c.col.Kind(), texts: c.col.Texts(), ints: c.col.Ints(), flts: c.col.Floats(),
+		bools: c.col.Bools(), times: c.col.Timestamps()}
+	return formatCell(vv.kind, vv, i), true
+}
+
 // Texts returns a text column with the given values. Empty text is a value,
 // not null (D30); use WithNulls for null cells.
 func Texts(name string, values ...string) Column {
