@@ -394,3 +394,48 @@ func (b *Builder) Build() Column {
 	b.reset(d.kind, d.length)
 	return newColumn(d)
 }
+
+// stringHeader is the size of a string header in a text column.
+const stringHeader = 16
+
+// Bytes estimates the memory the values of the column take: the value
+// slice, the bytes of the texts and the null bitmap. The engine counts it
+// against the memory budget (D28).
+func (c Column) Bytes() int64 {
+	d := c.d
+	n := int64(len(d.nulls)) * 8
+	switch d.kind {
+	case Text:
+		n += int64(len(d.texts)) * stringHeader
+		for _, s := range d.texts {
+			n += int64(len(s))
+		}
+	case Int, Float:
+		n += int64(d.length) * 8
+	case Bool:
+		n += int64(d.length)
+	case Timestamp:
+		n += int64(d.length) * 24
+	}
+	return n
+}
+
+// AppendFrom appends cell i of c, which has the builder's kind.
+func (b *Builder) AppendFrom(c Column, i int) {
+	if c.IsNull(i) {
+		b.AppendNull()
+		return
+	}
+	switch c.Kind() {
+	case Text:
+		b.AppendText(c.d.texts[i])
+	case Int:
+		b.AppendInt(c.d.ints[i])
+	case Float:
+		b.AppendFloat(c.d.floats[i])
+	case Bool:
+		b.AppendBool(c.d.bools[i])
+	case Timestamp:
+		b.AppendTimestamp(c.d.times[i])
+	}
+}

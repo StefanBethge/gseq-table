@@ -12,8 +12,8 @@ import (
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
 
-// concatBlocks joins the blocks of a step over all rows into one block. The
-// prototype holds them in memory; spilling to disk follows in slice 7 (#51).
+// concatBlocks joins the blocks of a step over all rows into one block, with
+// the columns of s.
 func concatBlocks(blks []block.Block, s schema) block.Block {
 	if len(blks) == 1 {
 		return blks[0]
@@ -145,12 +145,22 @@ func (o joinOp) rightRejects() []rejectEntry { return o.right.rejects }
 // applyAll joins the rows. A join row keeps the source rows of both sides,
 // so that its failure rejects all of them together (D11).
 func (o joinOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
-	lb := concatBlocks(blks, in)
+	out, orig := o.probe(o.prepare(), concatBlocks(blks, in), in, sc.orig)
+	return out, orig, nil
+}
+
+// joinIndex is the right side of a join, held in memory (P1), with its
+// rows by key.
+type joinIndex struct {
+	rb    block.Block
+	index map[string][]int
+	rorig []origin
+}
+
+func (o joinOp) prepare() *joinIndex {
 	rb := concatBlocks(o.right.blocks, o.right.s)
-	lk := make([]*vec, len(o.keys))
 	rk := make([]*vec, len(o.keys))
 	for i, k := range o.keys {
-		lk[i] = vecOf(lb.Column(in.index(k.left)))
 		rk[i] = vecOf(rb.Column(o.right.s.index(k.right)))
 	}
 	var sb strings.Builder
@@ -160,35 +170,46 @@ func (o joinOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Bloc
 			index[key] = append(index[key], i)
 		}
 	}
-	rorig := o.right.origins()
+	return &joinIndex{rb: rb, index: index, rorig: o.right.origins()}
+}
+
+// probe joins the left rows lb with origins lorig to the right side. The
+// join rows keep the order of the left rows, so that probing block by
+// block gives the rows of probing all at once (D6).
+func (o joinOp) probe(ix *joinIndex, lb block.Block, in schema, lorig []origin) (block.Block, []origin) {
+	lk := make([]*vec, len(o.keys))
+	for i, k := range o.keys {
+		lk[i] = vecOf(lb.Column(in.index(k.left)))
+	}
+	var sb strings.Builder
 	var li, ri []int
 	var orig []origin
 	for i := range lb.Len() {
 		var matches []int
 		if key, null := keyOf(lk, i, &sb); !null {
-			matches = index[key]
+			matches = ix.index[key]
 		}
 		for _, j := range matches {
 			li = append(li, i)
 			ri = append(ri, j)
-			orig = append(orig, sc.orig[i].join(rorig[j]))
+			orig = append(orig, lorig[i].join(ix.rorig[j]))
 		}
 		if len(matches) == 0 && o.left {
 			li = append(li, i)
 			ri = append(ri, -1)
-			orig = append(orig, sc.orig[i])
+			orig = append(orig, lorig[i])
 		}
 	}
-	cols := make([]block.Column, 0, lb.Width()+rb.Width())
-	for i := range lb.Width() {
+	cols := make([]block.Column, 0, len(in)+ix.rb.Width())
+	for i := range in {
 		cols = append(cols, lb.Column(i).Take(li))
 	}
 	for i, f := range o.right.s {
 		if !o.isRightKey(f.name) {
-			cols = append(cols, rb.Column(i).Take(ri))
+			cols = append(cols, ix.rb.Column(i).Take(ri))
 		}
 	}
-	return newBlock(cols, len(li)), orig, nil
+	return newBlock(cols, len(li)), orig
 }
 
 func (o joinOp) isRightKey(name string) bool {
@@ -366,7 +387,42 @@ func (o groupOp) plan(in schema) (schema, error) {
 // stands for its input rows (D12). If aggregations fail for a group, its row
 // is rejected once, with an entry per failed aggregation (D15, D77).
 func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
-	b := concatBlocks(blks, in)
+	out, orig, fails, _ := o.aggregate(concatBlocks(blks, in), in, sc.orig)
+	keys := allIndexes(out.Len())
+	return o.rejectFailed(out, orig, fails, keys, in, sc)
+}
+
+// withKey returns a function that adds the key of the group of every row
+// as a last text column, for sorting the rows by group when they are
+// spilled. The key is the one the groups are formed by.
+func (o groupOp) withKey(in schema) func(batch) batch {
+	return func(b batch) batch {
+		kv := make([]*vec, len(o.keys))
+		for i, k := range o.keys {
+			kv[i] = vecOf(b.blk.Column(in.index(k)))
+		}
+		var sb strings.Builder
+		kb := block.NewBuilder(block.Text, b.blk.Len())
+		for i := range b.blk.Len() {
+			key, _ := keyOf(kv, i, &sb)
+			kb.AppendText(key)
+		}
+		cols := make([]block.Column, 0, len(in)+1)
+		for i := range in {
+			cols = append(cols, b.blk.Column(i))
+		}
+		return batch{newBlock(append(cols, kb.Build()), b.blk.Len()), b.orig}
+	}
+}
+
+// aggFailure is a failed aggregation of a group.
+type aggFailure struct{ column, reason string }
+
+// aggregate computes a row per group of the rows of b with origins rorig,
+// in the order of the groups' first rows. It returns the rows, their
+// origins, the failed aggregations and the first row of every group. A
+// failed aggregation is null in its row.
+func (o groupOp) aggregate(b block.Block, in schema, rorig []origin) (block.Block, []origin, [][]aggFailure, []int) {
 	kv := make([]*vec, len(o.keys))
 	for i, k := range o.keys {
 		kv[i] = vecOf(b.Column(in.index(k)))
@@ -390,12 +446,11 @@ func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Blo
 	for g, rows := range groups {
 		firsts[g] = rows[0]
 		for _, r := range rows {
-			orig[g].agg += sc.orig[r].weight()
-			orig[g].members = append(orig[g].members, sc.orig[r].rows()...)
+			orig[g].agg += rorig[r].weight()
+			orig[g].members = append(orig[g].members, rorig[r].rows()...)
 		}
 	}
-	type failure struct{ column, reason string }
-	fails := make([][]failure, len(groups))
+	fails := make([][]aggFailure, len(groups))
 	outs := make([]*vec, len(o.aggs))
 	for j, a := range o.aggs {
 		src := vecOf(b.Column(in.index(a.col)))
@@ -404,7 +459,7 @@ func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Blo
 		for g, rows := range groups {
 			if reason := a.reduce(src, rows, outs[j], g); reason != "" {
 				outs[j].null[g] = true
-				fails[g] = append(fails[g], failure{a.name(), reason})
+				fails[g] = append(fails[g], aggFailure{a.name(), reason})
 			}
 		}
 	}
@@ -415,13 +470,18 @@ func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Blo
 	for _, v := range outs {
 		cols = append(cols, v.column())
 	}
-	out := newBlock(cols, len(groups))
+	return newBlock(cols, len(groups)), orig, fails, firsts
+}
+
+// rejectFailed rejects the rows of out with failed aggregations, keyed by
+// keys for their reject_id, and returns the others.
+func (o groupOp) rejectFailed(out block.Block, orig []origin, fails [][]aggFailure, keys []int, in schema, sc *stepCtx) (block.Block, []origin, error) {
 	outSchema, _ := o.plan(in)
-	drop := make([]bool, len(groups))
+	drop := make([]bool, out.Len())
 	for g, fs := range fails {
 		snap := func() snapshot { return snapshot{outSchema, out.Take([]int{g})} }
 		for _, f := range fs {
-			if err := sc.rejectRow(g, orig[g], snap, f.column, "", false, f.reason, CodeExpr); err != nil {
+			if err := sc.rejectRow(keys[g], orig[g], snap, f.column, "", false, f.reason, CodeExpr); err != nil {
 				return block.Block{}, nil, err
 			}
 			drop[g] = true
@@ -594,31 +654,47 @@ func (o sortOp) plan(in schema) (schema, error) {
 
 func (o sortOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
 	b := concatBlocks(blks, in)
-	kv := make([]*vec, len(o.keys))
-	for i, k := range o.keys {
-		kv[i] = vecOf(b.Column(in.index(k.col)))
-	}
-	idx := allIndexes(b.Len())
-	slices.SortStableFunc(idx, func(x, y int) int {
-		for i, v := range kv {
-			xn, yn := v.null[x], v.null[y]
-			switch {
-			case xn && yn:
-				continue
-			case xn:
-				return 1
-			case yn:
-				return -1
-			}
-			c := compareCells(v, x, v, y)
-			if o.keys[i].desc {
-				c = -c
-			}
-			if c != 0 {
-				return c
-			}
-		}
-		return 0
-	})
+	idx := sortIndex(b, in, o.keys)
 	return b.Take(idx), pick(sc.orig, idx), nil
+}
+
+// sortIndex returns the rows of b in the order of the keys, stable (D70).
+func sortIndex(b block.Block, s schema, keys []SortKey) []int {
+	kv := keyVecs(b, s, keys)
+	idx := allIndexes(b.Len())
+	slices.SortStableFunc(idx, func(x, y int) int { return compareKeys(kv, x, kv, y, keys) })
+	return idx
+}
+
+// keyVecs returns the key columns of b.
+func keyVecs(b block.Block, s schema, keys []SortKey) []*vec {
+	kv := make([]*vec, len(keys))
+	for i, k := range keys {
+		kv[i] = vecOf(b.Column(s.index(k.col)))
+	}
+	return kv
+}
+
+// compareKeys compares row x of the key columns a with row y of b. Nulls
+// come last in both directions (D70).
+func compareKeys(a []*vec, x int, b []*vec, y int, keys []SortKey) int {
+	for i := range keys {
+		xn, yn := a[i].null[x], b[i].null[y]
+		switch {
+		case xn && yn:
+			continue
+		case xn:
+			return 1
+		case yn:
+			return -1
+		}
+		c := compareCells(a[i], x, b[i], y)
+		if keys[i].desc {
+			c = -c
+		}
+		if c != 0 {
+			return c
+		}
+	}
+	return 0
 }

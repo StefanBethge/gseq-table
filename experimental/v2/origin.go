@@ -26,8 +26,9 @@ type rawSource struct {
 	chunks [][]block.Column // nil once released (D87)
 	starts []int            // first row of every chunk
 	n      int
-	loc    *readLoc // nil for a table built in code
-	rel    *release // nil unless the raw state is released during a run
+	loc    *readLoc  // nil for a table built in code
+	rel    *release  // nil unless the raw state is released during a run
+	sp     *rawSpill // spilled raw state; nil unless spilled (D6, D49)
 
 	fpOnce sync.Once
 	fp     string
@@ -65,7 +66,9 @@ type release struct {
 	owner     *tally  // the run that read the rows
 	live      []int32 // working rows per source row
 	chunkLive []int   // source rows still in the plan per chunk
+	bytes     []int64 // counted bytes per chunk (D28)
 	kept      map[int][]keptCell
+	keptBytes int64
 }
 
 type keptCell struct {
@@ -84,6 +87,15 @@ func (r *rawSource) addChunk(cols []block.Column, rows int) {
 			r.rel.live = append(r.rel.live, 1)
 		}
 		r.rel.chunkLive = append(r.rel.chunkLive, rows)
+		var n int64
+		for _, c := range cols {
+			n += c.Bytes()
+		}
+		r.rel.bytes = append(r.rel.bytes, n)
+		if m := r.mem(); m != nil {
+			m.grow(n)
+			m.read += n
+		}
 	}
 }
 
@@ -112,12 +124,19 @@ func (r *rawSource) drop(row int) {
 	c := r.chunkOf(row)
 	r.rel.chunkLive[c]--
 	if r.rel.chunkLive[c] == 0 {
+		if r.chunks[c] != nil {
+			r.mem().shrink(r.rel.bytes[c])
+		}
 		r.chunks[c] = nil
+		if r.sp != nil {
+			delete(r.sp.at, c)
+		}
 	}
 }
 
 // keep copies the raw state of a rejected row, so that the row keeps it
-// after its chunk is freed (D87).
+// after its chunk is freed (D87). The copy counts against the budget and is
+// spilled over it (D49).
 func (r *rawSource) keep(row int) {
 	if r.rel == nil {
 		return
@@ -125,28 +144,47 @@ func (r *rawSource) keep(row int) {
 	if _, ok := r.rel.kept[row]; ok {
 		return
 	}
+	if _, ok := r.spilledKept(row); ok {
+		return
+	}
 	c := r.chunkOf(row)
-	if r.chunks[c] == nil {
+	cols := r.chunks[c]
+	if cols == nil {
+		cols = r.spilledChunk(c)
+	}
+	if cols == nil {
 		return
 	}
 	cells := make([]keptCell, len(r.s))
-	for j, col := range r.chunks[c] {
+	for j, col := range cols {
 		cells[j].s, cells[j].ok = col.Text(row - r.starts[c])
 	}
 	if r.rel.kept == nil {
 		r.rel.kept = map[int][]keptCell{}
 	}
 	r.rel.kept[row] = cells
+	n := keptBytes(cells)
+	r.rel.keptBytes += n
+	r.mem().grow(n)
 }
 
-// text returns the raw value of column j in row as text.
+// text returns the raw value of column j in row as text: from its chunk,
+// in memory or spilled, or from the copy of a rejected row.
 func (r *rawSource) text(row, j int) (string, bool) {
 	c := r.chunkOf(row)
 	if cols := r.chunks[c]; cols != nil {
 		return cols[j].Text(row - r.starts[c])
 	}
-	k := r.rel.kept[row][j]
-	return k.s, k.ok
+	if k, ok := r.rel.kept[row]; ok {
+		return k[j].s, k[j].ok
+	}
+	if k, ok := r.spilledKept(row); ok {
+		return k[j].s, k[j].ok
+	}
+	if cols := r.spilledChunk(c); cols != nil {
+		return cols[j].Text(row - r.starts[c])
+	}
+	return "", false
 }
 
 // rawColumn returns raw column j for the given rows.

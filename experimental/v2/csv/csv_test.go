@@ -331,6 +331,7 @@ func TestRejectsAsSourceKeepKeysAndLocation(t *testing.T) {
 // raw_line (D56; prepares T35). A UTF-8 byte order mark is not part of the
 // first column name.
 func TestFieldSizeLimit(t *testing.T) {
+	testutil.Proves(t, "T35")
 	path := write(t, "d.csv", "\ufeffid,note\n1,short\n2,far too long\n")
 	tbl := run(t, csv.File(path, csv.MaxFieldSize(6)), 10)
 	want(t, tbl, "id", "1")

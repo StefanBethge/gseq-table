@@ -510,7 +510,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T6](#t6-eine-im-schritt-scheiternde-zeile-steht-einmal-in-ihrer-tabelle-je-quelle-hat-einen-ubersichtseintrag-je-spalte-und-erreicht-spatere-schritte-nicht) | `TestRowFailingInOneStepIsRejectedOnceWithAnEntryPerColumn` |
 | [T7](#t7-aussortierte-zeilen-gibt-es-je-quelle-und-die-ubersicht-stimmt-mit-ihnen-uberein) | `TestRejectsPerSourceAndOverviewAgree` |
 | [T8](#t8-scheitert-eine-ergebniszeile-nach-einem-join-sind-ihre-quellzeilen-mit-gemeinsamer-kennung-aussortiert) | `TestFailedJoinRowRejectsItsSourceRowsTogether` |
-| [T9](#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) | ausstehend |
+| [T9](#t9-nach-einer-gruppierung-werden-aggregierte-zeilen-aussortiert-und-der-speicher-bleibt-im-budget) | `TestGroupByRejectsAggregatedRowsAndStaysInTheBudget` |
 | [T10](#t10-unzerlegbare-zeilen-werden-mit-rohbytes-und-richtiger-fundstelle-aussortiert) | `TestUnparseableLinesAreRejectedWithRawBytes` |
 | [T11](#t11-die-fundstelle-bleibt-uber-sortieren-und-filtern-richtig) | `TestLocationStaysRightOverSortAndFilter` |
 | [T12](#t12-nachverarbeitung-behalt-ursprungliche-fundstelle-und-schlussel) | ausstehend |
@@ -523,9 +523,9 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T19](#t19-ein-fehlerzweig-sieht-den-zustand-vor-dem-schritt-und-fuhrt-verarbeitetes-zuruck) | ausstehend |
 | [T20](#t20-zweige-werden-nach-namen-zusammengefuhrt-und-typkonflikte-fallen-vor-dem-lauf-auf) | ausstehend |
 | [T21](#t21-eine-im-zweig-erneut-scheiternde-zeile-behalt-kennung-weg-und-vorigen-grund-und-zahlt-einmal) | ausstehend |
-| [T22](#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) | ausstehend |
+| [T22](#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) | `TestSamePipelineGivesTheSameResultInMemoryBlockwiseAndSpilled` |
 | [T23](#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) | ausstehend |
-| [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | ausstehend |
+| [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | `TestNothingIsLeftNextToTheTargets` |
 | [T25](#t25-kein-zweig-sieht-anderungen-eines-anderen-in-jedem-modus) | ausstehend |
 | [T26](#t26-die-modi-fur-kopieren-und-andern-liefern-dasselbe-ergebnis) | ausstehend |
 | [T27](#t27-nullwerte-sind-vom-leeren-text-getrennt-und-verhalten-sich-wie-in-sql) | `TestNullsAreSeparateFromEmptyTextAndBehaveLikeSQL` |
@@ -536,11 +536,11 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T32](#t32-eine-v1-tabelle-ubersteht-den-weg-uber-v2-zuruck-nach-v1-unverandert) | ausstehend |
 | [T33](#t33-ein-ziel-das-einen-block-ablehnt-beendet-den-lauf-sofort-mit-sink_error) | ausstehend |
 | [T34](#t34-excel-zellen-tragen-den-gespeicherten-wert-in-fester-textform-aussortierte-zeilen-auch-den-angezeigten-text) | `TestExcelCellsCarryStoredValueAndDisplay` |
-| [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | ausstehend |
+| [T35](#t35-grenzen-fur-feldlange-und-entpackten-umfang-greifen-und-ausgelagerte-dateien-sind-geschutzt) | `TestFieldSizeLimit`, `TestExcelArchiveLimitsAreDeliveryErrors`, `TestSpilledFilesAreOnlyForTheRunningUser` |
 | [T36](#t36-bei-mehreren-zutreffenden-status-gilt-der-hochste-und-das-ergebnis-nennt-alle-befunde) | ausstehend |
 | [T37](#t37-die-kennung-einer-lieferung-steht-beim-offnen-fest-und-andert-sich-mit-der-datei) | `TestDeliveryIDIsFixedAtOpen` |
 | [T38](#t38-im-modus-immer-andern-wird-eine-mit-dem-rohzustand-geteilte-spalte-einmal-kopiert) | ausstehend |
-| [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | ausstehend |
+| [T39](#t39-gomemlimit-wird-nur-auf-wunsch-gesetzt-und-laufe-in-einem-prozess-teilen-ein-budget) | `TestGOMEMLIMITOnlyOnRequestAndRunsShareOneBudget` |
 | [T40](#t40-mit-writern-im-plan-werden-aussortierte-zeilen-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) | ausstehend |
 | [T41](#t41-eine-tabelle-tragt-aussortierte-zeilen-und-einen-haftenden-fehler) | `TestTableCarriesRejectsAndStickyError` |
 | [T42](#t42-zwei-sheets-einer-excel-datei-sind-zwei-quellen-und-ein-fehlendes-sheet-ist-ein-lieferfehler) | `TestTwoSheetsAreTwoSourcesAndAMissingSheetIsADeliveryError` |
@@ -561,6 +561,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T57](#t57-eine-quellzeile-zahlt-einmal-auch-nach-1n-joins-gruppierungen-und-abbruchen) | `TestSourceRowCountsOnce` |
 | [T58](#t58-verworfene-zeilen-geben-den-rohzustand-frei-aussortierte-behalten-ihn-als-kopie) | `TestDroppedRowsReleaseTheRawState` |
 | [T59](#t59-der-anteil-fur-format_change-zahlt-nur-zeilen-die-in-den-schritt-hineingingen-und-ist-je-spalte-einstellbar) | `TestFormatChangeShareCountsTheRowsThatWentIntoTheStep` |
-| [T60](#t60-ein-lauf-lagert-an-seiner-eigenen-obergrenze-aus-und-ohne-angabe-folgt-das-budget-dem-limit-der-cgroup) | ausstehend |
-| [T61](#t61-auf-wunsch-steht-gomemlimit-bei-90-des-erkannten-limits-und-ein-gesetzter-wert-bleibt) | ausstehend |
-| [T62](#t62-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) | ausstehend |
+| [T60](#t60-ein-lauf-lagert-an-seiner-eigenen-obergrenze-aus-und-ohne-angabe-folgt-das-budget-dem-limit-der-cgroup) | `TestRunSpillsAtItsOwnCapAndTheDefaultFollowsTheCgroup` |
+| [T61](#t61-auf-wunsch-steht-gomemlimit-bei-90-des-erkannten-limits-und-ein-gesetzter-wert-bleibt) | `TestManagedMemorySetsGOMEMLIMITToNinetyPercent` |
+| [T62](#t62-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) | `TestLaterRunRemovesEndedRunsButNotOpenResults` |

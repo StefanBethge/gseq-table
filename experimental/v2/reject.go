@@ -210,6 +210,14 @@ type rejector struct {
 	entries []rejectEntry
 }
 
+// mem returns what the run counts, or nil for a Table method.
+func (rx *rejector) mem() *runMem {
+	if rx.tally == nil {
+		return nil
+	}
+	return rx.tally.mem
+}
+
 func (rx *rejector) add(e rejectEntry) error {
 	if rx.policy.modeFor(e.Code) == ModeStop {
 		if kindOfCode(e.Code) == KindDelivery {

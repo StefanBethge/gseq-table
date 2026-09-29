@@ -3,15 +3,18 @@ package gtable
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
 
 // The engine runs a checked plan block by block (D6). Operations that work
 // block by block pass each block on at once; a step over all rows collects
-// its blocks and runs when its input ends. The prototype collects in memory;
-// spilling follows in slice 7 (#51). Table methods and pipelines both run
-// through this engine (D31).
+// its blocks and runs when its input ends. Over the memory budget of a run,
+// sort and group by spill the rows they collect, and a join the rows of its
+// left side (D28, P1). Table methods and pipelines both run through this
+// engine (D31); Table methods do not spill.
 
 type step struct {
 	name string
@@ -103,8 +106,39 @@ type fullStage struct {
 	sc       *stepCtx
 	blockLen int // 0: pass the result on as one block
 	next     stage
-	buf      []block.Block
-	orig     []origin
+	x        *sorter // the input rows, spilled over the budget
+	out      *sorter // group by: the aggregated rows until they are in order
+}
+
+// Hidden columns of the spilled rows of a group by.
+const (
+	groupKeyCol   = "\x00key"
+	groupSeqCol   = "\x00seq"
+	groupFailsCol = "\x00fails"
+)
+
+func newFullStage(op fullOp, in schema, sc *stepCtx, blockLen int, next stage) *fullStage {
+	s := &fullStage{op: op, in: in, sc: sc, blockLen: blockLen, next: next}
+	t := sc.rx.tally
+	x := &sorter{m: sc.rx.mem(), s: in, frameLen: max(blockLen, 1), pattern: op.kind() + "-*"}
+	switch o := op.(type) {
+	case sortOp:
+		x.keys = o.keys
+		x.onSpill = t.spillRaw
+	case groupOp:
+		x.s = append(in.clone(), field{groupKeyCol, block.Text})
+		x.keys = []SortKey{Asc(groupKeyCol)}
+		x.prep = o.withKey(in)
+		x.onSpill = func(orig []origin) error {
+			// The raw state ends at a step that summarizes rows (D12, D43).
+			t.release(orig)
+			return nil
+		}
+	default:
+		x.onSpill = t.spillRaw
+	}
+	s.x = x
+	return s
 }
 
 func (s *fullStage) push(_ context.Context, b batch) error {
@@ -113,9 +147,16 @@ func (s *fullStage) push(_ context.Context, b batch) error {
 			s.sc.cnt.see(r)
 		}
 	}
-	s.buf = append(s.buf, b.blk)
-	s.orig = append(s.orig, b.orig...)
-	return nil
+	s.x.add(b)
+	return s.sc.rx.mem().relieve()
+}
+
+// spill spills the rows the step holds; the runs calls it over the budget.
+func (s *fullStage) spill() error {
+	if s.out != nil {
+		return s.out.spill()
+	}
+	return s.x.spill()
 }
 
 func (s *fullStage) finish(ctx context.Context) error {
@@ -133,8 +174,24 @@ func (s *fullStage) finish(ctx context.Context) error {
 			}
 		}
 	}
-	blks, orig := s.buf, s.orig
-	s.buf, s.orig = nil, nil
+	if s.x.spilled() {
+		var err error
+		switch op := s.op.(type) {
+		case sortOp:
+			err = s.finishSorted(ctx)
+		case groupOp:
+			err = s.finishGroups(ctx, op)
+		case joinOp:
+			err = s.finishJoin(ctx, op)
+		}
+		s.x.close()
+		if err != nil {
+			return err
+		}
+		t.left(s.sc.cnt, right, false)
+		return s.next.finish(ctx)
+	}
+	blks, orig := s.x.take()
 	if len(blks) == 0 {
 		blks = []block.Block{emptyBlock(s.in)}
 	}
@@ -148,15 +205,163 @@ func (s *fullStage) finish(ctx context.Context) error {
 	t.passed(s.sc.cnt, outOrig, true)
 	t.left(s.sc.cnt, orig, true)
 	t.left(s.sc.cnt, right, false)
-	for _, b := range chunk(batch{out, outOrig}, s.blockLen) {
+	if err := s.emit(ctx, batch{out, outOrig}); err != nil {
+		return err
+	}
+	return s.next.finish(ctx)
+}
+
+// emit passes b on in blocks of the block length.
+func (s *fullStage) emit(ctx context.Context, b batch) error {
+	for _, c := range chunk(b, s.blockLen) {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.next.push(ctx, b); err != nil {
+		if err := s.next.push(ctx, c); err != nil {
+			return err
+		}
+		if err := s.sc.rx.mem().relieve(); err != nil {
 			return err
 		}
 	}
-	return s.next.finish(ctx)
+	return nil
+}
+
+// mergeInBlocks merges the rows of x and calls flush with every block of
+// the block length, and with the rest.
+func (s *fullStage) mergeInBlocks(x *sorter, split func(r row, n int) bool, flush func(batch, []int64) error) error {
+	rb := newRowBuilder(x.s, x.m)
+	err := x.merge(func(r row) error {
+		if split(r, rb.len()) {
+			if err := flush(rb.flush()); err != nil {
+				return err
+			}
+		}
+		rb.add(r)
+		return s.sc.rx.mem().relieve()
+	})
+	if err == nil && rb.len() > 0 {
+		err = flush(rb.flush())
+	}
+	return err
+}
+
+func (s *fullStage) full(_ row, n int) bool { return n >= max(s.blockLen, 1) }
+
+// finishSorted passes on the merged runs of a sort. The rows are the input
+// rows in another order.
+func (s *fullStage) finishSorted(ctx context.Context) error {
+	return s.mergeInBlocks(s.x, s.full, func(b batch, _ []int64) error {
+		s.sc.rx.tally.passed(s.sc.cnt, b.orig, false)
+		return s.emit(ctx, b)
+	})
+}
+
+// finishJoin probes the spilled left rows block by block against the right
+// side; the join rows keep the order of the left rows (D6).
+func (s *fullStage) finishJoin(ctx context.Context, op joinOp) error {
+	t := s.sc.rx.tally
+	ix := op.prepare()
+	return s.mergeInBlocks(s.x, s.full, func(b batch, _ []int64) error {
+		out, outOrig := op.probe(ix, b.blk, s.in, b.orig)
+		t.passed(s.sc.cnt, outOrig, true)
+		t.left(s.sc.cnt, b.orig, true)
+		return s.emit(ctx, batch{out, outOrig})
+	})
+}
+
+// finishGroups computes the groups from the runs sorted by group key, so
+// that each group's rows come together in their order, puts the groups in
+// the order of their first rows (D6), and rejects failed ones (D77).
+func (s *fullStage) finishGroups(ctx context.Context, op groupOp) error {
+	t := s.sc.rx.tally
+	outSchema, _ := op.plan(s.in)
+	ext := append(outSchema.clone(), field{groupSeqCol, block.Int}, field{groupFailsCol, block.Text})
+	s.out = &sorter{m: s.x.m, s: ext, keys: []SortKey{Asc(groupSeqCol)}, frameLen: s.x.frameLen, pattern: "group_out-*"}
+	defer func() { s.out.close(); s.out = nil }()
+
+	keyCol := len(s.in)
+	var cur string
+	split := func(r row, n int) bool {
+		key, _ := r.b.blk.Column(keyCol).Text(r.i)
+		next := n >= s.x.frameLen && key != cur
+		cur = key
+		return next
+	}
+	err := s.mergeInBlocks(s.x, split, func(b batch, seq []int64) error {
+		out, orig, fails, firsts := op.aggregate(b.blk, s.in, b.orig)
+		t.left(s.sc.cnt, b.orig, false)
+		seqs := block.NewBuilder(block.Int, out.Len())
+		fcol := block.NewBuilder(block.Text, out.Len())
+		first := make([]int64, out.Len())
+		for g := range out.Len() {
+			first[g] = seq[firsts[g]]
+			seqs.AppendInt(first[g])
+			fcol.AppendText(encodeFails(fails[g]))
+		}
+		cols := make([]block.Column, 0, len(ext))
+		for i := range out.Width() {
+			cols = append(cols, out.Column(i))
+		}
+		s.out.addSeq(batch{newBlock(append(cols, seqs.Build(), fcol.Build()), out.Len()), orig}, first)
+		return s.sc.rx.mem().relieve()
+	})
+	if err != nil {
+		return err
+	}
+	return s.mergeInBlocks(s.out, s.full, func(b batch, _ []int64) error {
+		n := b.blk.Len()
+		cols := make([]block.Column, len(outSchema))
+		for i := range cols {
+			cols[i] = b.blk.Column(i)
+		}
+		keys := make([]int, n)
+		fails := make([][]aggFailure, n)
+		for i := range n {
+			v, _ := b.blk.Column(len(ext) - 2).Int(i)
+			keys[i] = int(v)
+			f, _ := b.blk.Column(len(ext) - 1).Text(i)
+			fails[i] = decodeFails(f)
+		}
+		s.sc.begin(block.Block{}, b.orig)
+		res, orig, err := op.rejectFailed(newBlock(cols, n), b.orig, fails, keys, s.in, s.sc)
+		if err != nil {
+			return err
+		}
+		t.passed(s.sc.cnt, orig, true)
+		return s.emit(ctx, batch{res, orig})
+	})
+}
+
+// encodeFails and decodeFails carry the failed aggregations of a group
+// through a spill file.
+func encodeFails(fs []aggFailure) string {
+	var sb strings.Builder
+	for _, f := range fs {
+		sb.WriteString(strconv.Itoa(len(f.column)))
+		sb.WriteByte(':')
+		sb.WriteString(f.column)
+		sb.WriteString(strconv.Itoa(len(f.reason)))
+		sb.WriteByte(':')
+		sb.WriteString(f.reason)
+	}
+	return sb.String()
+}
+
+func decodeFails(s string) []aggFailure {
+	var out []aggFailure
+	next := func() string {
+		i := strings.IndexByte(s, ':')
+		n, _ := strconv.Atoi(s[:i])
+		v := s[i+1 : i+1+n]
+		s = s[i+1+n:]
+		return v
+	}
+	for s != "" {
+		c := next()
+		out = append(out, aggFailure{c, next()})
+	}
+	return out
 }
 
 // collector is the end of a plan: it keeps the output blocks in memory.
@@ -196,7 +401,11 @@ func build(steps []planned, rx *rejector, blockLen int, c *collector) stage {
 		case streamOp:
 			next = &streamStage{op: op, in: st.in, sc: sc, next: next}
 		case fullOp:
-			next = &fullStage{op: op, in: st.in, sc: sc, blockLen: blockLen, next: next}
+			fs := newFullStage(op, st.in, sc, blockLen, next)
+			if m := rx.mem(); m != nil {
+				m.spillers = append(m.spillers, fs.spill)
+			}
+			next = fs
 		default:
 			panic(fmt.Sprintf("gtable: operation %T is neither streamed nor over all rows", op))
 		}
@@ -215,6 +424,9 @@ func run(ctx context.Context, src func(yield func(batch) error) error, steps []p
 		}
 		rx.tally.see(b.orig)
 		if err := first.push(ctx, b); err != nil {
+			return err
+		}
+		if err := rx.mem().relieve(); err != nil {
 			return err
 		}
 		return rx.tally.checkSteps()

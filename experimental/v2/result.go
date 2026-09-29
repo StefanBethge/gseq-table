@@ -85,6 +85,9 @@ type Result struct {
 	// Report is the change report: the findings of the header check
 	// (D22), unreadable deliveries (D42) and format changes (D23, D85).
 	Report []Finding
+
+	mem    *runMem
+	closer *resultCloser // spilled rejected rows until Close (D49)
 }
 
 // ExitCode returns the exit code of the status (D86).
@@ -313,6 +316,7 @@ type tally struct {
 	stepLimits map[string][]Limit
 	abort      bool
 	min        int
+	mem        *runMem // memory of the run (D28); nil for a Table method
 }
 
 func newTally() *tally {
@@ -429,6 +433,34 @@ func (t *tally) left(sc *counter, orig []origin, release bool) {
 			}
 		}
 	}
+}
+
+// release releases the raw state of the rows without counting them, for
+// rows that go into a step that summarizes them and are spilled (D43).
+func (t *tally) release(orig []origin) {
+	for _, o := range orig {
+		for _, r := range o.refs {
+			if t.owns(r) {
+				r.src.drop(r.row)
+			}
+		}
+	}
+}
+
+// spillRaw spills the chunks of the raw state that the rows need, when the
+// rows themselves are spilled (D55).
+func (t *tally) spillRaw(orig []origin) error {
+	for _, o := range orig {
+		for _, r := range o.refs {
+			if !t.owns(r) {
+				continue
+			}
+			if err := r.src.spillChunk(r.src.chunkOf(r.row), t.mem); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // checkSteps checks the run and every step.
