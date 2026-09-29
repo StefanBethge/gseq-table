@@ -575,7 +575,7 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T20](#t20-zweige-werden-nach-namen-zusammengefuhrt-und-typkonflikte-fallen-vor-dem-lauf-auf) | `TestBranchesMergeByNameAndTypeConflictsArePlanErrors` |
 | [T21](#t21-eine-im-zweig-erneut-scheiternde-zeile-behalt-kennung-weg-und-vorigen-grund-und-zahlt-einmal) | `TestRowFailingAgainInTheBranchKeepsIDPathAndReasonAndCountsOnce` |
 | [T22](#t22-dieselbe-pipeline-liefert-im-speicher-und-im-streaming-dasselbe-ergebnis) | `TestSamePipelineGivesTheSameResultInMemoryBlockwiseAndSpilled` |
-| [T23](#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) | ausstehend |
+| [T23](#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) | `TestSortAndGroupByOverMoreDataThanTheBudgetKeepTheBudget` |
 | [T24](#t24-nach-einem-lauf-bleibt-nichts-neben-den-zielen-zuruck) | `TestNothingIsLeftNextToTheTargets` |
 | [T25](#t25-kein-zweig-sieht-anderungen-eines-anderen-in-jedem-modus) | `TestNoBranchSeesTheChangesOfAnotherInAnyMode` |
 | [T26](#t26-die-modi-fur-kopieren-und-andern-liefern-dasselbe-ergebnis) | `TestCopyModesGiveTheSameResult` |
