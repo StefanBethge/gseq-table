@@ -1697,3 +1697,16 @@ Moduls setzt ihn. Aussortierte Zeilen eines Laufs mit diesem Schalter tragen kei
 trennen. Als Option für Pipelines würde er das Fehlermodell aus [D1](#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) aushebeln.
 **Quelle:** Maintainer, 2026-09-29 (bei der Umsetzung von #53)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D106 — Die Blocklänge ist standardmäßig 16384 Zeilen, 0 wählt sie
+
+**Entscheidung:** Die Voreinstellung der Blocklänge nach [D29](#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text) ist 16384 Zeilen. Eine Pipeline mit
+Blocklänge 0 läuft mit ihr, eine negative Blocklänge ist ein Planfehler. Auch eine auf einmal gelesene
+Tabelle nutzt sie.
+**Begründung:** Im Speicher lagen Lesen, Filter, Umwandeln, Sortieren und Gruppieren von 10 Mio.
+zahlenlastigen Zeilen mit Blocklängen von 4096 bis 262144 innerhalb weniger Prozent bei Laufzeit und
+Spitzenspeicher, 1024 war beim Filtern und Umwandeln etwas langsamer (`experimental/v2/bench/RESULTS.md`).
+16384 liegt in der Mitte dieses Bereichs und hält die Blöcke beim Auslagern klein genug für kleine
+Budgets. Löst den Teil von [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange), der nach der Blocklänge fragt.
+**Quelle:** Maintainer, 2026-09-29 (Auftrag bei der Umsetzung von #53: Voreinstellungen aus den Messungen festlegen)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)

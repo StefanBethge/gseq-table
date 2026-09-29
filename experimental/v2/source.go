@@ -189,20 +189,17 @@ func (s Source) Key(cols ...string) Source {
 	return s
 }
 
-// eagerBlockLen is the block length of a table read at once.
-const eagerBlockLen = 1 << 14
-
 // Table reads the whole delivery into a table (D31). The table carries the
 // rows rejected while reading and the findings of the header check. It
 // returns a *DeliveryError if the delivery cannot be read, or a *PlanError
 // if the source has no column names.
 func (s Source) Table(ctx context.Context) (Table, error) {
-	res, err := FromSource(s, eagerBlockLen).Run(ctx)
+	res, err := FromSource(s, DefaultBlockLen).Run(ctx)
 	return res.Table, err
 }
 
 // FromSource returns a pipeline over the rows of src, run in blocks of
-// blockLen rows (see From).
+// blockLen rows; 0 means DefaultBlockLen (see From).
 func FromSource(src Source, blockLen int) *Pipeline {
 	return &Pipeline{src: readerSource{src}, blockLen: blockLen}
 }

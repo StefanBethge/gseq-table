@@ -13,7 +13,7 @@ Erprobung klärt, bevor ein v2.0-Release geplant wird.
 | Dokument | Inhalt | IDs |
 |---|---|---|
 | [Use Cases](05-use-cases.md) | Akteure und Abläufe, und die Fragen, die sie an das Design stellen | [UC1](05-use-cases.md#uc1-geplanter-lauf-uber-eine-lieferung) – [UC8](05-use-cases.md#uc8-eine-lieferung-besteht-aus-mehreren-dateien-oder-sheets) |
-| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D105](10-design-decisions.md#d105-ein-interner-mess-schalter-lasst-den-rohzustand-fur-die-benchmarks-weg) |
+| [Design Decisions](10-design-decisions.md) | Nummerierte, begründete Entscheidungen | [D1](10-design-decisions.md#d1-aussortierte-zeilen-sind-eine-tabelle-aus-rohzustand-und-info-spalten) – [D106](10-design-decisions.md#d106-die-blocklange-ist-standardmaig-16384-zeilen-0-wahlt-sie) |
 | [Feature-Katalog](20-feature-catalogue.md) | Features, jedes auf seine Decisions gemappt | [F1](20-feature-catalogue.md#f1-blocke-aus-typisierten-spalten-mit-nullwerten) – [F24](20-feature-catalogue.md#f24-docs-gates-fur-das-design-set) |
 | [Test-Plan](30-test-plan.md) | T-Fälle, jeder an eine D- oder F-Eigenschaft gebunden | [T1](30-test-plan.md#t1-aussortierte-zeilen-tragen-den-rohzustand-nicht-den-arbeitszustand) – [T69](30-test-plan.md#t69-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) |
 | [Scope Prototyp](40-scope-prototype.md) | Selektion, Vereinfachungen und Exit-Kriterien des Prototyps | [P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren) – [P8](40-scope-prototype.md#p8-keine-formelmaskierung-im-csv-writer) |

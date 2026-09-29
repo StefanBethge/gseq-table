@@ -66,9 +66,13 @@ type opened interface {
 	close() error
 }
 
+// DefaultBlockLen is the block length of a pipeline with block length 0,
+// and of a table read at once. The benchmarks of the prototype found no
+// difference between 4096 and 262144 rows (D106, G13).
+const DefaultBlockLen = 1 << 14
+
 // From returns a pipeline over the rows of src, run in blocks of blockLen
-// rows. There is no default block length until the benchmarks of the
-// prototype set one (G13).
+// rows; 0 means DefaultBlockLen (D106).
 func From(src Table, blockLen int) *Pipeline {
 	return &Pipeline{src: tableSource{src}, blockLen: blockLen}
 }
@@ -251,8 +255,8 @@ func (p *Pipeline) Check() error {
 }
 
 func (p *Pipeline) checkParams() error {
-	if p.blockLen <= 0 {
-		return &PlanError{Step: "source", Err: fmt.Errorf("block length %d is not positive", p.blockLen)}
+	if p.blockLen < 0 {
+		return &PlanError{Step: "source", Err: fmt.Errorf("block length %d is negative", p.blockLen)}
 	}
 	if p.hasPrefix && p.prefix == "" {
 		return &PlanError{Step: "source", Err: errors.New("empty info prefix")}
@@ -403,9 +407,13 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 	rx.carry(o.rejects())
 	c := &collector{t: t, sink: p.sinks.result, s: out}
 	flush := func() error { return rw.flush(ctx, rx.entries) }
+	blockLen := p.blockLen
+	if blockLen == 0 {
+		blockLen = DefaultBlockLen
+	}
 	bs, runErr := run(ctx, func(yield func(batch) error) error {
 		n := 0
-		err := o.blocks(p.blockLen, read, func(b batch) error {
+		err := o.blocks(blockLen, read, func(b batch) error {
 			n++
 			return yield(b)
 		})
@@ -413,7 +421,7 @@ func (p *Pipeline) run(ctx context.Context, rw *rejectWriters) (Result, error) {
 			err = yield(batch{emptyBlock(o.schema()), nil})
 		}
 		return err
-	}, steps, rx, p.blockLen, c, flush)
+	}, steps, rx, blockLen, c, flush)
 	if runErr == nil {
 		runErr = flush()
 	}
