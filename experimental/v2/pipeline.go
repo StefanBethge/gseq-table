@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/spill"
 )
@@ -36,6 +35,7 @@ type Pipeline struct {
 	abort      bool
 	abortMin   int
 	formats    formatLimits
+	copyMode   CopyMode
 
 	memCap    int64
 	managed   bool
@@ -73,16 +73,50 @@ func From(src Table, blockLen int) *Pipeline {
 
 // Then appends op as a step, named after the operation (for example "cast").
 func (p *Pipeline) Then(op Op) *Pipeline {
-	name := "?"
-	if op.impl != nil {
-		name = op.impl.kind()
-	}
-	return p.Step(name, op)
+	p.steps = appendStep(p.steps, "", op)
+	return p
 }
 
 // Step appends op as a step with the given name. Rejects name the step.
 func (p *Pipeline) Step(name string, op Op) *Pipeline {
-	p.steps = append(p.steps, step{name, op})
+	p.steps = appendStep(p.steps, name, op)
+	return p
+}
+
+// OnFail gives the last step a fail branch (D25). The rows the step fails
+// go into the branch in the state they had before the step, with info
+// columns about their first error (D91). What the branch returns flows
+// back into the main path in the input order, merged by column name, and
+// without the info columns (D26, D90). What fails in the branch too is
+// rejected, with its reject_id, its path in step, such as "cast ›
+// cast_alt", and the reason from the main path in prev_reason (D27, D92).
+// Rescued rows keep this history, and only rows that stay rejected count
+// for the threshold (D46).
+//
+// Only a step that works block by block has a fail branch (D90). Without
+// a step before, or for a step that has one, OnFail is a plan error. A nil
+// branch returns the failed rows unchanged.
+func (p *Pipeline) OnFail(fail *Branch) *Pipeline {
+	p.steps = withFail(p.steps, fail)
+	return p
+}
+
+// Split appends a step that sends every row for which cond is true into
+// match and every other row, also one for which cond is null, into rest,
+// and merges what they return by column name (D25, D26). A column that one
+// branch lacks is null in the rows of the other; a column of the same name
+// and another type is a plan error. The rows keep the input order (D90).
+// If cond fails for a row at run time, the row is rejected with code
+// "expr" (D54). A nil branch passes its rows on unchanged.
+func (p *Pipeline) Split(name string, cond Expr, match, rest *Branch) *Pipeline {
+	p.steps = appendSplit(p.steps, name, cond, match, rest)
+	return p
+}
+
+// CopyMode sets whether the engine copies data or changes it in place, for
+// the whole run (D8). The default is CopyAuto.
+func (p *Pipeline) CopyMode(m CopyMode) *Pipeline {
+	p.copyMode = m
 	return p
 }
 
@@ -171,7 +205,7 @@ func (p *Pipeline) FormatChangeLimitFor(column string, share float64) *Pipeline 
 }
 
 // MemoryBudget caps the memory the run may count, in bytes, within the
-// budget of the process (D90). The run spills when it reaches its cap or
+// budget of the process (D94). The run spills when it reaches its cap or
 // when all runs of the process reach the budget of the process; see
 // SetMemoryBudget. 0 means no cap of its own.
 func (p *Pipeline) MemoryBudget(bytes int64) *Pipeline {
@@ -181,7 +215,7 @@ func (p *Pipeline) MemoryBudget(bytes int64) *Pipeline {
 
 // WithManagedMemory lets the engine set GOMEMLIMIT for the process to 90 %
 // of the detected memory limit, unless the environment or the program has
-// set it already. The engine never resets it (D65, D91).
+// set it already. The engine never resets it (D65, D95).
 func (p *Pipeline) WithManagedMemory() *Pipeline {
 	p.managed = true
 	return p
@@ -192,7 +226,7 @@ func (p *Pipeline) WithManagedMemory() *Pipeline {
 // own, only accessible to the running user, and removes it at the end of
 // the run, or at Close of the result if it holds spilled rejected rows. At
 // its start a run removes the subdirectories of runs that ended without
-// cleaning up (D28, D38, D56, D92).
+// cleaning up (D28, D38, D56, D96).
 func (p *Pipeline) SpillDir(path string) *Pipeline {
 	p.spillRoot = path
 	return p
@@ -236,10 +270,26 @@ func (p *Pipeline) checkParams() error {
 	if len(p.formats.bad) > 0 {
 		return &PlanError{Step: "format_change", Err: checkFormatLimit(p.formats.bad[0])}
 	}
+	if p.copyMode > CopyInPlace {
+		return &PlanError{Step: "source", Err: fmt.Errorf("unknown copy mode %d", p.copyMode)}
+	}
 	if p.memCap < 0 {
 		return &PlanError{Step: "source", Err: fmt.Errorf("memory budget of %d bytes is negative", p.memCap)}
 	}
 	return nil
+}
+
+// hasStep reports whether steps or their branches have a step of the name.
+func hasStep(steps []step, name string) bool {
+	for _, st := range steps {
+		switch {
+		case st.name == name,
+			st.fail != nil && hasStep(st.fail.steps, name),
+			st.split != nil && (hasStep(st.split.match.steps, name) || hasStep(st.split.rest.steps, name)):
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Pipeline) check(o opened) ([]planned, schema, error) {
@@ -262,11 +312,11 @@ func (p *Pipeline) check(o opened) ([]planned, schema, error) {
 	}
 	for name := range p.stepLimits {
 		_, reads := o.(*openedReader)
-		if !(reads && name == "read") && !slices.ContainsFunc(p.steps, func(st step) bool { return st.name == name }) {
+		if !(reads && name == "read") && !hasStep(p.steps, name) {
 			return nil, nil, &PlanError{Step: "threshold", Err: fmt.Errorf("no step named %q", name)}
 		}
 	}
-	return checkPlan(o.schema(), p.steps)
+	return checkPlan(o.schema(), p.steps, infoPrefix(p.prefix))
 }
 
 // Run checks the plan and runs it, and returns its result (D21, D88). The
@@ -322,8 +372,8 @@ func (p *Pipeline) Run(ctx context.Context) (Result, error) {
 			mem.srcs = append(mem.srcs, src)
 		}
 	}
-	rx := &rejector{policy: p.policy, run: newRun(), tally: t}
-	read := &stepCtx{step: "read", ref: &stepRef{"read"}, rx: rx}
+	rx := &rejector{policy: p.policy, run: newRun(), tally: t, prefix: p.prefix, mode: p.copyMode, trace: &tracer{}}
+	read := &stepCtx{step: "read", ref: &stepRef{name: "read"}, rx: rx}
 	if _, ok := o.(*openedReader); ok {
 		read.cnt = t.step(read.ref)
 	}
@@ -357,6 +407,7 @@ func (p *Pipeline) Run(ctx context.Context) (Result, error) {
 		Table: Table{s: out, blocks: blocksOf(bs), orig: originsOf(bs), srcs: srcs, rejects: rx.entries, finds: finds,
 			err: runErr, policy: p.policy, prefix: p.prefix, run: rx.run},
 		Counts: t.run.counts(),
+		Trace:  rx.trace.entries,
 		mem:    mem,
 		closer: closer,
 	}
@@ -464,11 +515,17 @@ func (s tableSource) findingList() []Finding       { return append([]Finding(nil
 func (s tableSource) stopAtOpen(errorPolicy) error { return nil }
 func (s tableSource) close() error                 { return nil }
 
+// blocks yields the blocks of the table. A block passed on whole is shared
+// with the table, so that no step changes it (D5, D93).
 func (s tableSource) blocks(n int, _ *stepCtx, yield func(batch) error) error {
 	for _, b := range s.t.batches() {
-		for _, c := range chunk(b, n) {
+		cs := chunk(b, n)
+		for _, c := range cs {
 			if c.blk.Len() == 0 {
 				continue
+			}
+			if len(cs) == 1 {
+				c.blk = c.blk.Share()
 			}
 			if err := yield(c); err != nil {
 				return err

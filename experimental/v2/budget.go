@@ -14,7 +14,7 @@ import (
 )
 
 // The memory budget (D28) is one budget for the whole process, shared by
-// all runs in it (D65, D90). It counts the memory of the engine: the blocks
+// all runs in it (D65, D94). It counts the memory of the engine: the blocks
 // collected by steps over all rows, the raw state of the rows read and the
 // copies of the raw state of rejected rows. When a run's count reaches its
 // cap, or the count of all runs reaches the budget of the process, the run
@@ -22,21 +22,21 @@ import (
 // of its left side, and the rejected rows their copies of the raw state
 // (P1, D49). The right side of a join must fit in the budget (P1, D58).
 //
-// The count is what the unit tests check the budget against (D93). The
+// The count is what the unit tests check the budget against (D97). The
 // memory of the process is larger: the Go runtime, readers and writers,
-// and what the engine keeps per source row (G65).
+// and what the engine keeps per source row (G66).
 
 // DefaultMemoryShare is the share of the detected memory limit that is the
 // default budget of the process: the limit of the cgroup, else the
 // physical memory. It is provisional until the measurements of the
-// prototype set it (D90, G13).
+// prototype set it (D94, G13).
 const DefaultMemoryShare = 0.25
 
 // detectLimit returns the memory limit of the process, 0 if unknown.
 var detectLimit = memlimit.Detect
 
 // SetMemoryBudget sets the memory budget of the process in bytes, for all
-// runs in it (D65, D90). 0 restores the default, DefaultMemoryShare of the
+// runs in it (D65, D94). 0 restores the default, DefaultMemoryShare of the
 // detected limit.
 func SetMemoryBudget(bytes int64) { procPool.set.Store(max(bytes, 0)) }
 
@@ -78,7 +78,7 @@ var manageMu sync.Mutex
 
 // manageMemory sets GOMEMLIMIT to 90 % of the detected limit, unless the
 // environment or the program has set it; it is not reset after the run
-// (D91).
+// (D95).
 func manageMemory() {
 	if os.Getenv("GOMEMLIMIT") != "" {
 		return
@@ -109,7 +109,7 @@ func (e *MemoryError) Error() string {
 
 // runMem counts the memory of one run against its cap and the budget of
 // the process, and spills when one is reached. It holds the run's spill
-// directory, created at the first spill (D38, D92).
+// directory, created at the first spill (D38, D96).
 type runMem struct {
 	pool   *memPool
 	limit  int64 // budget of the pool at the start of the run; 0: none

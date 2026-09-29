@@ -53,6 +53,13 @@ type stepCtx struct {
 	orig []origin
 	ids  map[int]string // reject_id per failed row of the current input
 	cnt  *counter       // counts of the step in a run (D43); nil for a Table method
+
+	// With a fail branch, the errors of the step wait in pending until the
+	// branch decides (D25), and held says that the branch holds the input
+	// (D9).
+	deferring bool
+	held      bool
+	pending   []pendingReject
 }
 
 // begin sets the input rows of the next apply.
@@ -62,12 +69,25 @@ func (sc *stepCtx) begin(blk block.Block, orig []origin) {
 
 // reject rejects input row i. Errors of one row share its reject_id (D15).
 func (sc *stepCtx) reject(i int, column, value string, hasValue bool, reason, code string) error {
-	snap := func() snapshot { return snapshot{sc.in, sc.blk.Take([]int{i})} }
+	snap := func() snapshot {
+		// The values of the row, without the info columns of a fail
+		// branch (D91).
+		var s schema
+		var idx []int
+		for j, f := range sc.in {
+			if !hasPrefix(f.name, sc.rx.infoPrefix()) {
+				s, idx = append(s, f), append(idx, j)
+			}
+		}
+		return snapshot{s, shareColumns(sc.blk, idx).Take([]int{i})}
+	}
 	return sc.rejectRow(i, sc.orig[i], snap, column, value, hasValue, reason, code)
 }
 
 // rejectRow rejects the row with the given key and origin; snap returns
-// its values if it is an aggregated row (D77).
+// its values if it is an aggregated row (D77). A row that failed before and
+// went into a fail branch keeps its reject_id, its path and the previous
+// reason (D27, D46, D92).
 func (sc *stepCtx) rejectRow(key int, o origin, snap func() snapshot, column, value string, hasValue bool, reason, code string) error {
 	if sc.ids == nil {
 		sc.ids = make(map[int]string)
@@ -75,10 +95,17 @@ func (sc *stepCtx) rejectRow(key int, o origin, snap func() snapshot, column, va
 	id, ok := sc.ids[key]
 	if !ok {
 		id = sc.rx.run.nextID()
+		if o.hist != nil {
+			id = o.hist.id
+		}
 		sc.ids[key] = id
 	}
+	path, prev := sc.step, ""
+	if o.hist != nil {
+		path, prev = o.hist.path+" › "+sc.step, o.hist.reason
+	}
 	e := rejectEntry{
-		Reject: Reject{ID: id, Step: sc.step, Column: column, Value: value, HasValue: hasValue, Reason: reason, Code: code},
+		Reject: Reject{ID: id, Step: path, Column: column, Value: value, HasValue: hasValue, Reason: reason, PrevReason: prev, Code: code},
 		runID:  sc.rx.run.id,
 		orig:   o,
 		step:   sc.ref,
@@ -86,6 +113,10 @@ func (sc *stepCtx) rejectRow(key int, o origin, snap func() snapshot, column, va
 	if o.agg > 0 {
 		s := snap()
 		e.snap = &s
+	}
+	if sc.deferring {
+		sc.pending = append(sc.pending, pendingReject{key, e})
+		return nil
 	}
 	return sc.rx.add(e)
 }
@@ -105,12 +136,15 @@ func dropRows(blk block.Block, drop []bool) (block.Block, []int) {
 	return blk.Take(keep), keep
 }
 
-// shareColumns returns a block of the given columns of blk, sharing their
-// values (D55).
+// shareColumns returns a block of the given columns of blk. The columns
+// move to the new block without a copy: a step does not use its input
+// block after apply, so a column nothing else holds can then be changed in
+// place (D7, D55). Whoever keeps the input, such as a table or a fail
+// branch, holds it with Block.Share.
 func shareColumns(blk block.Block, idx []int) block.Block {
 	cols := make([]block.Column, len(idx))
 	for i, j := range idx {
-		cols[i] = blk.Column(j).Share()
+		cols[i] = blk.Column(j)
 	}
 	out, err := block.New(cols...)
 	if err != nil {
@@ -288,7 +322,7 @@ func (o withOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []i
 func (o withOp) part(blk block.Block, in schema) part {
 	c := newEvalCtx(blk, in)
 	v := o.e.n.eval(c)
-	return part{name: o.name, idx: in.index(o.name), col: v.column(), reasons: c.reasons, code: CodeExpr}
+	return part{name: o.name, idx: in.index(o.name), vals: v, reasons: c.reasons, code: CodeExpr}
 }
 
 // part is the result of an operation for one column: the new column, a
@@ -296,7 +330,7 @@ func (o withOp) part(blk block.Block, in schema) part {
 type part struct {
 	name    string
 	idx     int // column to replace, or -1 to append
-	col     block.Column
+	vals    *vec
 	reasons []string
 	value   func(i int) (string, bool) // nil: no value
 	code    string
@@ -324,17 +358,19 @@ func applyParts(blk block.Block, sc *stepCtx, parts []part) (block.Block, []int,
 			drop[i] = true
 		}
 	}
+	// A part that reads the values of a column another part sets must see
+	// them before the step, so those columns are not changed in place.
+	inPlace := true
+	for i, p := range parts {
+		for j, q := range parts {
+			if i != j && q.idx >= 0 && p.vals.aliases(blk.Column(q.idx)) {
+				inPlace = false
+			}
+		}
+	}
 	out := shareColumns(blk, allIndexes(blk.Width()))
 	for _, p := range parts {
-		var err error
-		if p.idx < 0 {
-			err = out.AppendColumn(p.col)
-		} else {
-			err = out.SetColumn(p.idx, p.col)
-		}
-		if err != nil {
-			panic("gtable: " + err.Error())
-		}
+		setColumn(&out, sc, p.name, p.idx, p.vals, inPlace)
 	}
 	res, keep := dropRows(out, drop)
 	return res, keep, nil
@@ -425,7 +461,7 @@ func (o castOp) part(blk block.Block, in schema) part {
 		}
 		reasons[i] = o.cell(src, i, out)
 	}
-	return part{name: o.col, idx: ci, col: out.column(), reasons: reasons, value: src.format, code: CodeParse}
+	return part{name: o.col, idx: ci, vals: out, reasons: reasons, value: src.format, code: CodeParse}
 }
 
 // cell casts cell i of src into out and returns a reason if it fails.

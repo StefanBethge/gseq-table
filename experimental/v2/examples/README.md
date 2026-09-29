@@ -28,7 +28,7 @@ API names below are sketches. The behavior follows the linked decisions.
 |---|---|---|
 | `eager_table` | runnable | slice 2 (#46) |
 | `inspect_rejects` | runnable | slice 4 (#48) |
-| `fail_branch` | planned | slice 6 (#50) |
+| `fail_branch` | runnable | slice 6 (#50) |
 | `onebrc_budget` | runnable | slice 7 (#51), Docker runs in slice 9 (#53) |
 | `scheduled_excel` | planned | slice 8 (#52) |
 | `reprocess_rejects` | planned | slice 8 (#52) |
@@ -53,9 +53,13 @@ Design: [UC3](../../../docs/explanation/design/v2/05-use-cases.md#uc3-pipeline-e
 ### fail_branch
 
 An `OnFail` branch that retries a failed date cast with an alternative format. One row is
-recovered and flows back into the main path. Another fails again and shows its whole path in
-`step` and the main-path reason in `prev_reason`.
-Design: [UC5](../../../docs/explanation/design/v2/05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [D25](../../../docs/explanation/design/v2/10-design-decisions.md#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck), [D26](../../../docs/explanation/design/v2/10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler), [D27](../../../docs/explanation/design/v2/10-design-decisions.md#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg), [D46](../../../docs/explanation/design/v2/10-design-decisions.md#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte).
+recovered and flows back into the main path in its place. Another fails again and shows its
+whole path in `step` and the main-path reason in `prev_reason`. A third is recovered and fails
+later in the main path, keeping its history; the threshold counts only the rows that stay
+rejected, and the step counts show the rescued rows apart. Run it with
+`go run ./examples/fail_branch` in `experimental/v2`. It reads `testdata/payments.csv` with
+`csv.File`.
+Design: [UC5](../../../docs/explanation/design/v2/05-use-cases.md#uc5-nicht-verarbeitbare-zeilen-laufen-im-selben-lauf-durch-einen-eigenen-zweig), [D25](../../../docs/explanation/design/v2/10-design-decisions.md#d25-gescheiterte-zeilen-eines-schritts-konnen-in-einen-zweig-gegeben-werden-und-laufen-danach-zuruck), [D26](../../../docs/explanation/design/v2/10-design-decisions.md#d26-zweige-werden-nach-spaltennamen-zusammengefuhrt-typkonflikte-sind-planfehler), [D27](../../../docs/explanation/design/v2/10-design-decisions.md#d27-eine-im-zweig-erneut-gescheiterte-zeile-behalt-ihre-kennung-und-zeigt-ihren-weg), [D46](../../../docs/explanation/design/v2/10-design-decisions.md#d46-gerettete-zeilen-behalten-ihre-geschichte-und-die-schwelle-zahlt-nur-endgultig-aussortierte), [D90](../../../docs/explanation/design/v2/10-design-decisions.md#d90-zweige-enthalten-nur-blockweise-schritte-und-zeilen-behalten-nach-dem-zusammenfuhren-ihre-reihenfolge), [D92](../../../docs/explanation/design/v2/10-design-decisions.md#d92-der-weg-in-step-nennt-die-schritte-in-denen-die-zeile-gescheitert-ist).
 
 ### onebrc_budget
 
@@ -66,7 +70,7 @@ real file is not committed; its path comes from `-data` or `ONEBRC_FILE`, and th
 README of the example documents running it in Docker with `--memory=1g`, `2g` and `4g`.
 Run it with `go run ./examples/onebrc_budget` in `experimental/v2`; `testdata/gen.go`
 writes the test data.
-Design: [UC6](../../../docs/explanation/design/v2/05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [D6](../../../docs/explanation/design/v2/10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](../../../docs/explanation/design/v2/10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D60](../../../docs/explanation/design/v2/10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), [D65](../../../docs/explanation/design/v2/10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess), [D90](../../../docs/explanation/design/v2/10-design-decisions.md#d90-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits), [D91](../../../docs/explanation/design/v2/10-design-decisions.md#d91-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist).
+Design: [UC6](../../../docs/explanation/design/v2/05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen), [D6](../../../docs/explanation/design/v2/10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen), [D28](../../../docs/explanation/design/v2/10-design-decisions.md#d28-ein-lauf-hat-ein-speicherbudget-und-ein-verzeichnis-zum-auslagern), [D60](../../../docs/explanation/design/v2/10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), [D65](../../../docs/explanation/design/v2/10-design-decisions.md#d65-gomemlimit-setzt-die-engine-nur-auf-wunsch-und-das-budget-gilt-je-prozess), [D94](../../../docs/explanation/design/v2/10-design-decisions.md#d94-das-budget-gilt-je-prozess-ein-lauf-kann-darin-eine-eigene-obergrenze-haben-und-die-voreinstellung-ist-vorlaufig-ein-viertel-des-erkannten-limits), [D95](../../../docs/explanation/design/v2/10-design-decisions.md#d95-auf-wunsch-setzt-die-engine-gomemlimit-auf-90-des-erkannten-limits-wenn-es-noch-nicht-gesetzt-ist).
 
 ### scheduled_excel
 

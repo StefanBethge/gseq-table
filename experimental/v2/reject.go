@@ -42,7 +42,10 @@ type Reject struct {
 	Value    string
 	HasValue bool
 	Reason   string
-	Code     string
+	// PrevReason is the reason of the previous failure of a row that went
+	// into a fail branch, empty otherwise (D27).
+	PrevReason string
+	Code       string
 }
 
 func (r Reject) String() string {
@@ -190,8 +193,11 @@ type rejectEntry struct {
 }
 
 // stepRef identifies one step of one run; steps of the same name stay
-// apart (D77).
-type stepRef struct{ name string }
+// apart (D77). parent is the step whose branch the step is in.
+type stepRef struct {
+	name   string
+	parent *stepRef
+}
 
 // snapshot holds the values of an aggregated row as it went into the
 // failing step: one row with its schema.
@@ -208,7 +214,12 @@ type rejector struct {
 	run     *runInfo
 	tally   *tally // nil for a Table method
 	entries []rejectEntry
+	prefix  string   // info prefix; empty means DefaultInfoPrefix
+	mode    CopyMode // D8
+	trace   *tracer  // nil for a Table method
 }
+
+func (rx *rejector) infoPrefix() string { return infoPrefix(rx.prefix) }
 
 // mem returns what the run counts, or nil for a Table method.
 func (rx *rejector) mem() *runMem {

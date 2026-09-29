@@ -55,9 +55,13 @@ func (c Cause) String() string { return c.Status.String() + ": " + c.Err.Error()
 // both.
 //
 // For a step, Read are the source rows that went into the step, and Passed
-// those that came out of it.
+// those that came out of it. A row that failed in a step and that its fail
+// branch returned passed the step; Rescued counts these rows apart, and
+// for the run the rows any fail branch returned (D46). Only rows that stay
+// rejected count as Rejected and for the threshold.
 type Counts struct {
 	Read, Passed, Rejected, Dropped, Unprocessed int
+	Rescued                                      int
 	ByCode                                       map[string]int
 }
 
@@ -85,6 +89,10 @@ type Result struct {
 	// Report is the change report: the findings of the header check
 	// (D22), unreadable deliveries (D42) and format changes (D23, D85).
 	Report []Finding
+	// Trace notes where the engine copied data in the mode CopyInPlace:
+	// at branches and at the first change of a column the raw state or a
+	// table holds (D9, D64, D93).
+	Trace []TraceEntry
 
 	mem    *runMem
 	closer *resultCloser // spilled rejected rows until Close (D49)
@@ -221,6 +229,7 @@ type counter struct {
 	codes  map[string]map[srcRef]bool
 	perSrc map[*rawSource]int // source rows seen per source
 	limits []Limit
+	saved  map[srcRef]bool // rescued by a fail branch (D46)
 }
 
 func newCounter(name string) *counter {
@@ -278,6 +287,17 @@ func (c *counter) code(r srcRef, code string) {
 	c.codes[code][r] = true
 }
 
+// rescue notes r as rescued by a fail branch.
+func (c *counter) rescue(r srcRef) {
+	if c == nil {
+		return
+	}
+	if c.saved == nil {
+		c.saved = map[srcRef]bool{}
+	}
+	c.saved[r] = true
+}
+
 func (c *counter) read() int {
 	return c.n[stUnprocessed] + c.n[stDropped] + c.n[stPassed] + c.n[stRejected]
 }
@@ -285,7 +305,7 @@ func (c *counter) read() int {
 func (c *counter) counts() Counts {
 	out := Counts{
 		Read: c.read(), Passed: c.n[stPassed], Rejected: c.n[stRejected],
-		Dropped: c.n[stDropped], Unprocessed: c.n[stUnprocessed],
+		Dropped: c.n[stDropped], Unprocessed: c.n[stUnprocessed], Rescued: len(c.saved),
 	}
 	if len(c.codes) > 0 {
 		out.ByCode = make(map[string]int, len(c.codes))
@@ -347,12 +367,18 @@ func (t *tally) reject(e rejectEntry) {
 	if t == nil {
 		return
 	}
-	sc := t.byStep[e.step]
 	for _, r := range e.orig.rows() {
 		t.run.mark(r, stRejected)
 		t.run.code(r, e.Code)
-		sc.mark(r, stRejected)
-		sc.code(r, e.Code)
+	}
+	// A row rejected in a branch is rejected in the steps the branch is
+	// in, too.
+	for ref := e.step; ref != nil; ref = ref.parent {
+		sc := t.byStep[ref]
+		for _, r := range e.orig.rows() {
+			sc.mark(r, stRejected)
+			sc.code(r, e.Code)
+		}
 	}
 }
 
@@ -373,12 +399,42 @@ func (t *tally) check(sc *counter) error {
 	return nil
 }
 
-// checkRef checks the run and the step with the given reference.
+// checkRef checks the run, the step with the given reference and the steps
+// whose branch it is in.
 func (t *tally) checkRef(ref *stepRef) error {
 	if t == nil {
 		return nil
 	}
-	return t.check(t.byStep[ref])
+	for ; ref != nil; ref = ref.parent {
+		if err := t.check(t.byStep[ref]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rescued notes the rows a fail branch of step sc returned (D46).
+func (t *tally) rescued(sc *counter, orig []origin) {
+	if t == nil {
+		return
+	}
+	for _, o := range orig {
+		for _, r := range o.rows() {
+			sc.rescue(r)
+			t.run.rescue(r)
+		}
+	}
+}
+
+// gone counts rows that a branch of step sc rejected or dropped as dropped
+// by sc, unless they are rejected. The branch counted them for the run and
+// released their raw state.
+func (t *tally) gone(sc *counter, orig []origin) {
+	for _, o := range orig {
+		for _, r := range o.rows() {
+			sc.mark(r, stDropped)
+		}
+	}
 }
 
 // see counts the source rows of the given rows as read by the run.

@@ -120,3 +120,47 @@ func (v *vec) format(i int) (string, bool) {
 	}
 	return formatCell(v.kind, v, i), true
 }
+
+// writeInto writes the cells of v into c, which has v's kind and length and
+// may be changed in place.
+func (v *vec) writeInto(c *block.Column) {
+	for i := range v.n {
+		if v.null[i] {
+			c.SetNull(i)
+			continue
+		}
+		switch v.kind {
+		case block.Text:
+			c.SetText(i, v.texts[i])
+		case block.Int:
+			c.SetInt(i, v.ints[i])
+		case block.Float:
+			c.SetFloat(i, v.flts[i])
+		case block.Bool:
+			c.SetBool(i, v.bools[i])
+		case block.Timestamp:
+			c.SetTimestamp(i, v.times[i])
+		}
+	}
+}
+
+// aliases reports whether v holds the values of c, as a vec that reads a
+// column does (vecOf).
+func (v *vec) aliases(c block.Column) bool {
+	if v.kind != c.Kind() || v.n == 0 || c.Len() == 0 {
+		return false
+	}
+	switch v.kind {
+	case block.Text:
+		return &v.texts[0] == &c.Texts()[0]
+	case block.Int:
+		return &v.ints[0] == &c.Ints()[0]
+	case block.Float:
+		return &v.flts[0] == &c.Floats()[0]
+	case block.Bool:
+		return &v.bools[0] == &c.Bools()[0]
+	case block.Timestamp:
+		return &v.times[0] == &c.Timestamps()[0]
+	}
+	return false
+}

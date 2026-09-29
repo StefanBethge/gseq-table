@@ -136,7 +136,7 @@ func (m *runMem) readFrame(r *spill.Reader) (b batch, seq []int64, ok bool) {
 }
 
 // originBytes estimates the memory of an origin. The source rows an
-// aggregated row stands for are not counted (G65).
+// aggregated row stands for are not counted (G66).
 func originBytes(o origin) int64 { return 48 + 16*int64(len(o.refs)) }
 
 func batchBytes(b batch) int64 {
