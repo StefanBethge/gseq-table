@@ -1,6 +1,7 @@
 package csv
 
 import (
+	"bufio"
 	"bytes"
 	stdcsv "encoding/csv"
 	"errors"
@@ -123,7 +124,8 @@ func (r *reader) Open() (gtable.Header, error) {
 	if h.ID, err = delivery.Fingerprint(name, f); err != nil {
 		return h, err
 	}
-	r.rec = &recorder{r: f}
+	// The CSV reader reads in small pieces; the file is read in large ones.
+	r.rec = &recorder{r: bufio.NewReaderSize(f, readBuffer)}
 	r.cr = r.cfg.newReader(r.rec)
 	if r.cfg.noHeader {
 		return h, nil
@@ -216,7 +218,20 @@ func (rc *recorder) Read(p []byte) (int, error) {
 
 func (rc *recorder) take(from, to int64) []byte { return rc.buf[from-rc.base : to-rc.base] }
 
+// drop drops the bytes before offset to. It moves the rest to the front
+// only once the dropped part is large, so that a record costs its own bytes,
+// not those of the buffer.
 func (rc *recorder) drop(to int64) {
-	n := copy(rc.buf, rc.buf[to-rc.base:])
-	rc.buf, rc.base = rc.buf[:n], to
+	n := int(to - rc.base)
+	if n < dropAt && 2*n < len(rc.buf) {
+		return
+	}
+	rc.buf, rc.base = rc.buf[:copy(rc.buf, rc.buf[n:])], to
 }
+
+// readBuffer is the size of the reads from the file, dropAt the number of
+// dropped bytes from which the recorder moves its rest.
+const (
+	readBuffer = 1 << 20
+	dropAt     = 64 << 10
+)
