@@ -1,0 +1,24 @@
+{"label":"docker-onebrc-measurements-1g","case":"exec","managed":true,"rep":0,"wall_s":559.92765055,"maxrss":941441024,"result":"rejected by code: parse 46202, unparseable_line 664469","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-measurements-2g","case":"exec","managed":true,"rep":0,"wall_s":362.725824127,"maxrss":1362751488,"result":"rejected by code: parse 46202, unparseable_line 664469","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-measurements-4g","case":"exec","managed":true,"rep":0,"wall_s":356.373599953,"maxrss":1287299072,"result":"rejected by code: parse 46202, unparseable_line 664469","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-onebrc-measurements-20m-1g","case":"exec","managed":true,"rep":0,"wall_s":7.942546379,"maxrss":35053568,"result":"rejected by code: parse 554, unparseable_line 7529","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-measurements-20m-2g","case":"exec","managed":true,"rep":0,"wall_s":8.241111588,"maxrss":35274752,"result":"rejected by code: parse 554, unparseable_line 7529","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-measurements-20m-4g","case":"exec","managed":true,"rep":0,"wall_s":9.086075212,"maxrss":34746368,"result":"rejected by code: parse 554, unparseable_line 7529","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-onebrc-measurements-50m-1g","case":"exec","managed":true,"rep":0,"wall_s":16.324909382,"maxrss":73834496,"result":"rejected by code: parse 2185, unparseable_line 30089","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-measurements-50m-2g","case":"exec","managed":true,"rep":0,"wall_s":18.478770508,"maxrss":75350016,"result":"rejected by code: parse 2185, unparseable_line 30089","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-measurements-50m-4g","case":"exec","managed":true,"rep":0,"wall_s":18.102253634,"maxrss":73252864,"result":"rejected by code: parse 2185, unparseable_line 30089","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-onebrc-measurements-100m-1g","case":"exec","managed":true,"rep":0,"wall_s":35.407167933,"maxrss":136835072,"result":"rejected by code: parse 4770, unparseable_line 68162","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-measurements-100m-2g","case":"exec","managed":true,"rep":0,"wall_s":34.498310764,"maxrss":134254592,"result":"rejected by code: parse 4770, unparseable_line 68162","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-measurements-100m-4g","case":"exec","managed":true,"rep":0,"wall_s":34.998467766,"maxrss":133414912,"result":"rejected by code: parse 4770, unparseable_line 68162","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-sort-1g-v2","case":"exec","rep":0,"wall_s":75.910302743,"maxrss":509386752,"result":"10000000","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-sort-1g-v2","case":"exec","managed":true,"rep":0,"wall_s":78.055371827,"maxrss":486072320,"result":"10000000","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-sort-1g-v2noraw","case":"exec","rep":0,"wall_s":73.306125575,"maxrss":477982720,"result":"10000000","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-sort-1g-v2noraw","case":"exec","managed":true,"rep":0,"wall_s":75.587756992,"maxrss":503889920,"result":"10000000","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-sort-2g-v2","case":"exec","rep":0,"wall_s":19.982072093,"maxrss":996397056,"result":"10000000","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-sort-2g-v2","case":"exec","managed":true,"rep":0,"wall_s":21.974690344,"maxrss":926523392,"result":"10000000","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-sort-2g-v2noraw","case":"exec","rep":0,"wall_s":25.024316762,"maxrss":958283776,"result":"10000000","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-sort-2g-v2noraw","case":"exec","managed":true,"rep":0,"wall_s":20.015534301,"maxrss":922222592,"result":"10000000","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-sort-4g-v2","case":"exec","rep":0,"wall_s":17.214317924,"maxrss":1760690176,"result":"10000000","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-sort-4g-v2","case":"exec","managed":true,"rep":0,"wall_s":16.264592591,"maxrss":1710223360,"result":"10000000","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-sort-4g-v2noraw","case":"exec","rep":0,"wall_s":15.58822359,"maxrss":1854390272,"result":"10000000","exit":0,"limit":4294967296,"goos":"linux"}
+{"label":"docker-sort-4g-v2noraw","case":"exec","managed":true,"rep":0,"wall_s":15.320966132,"maxrss":1810542592,"result":"10000000","exit":0,"limit":4294967296,"goos":"linux"}

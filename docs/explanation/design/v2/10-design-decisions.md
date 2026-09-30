@@ -1824,3 +1824,23 @@ wenn sie mehr Zeilen hat, als das Budget fasst. Teilergebnisse ausgelagerter Lä
 verworfen, weil Gleitkomma-Summen dann in den letzten Bits vom Lauf im Speicher abweichen.
 **Quelle:** Maintainer, 2026-09-29 (Auftrag in #66; bitgleiche Werte ohne Teilergebnisse bei der Umsetzung bestätigt)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
+### D113 — Nach #66 bleiben G5 und G13 offen, und D7 wird erst nach einem Folgeslice für Textspalten und Kopien wieder aufgemacht
+
+**Entscheidung:** Die Neumessung nach dem Umbau der Buchführung (#66, [Messung](../../../../experimental/v2/bench/RESULTS.md)) verfehlt das
+Kriterium aus [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) weiter. Gegen v1 `MutableTable` braucht v2 beim Lesen, Filtern, Gruppieren und Join
+das 1,24- bis 2,01-Fache der Laufzeit und beim Sortieren das 2,0- bis 2,4-Fache, beim Join das 1,4- bis
+1,5-Fache des Spitzenspeichers. Abweichend von [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) wird [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) dafür noch nicht wieder aufgemacht.
+Zuerst setzt ein Folgeslice die Ursachen um, die die Profile zeigen ([G75](70-gap-ledger.md#g75-textspalten-csv-parsen-und-zwischenkopien-kosten-zeit-und-speicher-gegen-v1)): Textspalten als ein
+Puffer mit Offsets und Null-Bitmap statt einer Liste von Strings, ein CSV-Tokenizer, der direkt in
+diese Puffer liest, und Sortieren und Join ohne Zwischenkopien der Blöcke. Verfehlt die Messung danach
+das Kriterium weiter, macht eine neue Decision [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) wieder auf. [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) bleiben bis dahin
+offen. Das präzisiert [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget).
+**Begründung:** Die Profile zeigen nicht mehr die Buchführung, sondern Speicherverwaltung und
+Speicherbereinigung (rund die Hälfte der Laufzeit), das Kopieren von Textzellen und das CSV-Parsen.
+Keins davon hängt an der Wahl zwischen Kopieren und Ändern an Ort und Stelle aus [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert): Umwandeln an Ort
+und Stelle erfüllt das Zeitkriterium schon, und eine veränderbare Tabelle würde weder das Parsen noch die
+Form der Textspalten ändern. [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) jetzt aufzumachen, hätte die Ursachen nicht getroffen.
+**Quelle:** Maintainer, 2026-09-30 (bei der Umsetzung von #66)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
+
