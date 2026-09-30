@@ -1844,3 +1844,19 @@ Form der Textspalten ändern. [D7](#d7-die-engine-entscheidet-ob-sie-daten-kopie
 **Quelle:** Maintainer, 2026-09-30 (bei der Umsetzung von #66)
 **Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
 
+### D114 — Die Engine darf innerhalb eines Laufs nebenläufig arbeiten, und D7 wird erst nach einem Folgeslice dafür wieder aufgemacht
+
+**Entscheidung:** Die Engine darf innerhalb eines Laufs nebenläufig arbeiten, etwa eine CSV-Lieferung in
+einer eigenen Goroutine vorauslesen, während die Schritte die Blöcke davor verarbeiten. Reihenfolge der
+Zeilen und Ergebnisse bleiben dieselben wie ohne Nebenläufigkeit ([D6](#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)). Ein Folgeslice setzt das
+um, danach werden [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) neu gemessen. Abweichend von [D113](#d113-nach-66-bleiben-g5-und-g13-offen-und-d7-wird-erst-nach-einem-folgeslice-fur-textspalten-und-kopien-wieder-aufgemacht) wird
+[D7](#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) nach der Messung von #69 noch nicht wieder aufgemacht; [G5](70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und [G13](70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) bleiben bis
+zur Neumessung offen. Das präzisiert [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) und [D113](#d113-nach-66-bleiben-g5-und-g13-offen-und-d7-wird-erst-nach-einem-folgeslice-fur-textspalten-und-kopien-wieder-aufgemacht).
+**Begründung:** Nach #69 ([Messung](../../../../experimental/v2/bench/RESULTS.md)) verfehlt v2 das Kriterium aus [D58](#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget) nur noch knapp:
+gegen v1 `MutableTable` das 1,24- bis 1,36-Fache der Laufzeit beim Filtern und das 1,03- bis 1,11-Fache des
+Spitzenspeichers beim textlastigen Sortieren, gegen v1 `Table` bei zahlenlastigen Lieferungen das 1,03-
+bis 1,30-Fache der Laufzeit bei Lesen, Filtern, Gruppieren und Join. v2 liest und rechnet in einer
+Goroutine, v1 nutzt beim Lesen mehrere Kerne. Keine Decision deckte bisher Nebenläufigkeit innerhalb
+eines Laufs.
+**Quelle:** Maintainer, 2026-09-30 (bei der Umsetzung von #69)
+**Betroffene Use Cases:** [UC6](05-use-cases.md#uc6-eine-umfangreiche-lieferung-wird-verarbeitet-ohne-vollstandig-im-ram-zu-liegen)
