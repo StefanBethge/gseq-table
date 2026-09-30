@@ -255,7 +255,7 @@ func (x *sorter) spilled() bool { return x.file != nil && len(x.file.segs) > 0 }
 // take returns the collected blocks and origins and stops counting them.
 func (x *sorter) take() ([]block.Block, []origin) {
 	blks := make([]block.Block, len(x.buf))
-	var orig []origin
+	orig := make([]origin, 0, x.rows)
 	for i, b := range x.buf {
 		blks[i] = b.blk
 		orig = append(orig, b.orig...)
@@ -269,27 +269,49 @@ func (x *sorter) drop() {
 	x.buf, x.seq, x.bytes, x.rows = nil, nil, 0, 0
 }
 
+// inOrder is the collected rows in order: the rows refs of blks, whose
+// origins and sequence numbers are orig and seq, row by row of all blocks
+// from starts.
+type inOrder struct {
+	blks   []block.Block
+	starts []int
+	orig   []origin
+	seq    []int64
+	refs   []block.Ref
+}
+
+// order puts the collected rows in order without joining their blocks
+// (D113, G75).
+func (x *sorter) order(bs []batch, seqs [][]int64) inOrder {
+	o := inOrder{blks: make([]block.Block, len(bs)), orig: make([]origin, 0, x.rows), seq: make([]int64, 0, x.rows)}
+	for i, b := range bs {
+		o.blks[i] = b.blk
+		o.orig = append(o.orig, b.orig...)
+		o.seq = append(o.seq, seqs[i]...)
+	}
+	o.starts = rowStarts(o.blks)
+	if x.keys == nil {
+		for i, b := range o.blks {
+			for r := range b.Len() {
+				o.refs = append(o.refs, block.Ref{Blk: int32(i), Row: int32(r)})
+			}
+		}
+	} else {
+		o.refs = sortRefs(o.blks, x.s, x.keys)
+	}
+	return o
+}
+
+// batch gathers the rows refs of o, with their sequence numbers.
+func (o inOrder) batch(refs []block.Ref) (batch, []int64) {
+	return batch{block.GatherBlocks(o.blks, refs), pickRefs(o.orig, o.starts, refs)}, pickRefs(o.seq, o.starts, refs)
+}
+
 // sorted returns the collected rows as one batch in order, with their
 // sequence numbers.
 func (x *sorter) sorted(bs []batch, seqs [][]int64) (batch, []int64) {
-	blks := make([]block.Block, len(bs))
-	var orig []origin
-	var seq []int64
-	for i, b := range bs {
-		blks[i] = b.blk
-		orig = append(orig, b.orig...)
-		seq = append(seq, seqs[i]...)
-	}
-	all := concatBlocks(blks, x.s)
-	if x.keys == nil {
-		return batch{all, orig}, seq
-	}
-	idx := sortIndex(all, x.s, x.keys)
-	out := make([]int64, len(idx))
-	for i, j := range idx {
-		out[i] = seq[j]
-	}
-	return batch{all.Take(idx), pick(orig, idx)}, out
+	o := x.order(bs, seqs)
+	return o.batch(o.refs)
 }
 
 // spill writes the collected rows as a sorted run.
@@ -304,7 +326,7 @@ func (x *sorter) spill() error {
 			bs[i] = x.prep(b)
 		}
 	}
-	b, seq := x.sorted(bs, x.seq)
+	o := x.order(bs, x.seq)
 	if x.file == nil {
 		f, err := x.m.newFile(x.pattern)
 		if err != nil {
@@ -313,12 +335,12 @@ func (x *sorter) spill() error {
 		x.file = f
 	}
 	x.file.begin()
-	for _, c := range chunkRows(b.blk.Len(), x.frameLen) {
-		f := batch{b.blk.Take(c), pick(b.orig, c)}
-		x.m.writeFrame(x.file.w, f, pickSeq(seq, c))
+	for _, part := range chunkRefs(o.refs, max(x.frameLen, 1)) {
+		f, seq := o.batch(part)
+		x.m.writeFrame(x.file.w, f, seq)
 		// A frame read back holds all its columns, also those the buffer
 		// shared with the raw state.
-		x.rowBytes = max(x.rowBytes, batchBytes(f)/int64(len(c)))
+		x.rowBytes = max(x.rowBytes, batchBytes(f)/int64(len(part)))
 	}
 	endFrames(x.file.w)
 	seg, err := x.file.end()
@@ -327,7 +349,7 @@ func (x *sorter) spill() error {
 	}
 	x.file.segs = append(x.file.segs, seg)
 	if x.onSpill != nil {
-		if err := x.onSpill(b.orig); err != nil {
+		if err := x.onSpill(o.orig); err != nil {
 			return err
 		}
 	}

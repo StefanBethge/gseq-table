@@ -6,8 +6,10 @@ package block
 
 import (
 	"fmt"
+	"math"
 	"sync/atomic"
 	"time"
+	"unsafe"
 )
 
 // Kind is the type of the values in a column (D29).
@@ -38,14 +40,22 @@ func (k Kind) String() string {
 }
 
 // data is the storage of a column. Exactly one of the value slices is set,
-// matching kind. A null cell keeps the zero value in its slot.
+// matching kind; a text column has text and offs. A null cell keeps the zero
+// value in its slot, a null text cell no bytes.
+//
+// A text column holds the bytes of its values one after another in text,
+// and value i is text[offs[i]:offs[i+1]], as in the layout of Apache Arrow
+// (D113, G75). Neither slice holds pointers, so the garbage collector does
+// not scan them. Bytes once written to text never change: Text returns views
+// into the buffer, and a changed column gets a new one (D55).
 type data struct {
 	kind   Kind
 	length int
 	nulls  []uint64 // bit i set: cell i is null; nil while there is no null
 	nnull  int
 
-	texts  []string
+	text   []byte
+	offs   []uint32
 	ints   []int64
 	floats []float64
 	bools  []bool
@@ -89,10 +99,32 @@ func (d *data) isNull(i int) bool {
 	return d.nulls != nil && d.nulls[i/64]&(1<<(i%64)) != 0
 }
 
-// Text returns cell i of a text column; ok is false for null.
+// Text returns cell i of a text column; ok is false for null. The value is
+// a view into the buffer of the column, not a copy.
 func (c Column) Text(i int) (v string, ok bool) {
 	c.checkRead(Text, i)
-	return c.d.texts[i], !c.d.isNull(i)
+	if c.d.isNull(i) {
+		return "", false
+	}
+	return c.d.textAt(i), true
+}
+
+// TextBytes returns the bytes of cell i of a text column, nil for null. The
+// bytes must not be modified.
+func (c Column) TextBytes(i int) []byte {
+	c.checkRead(Text, i)
+	if c.d.isNull(i) {
+		return nil
+	}
+	return c.d.text[c.d.offs[i]:c.d.offs[i+1]:c.d.offs[i+1]]
+}
+
+func (d *data) textAt(i int) string {
+	a, b := d.offs[i], d.offs[i+1]
+	if a == b {
+		return ""
+	}
+	return unsafe.String(&d.text[a], b-a)
 }
 
 // Int returns cell i of an integer column; ok is false for null.
@@ -119,9 +151,10 @@ func (c Column) Timestamp(i int) (v time.Time, ok bool) {
 	return c.d.times[i], !c.d.isNull(i)
 }
 
-// Texts returns the values of a text column, or nil for another kind. Null
-// cells hold "". The slice must not be modified.
-func (c Column) Texts() []string { return c.d.texts }
+// TextData returns the buffer and the offsets of a text column, or nil for
+// another kind: value i is text[offs[i]:offs[i+1]], and a null cell has no
+// bytes. The slices must not be modified.
+func (c Column) TextData() (text []byte, offs []uint32) { return c.d.text, c.d.offs }
 
 // Ints returns the values of an integer column, or nil for another kind. Null
 // cells hold 0. The slice must not be modified.
@@ -169,7 +202,8 @@ func (c *Column) Mutate() (copied bool) {
 		length: old.length,
 		nnull:  old.nnull,
 		nulls:  cloneNil(old.nulls),
-		texts:  cloneNil(old.texts),
+		text:   cloneNil(old.text),
+		offs:   cloneNil(old.offs),
 		ints:   cloneNil(old.ints),
 		floats: cloneNil(old.floats),
 		bools:  cloneNil(old.bools),
@@ -193,7 +227,7 @@ func (c *Column) SetNull(i int) {
 	c.d.setNull(i)
 	switch c.d.kind {
 	case Text:
-		c.d.texts[i] = ""
+		// The bytes stay: they may be read through a view (D55).
 	case Int:
 		c.d.ints[i] = 0
 	case Float:
@@ -205,11 +239,25 @@ func (c *Column) SetNull(i int) {
 	}
 }
 
-// SetText stores v in cell i of a text column.
+// SetText stores v in cell i of a text column. The bytes of a text column
+// never change once written (see data), so it writes a new buffer; set
+// many cells by building a new column instead.
 func (c *Column) SetText(i int, v string) {
 	c.checkWrite(Text, i)
-	c.d.texts[i] = v
-	c.d.clearNull(i)
+	d := c.d
+	a, b := d.offs[i], d.offs[i+1]
+	text := make([]byte, 0, len(d.text)-int(b-a)+len(v))
+	text = append(append(append(text, d.text[:a]...), v...), d.text[b:]...)
+	if len(text) > math.MaxUint32 {
+		panic("block: text column over 4 GiB")
+	}
+	offs := make([]uint32, len(d.offs))
+	copy(offs, d.offs[:i+1])
+	for j := i + 1; j < len(offs); j++ {
+		offs[j] = d.offs[j] - b + a + uint32(len(v))
+	}
+	d.text, d.offs = text, offs
+	d.clearNull(i)
 }
 
 // SetInt stores v in cell i of an integer column.
@@ -279,45 +327,70 @@ func (c Column) checkWrite(k Kind, i int) {
 
 // Builder appends cells to a new column of one kind.
 type Builder struct {
-	d *data
+	kind     Kind
+	capacity int // cells to make room for
+	reserve  int // bytes to make room for in a text column
+	d        *data
 }
 
 // NewBuilder returns a builder for a column of kind k with room for capacity
 // cells.
 func NewBuilder(k Kind, capacity int) *Builder {
-	b := &Builder{}
-	b.reset(k, capacity)
-	return b
-}
-
-func (b *Builder) reset(k Kind, capacity int) {
-	d := &data{kind: k}
 	switch k {
-	case Text:
-		d.texts = make([]string, 0, capacity)
-	case Int:
-		d.ints = make([]int64, 0, capacity)
-	case Float:
-		d.floats = make([]float64, 0, capacity)
-	case Bool:
-		d.bools = make([]bool, 0, capacity)
-	case Timestamp:
-		d.times = make([]time.Time, 0, capacity)
+	case Text, Int, Float, Bool, Timestamp:
 	default:
 		panic(fmt.Sprintf("block: unknown kind %v", k))
 	}
+	return &Builder{kind: k, capacity: capacity}
+}
+
+// ReserveText makes room for n bytes of text in the column being built. It
+// is an estimate; a builder grows past it.
+func (b *Builder) ReserveText(n int) {
+	b.reserve = n
+	if b.d != nil && b.kind == Text && cap(b.d.text)-len(b.d.text) < n {
+		b.d.text = append(make([]byte, 0, len(b.d.text)+n), b.d.text...)
+	}
+}
+
+// start makes the storage of the column on the first cell, so that a
+// builder that is built and dropped costs nothing more.
+func (b *Builder) start() *data {
+	if b.d != nil {
+		return b.d
+	}
+	d := &data{kind: b.kind}
+	switch b.kind {
+	case Text:
+		d.text = make([]byte, 0, b.reserve)
+		d.offs = make([]uint32, 1, b.capacity+1)
+	case Int:
+		d.ints = make([]int64, 0, b.capacity)
+	case Float:
+		d.floats = make([]float64, 0, b.capacity)
+	case Bool:
+		d.bools = make([]bool, 0, b.capacity)
+	case Timestamp:
+		d.times = make([]time.Time, 0, b.capacity)
+	}
 	b.d = d
+	return d
 }
 
 // Len returns the number of cells appended so far.
-func (b *Builder) Len() int { return b.d.length }
+func (b *Builder) Len() int {
+	if b.d == nil {
+		return 0
+	}
+	return b.d.length
+}
 
 // AppendNull appends a null cell.
 func (b *Builder) AppendNull() {
-	d := b.d
+	d := b.start()
 	switch d.kind {
 	case Text:
-		d.texts = append(d.texts, "")
+		d.offs = append(d.offs, uint32(len(d.text)))
 	case Int:
 		d.ints = append(d.ints, 0)
 	case Float:
@@ -338,43 +411,61 @@ func (b *Builder) AppendNull() {
 
 // AppendText appends a text value. Empty text is a value, not null (D30).
 func (b *Builder) AppendText(v string) {
-	b.check(Text)
-	b.d.texts = append(b.d.texts, v)
+	d := b.check(Text)
+	d.text = append(d.text, v...)
+	d.endText()
 	b.grow()
+}
+
+// AppendTextBytes appends a text value given as bytes, which are copied.
+func (b *Builder) AppendTextBytes(v []byte) {
+	d := b.check(Text)
+	d.text = append(d.text, v...)
+	d.endText()
+	b.grow()
+}
+
+// endText ends the value appended last to the buffer of a text column.
+func (d *data) endText() {
+	if len(d.text) > math.MaxUint32 {
+		panic("block: text column over 4 GiB")
+	}
+	d.offs = append(d.offs, uint32(len(d.text)))
 }
 
 // AppendInt appends an integer value.
 func (b *Builder) AppendInt(v int64) {
-	b.check(Int)
-	b.d.ints = append(b.d.ints, v)
+	d := b.check(Int)
+	d.ints = append(d.ints, v)
 	b.grow()
 }
 
 // AppendFloat appends a floating-point value.
 func (b *Builder) AppendFloat(v float64) {
-	b.check(Float)
-	b.d.floats = append(b.d.floats, v)
+	d := b.check(Float)
+	d.floats = append(d.floats, v)
 	b.grow()
 }
 
 // AppendBool appends a boolean value.
 func (b *Builder) AppendBool(v bool) {
-	b.check(Bool)
-	b.d.bools = append(b.d.bools, v)
+	d := b.check(Bool)
+	d.bools = append(d.bools, v)
 	b.grow()
 }
 
 // AppendTimestamp appends a timestamp value.
 func (b *Builder) AppendTimestamp(v time.Time) {
-	b.check(Timestamp)
-	b.d.times = append(b.d.times, v)
+	d := b.check(Timestamp)
+	d.times = append(d.times, v)
 	b.grow()
 }
 
-func (b *Builder) check(k Kind) {
-	if b.d.kind != k {
-		panic(fmt.Sprintf("block: %s value appended to a %s column", k, b.d.kind))
+func (b *Builder) check(k Kind) *data {
+	if b.kind != k {
+		panic(fmt.Sprintf("block: %s value appended to a %s column", k, b.kind))
 	}
+	return b.start()
 }
 
 func (b *Builder) grow() {
@@ -385,18 +476,20 @@ func (b *Builder) grow() {
 }
 
 // Build returns the column built so far, with one owner, and resets the
-// builder to an empty column of the same kind.
+// builder to an empty column of the same kind. The next column is made
+// with room for as many cells and bytes as this one had.
 func (b *Builder) Build() Column {
-	d := b.d
+	d := b.start()
 	if d.nnull == 0 {
 		d.nulls = nil
 	}
-	b.reset(d.kind, d.length)
+	b.d = nil
+	b.capacity = max(b.capacity, d.length)
+	if d.kind == Text {
+		b.reserve = max(b.reserve, len(d.text))
+	}
 	return newColumn(d)
 }
-
-// stringHeader is the size of a string header in a text column.
-const stringHeader = 16
 
 // Bytes estimates the memory the values of the column take: the value
 // slice, the bytes of the texts and the null bitmap. The engine counts it
@@ -406,10 +499,7 @@ func (c Column) Bytes() int64 {
 	n := int64(len(d.nulls)) * 8
 	switch d.kind {
 	case Text:
-		n += int64(len(d.texts)) * stringHeader
-		for _, s := range d.texts {
-			n += int64(len(s))
-		}
+		n += int64(len(d.text)) + 4*int64(len(d.offs))
 	case Int, Float:
 		n += int64(d.length) * 8
 	case Bool:
@@ -428,7 +518,7 @@ func (b *Builder) AppendFrom(c Column, i int) {
 	}
 	switch c.Kind() {
 	case Text:
-		b.AppendText(c.d.texts[i])
+		b.AppendTextBytes(c.d.text[c.d.offs[i]:c.d.offs[i+1]])
 	case Int:
 		b.AppendInt(c.d.ints[i])
 	case Float:

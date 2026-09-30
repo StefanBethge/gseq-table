@@ -36,22 +36,45 @@ type node interface {
 }
 
 // evalCtx is the evaluation of an expression over one block. reasons holds
-// the reason of the first run-time failure of each row, "" for none.
+// the reason of the first run-time failure of each row.
 type evalCtx struct {
 	blk     block.Block
 	s       schema
 	n       int
-	reasons []string
+	reasons reasons
 }
 
 func newEvalCtx(blk block.Block, s schema) *evalCtx {
-	return &evalCtx{blk: blk, s: s, n: blk.Len(), reasons: make([]string, blk.Len())}
+	return &evalCtx{blk: blk, s: s, n: blk.Len()}
 }
 
 func (c *evalCtx) fail(i int, reason string) {
-	if c.reasons[i] == "" {
-		c.reasons[i] = reason
+	if c.reasons.at(i) == "" {
+		c.reasons.set(i, reason, c.n)
 	}
+}
+
+// reasons holds a reason per row, "" for none. It stays nil until a row
+// fails, so that a block without failures costs nothing (D113).
+type reasons []string
+
+// at returns the reason of row i.
+func (r reasons) at(i int) string {
+	if r == nil {
+		return ""
+	}
+	return r[i]
+}
+
+// set sets the reason of row i of n rows.
+func (r *reasons) set(i int, reason string, n int) {
+	if reason == "" && *r == nil {
+		return
+	}
+	if *r == nil {
+		*r = make(reasons, n)
+	}
+	(*r)[i] = reason
 }
 
 func (e Expr) check(s schema) (block.Kind, error) {
@@ -207,7 +230,7 @@ func (n orNullNode) check(s schema) (block.Kind, error) {
 }
 
 func (n orNullNode) eval(c *evalCtx) *vec {
-	sub := &evalCtx{blk: c.blk, s: c.s, n: c.n, reasons: make([]string, c.n)}
+	sub := &evalCtx{blk: c.blk, s: c.s, n: c.n}
 	v := n.x.eval(sub)
 	for i, r := range sub.reasons {
 		if r != "" {
@@ -469,7 +492,7 @@ func compareCells(a *vec, i int, b *vec, j int) int {
 	case isNumeric(a.kind):
 		return cmp3(a.float(i), b.float(j))
 	case a.kind == block.Text:
-		return strings.Compare(a.texts[i], b.texts[j])
+		return strings.Compare(a.text(i), b.text(j))
 	case a.kind == block.Bool:
 		x, y := a.bools[i], b.bools[j]
 		switch {
@@ -575,7 +598,7 @@ var wantText = want(block.Text, block.Text)
 
 func textFn(name string, e Expr, f func(string) string) Expr {
 	return fn(name, wantText, func(out *vec, i int, a []*vec) string {
-		out.texts[i] = f(a[0].texts[i])
+		out.texts[i] = f(a[0].text(i))
 		return ""
 	}, e)
 }
@@ -597,14 +620,14 @@ func (e Expr) Replace(old, repl string) Expr {
 // Len returns the number of characters of a text.
 func (e Expr) Len() Expr {
 	return fn("Len", want(block.Int, block.Text), func(out *vec, i int, a []*vec) string {
-		out.ints[i] = int64(utf8.RuneCountInString(a[0].texts[i]))
+		out.ints[i] = int64(utf8.RuneCountInString(a[0].text(i)))
 		return ""
 	}, e)
 }
 
 func textTest(name string, e Expr, f func(string) bool) Expr {
 	return fn(name, want(block.Bool, block.Text), func(out *vec, i int, a []*vec) string {
-		out.bools[i] = f(a[0].texts[i])
+		out.bools[i] = f(a[0].text(i))
 		return ""
 	}, e)
 }
@@ -636,7 +659,7 @@ func Concat(args ...Expr) Expr {
 	}, func(out *vec, i int, a []*vec) string {
 		var sb strings.Builder
 		for _, x := range a {
-			sb.WriteString(x.texts[i])
+			sb.WriteString(x.text(i))
 		}
 		out.texts[i] = sb.String()
 		return ""

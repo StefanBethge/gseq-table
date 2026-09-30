@@ -534,3 +534,8 @@ Spitze bei 1g deshalb bei 89 % des Limits ([Messung](../../../../experimental/v2
 bilden, solange sie ins Budget passen. Optionen: Einträge der Übersicht und Rohbytes wie die Kopien
 auslagern; die Übersicht mit Writern im Plan nicht im Ergebnis halten; so lassen und für große Läufe
 Writer im Plan empfehlen, wie [D49](10-design-decisions.md#d49-aussortierte-zeilen-umfangreicher-laufe-werden-uber-writer-im-plan-wahrend-des-laufs-geschrieben-sonst-halt-sie-das-ergebnis-bis-close) es tut.
+
+### G77 — Eine Textspalte fasst in einem Block höchstens 4 GiB
+
+**Type:** Assumption · **Kind:** design · **Status:** offen
+Seit #69 hält eine Textspalte ihre Werte in einem Byte-Puffer mit Offsets von 32 Bit ([D113](10-design-decisions.md#d113-nach-66-bleiben-g5-und-g13-offen-und-d7-wird-erst-nach-einem-folgeslice-fur-textspalten-und-kopien-wieder-aufgemacht), [D29](10-design-decisions.md#d29-daten-laufen-in-blocken-typisierter-spalten-rohspalten-bleiben-bis-zum-cast-text)). Ein Block fasst deshalb in einer Textspalte höchstens 4 GiB; darüber endet der Lauf mit einem Panic der Engine. Blöcke der Blocklänge bleiben weit darunter. Zu einem Block zusammengehängt werden nur noch die rechte Seite eines Joins, die im Prototyp im Budget liegt ([P1](40-scope-prototype.md#p1-auslagern-nur-fur-sortieren-und-gruppieren)), und die Zeilen eines Gruppierens mit Median, Quantile, Var, StdDev, CountDistinct oder StringJoin, solange es nicht auslagert. Bei einem Budget ab 4 GiB kann eine dieser Spalten die Grenze erreichen. Optionen: auch diese Schritte blockweise rechnen; Offsets von 64 Bit für zusammengehängte Blöcke, wie `LargeString` in Arrow; die Grenze als Planfehler oder `aborted` mit Grund melden statt als Panic.

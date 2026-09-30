@@ -73,7 +73,10 @@ func (c Column) Format(i int) (v string, ok bool) {
 	if c.col.IsNull(i) {
 		return "", false
 	}
-	vv := &vec{kind: c.col.Kind(), texts: c.col.Texts(), ints: c.col.Ints(), flts: c.col.Floats(),
+	if c.col.Kind() == block.Text {
+		return c.col.Text(i)
+	}
+	vv := &vec{kind: c.col.Kind(), ints: c.col.Ints(), flts: c.col.Floats(),
 		bools: c.col.Bools(), times: c.col.Timestamps()}
 	return formatCell(vv.kind, vv, i), true
 }
@@ -82,6 +85,11 @@ func (c Column) Format(i int) (v string, ok bool) {
 // not null (D30); use WithNulls for null cells.
 func Texts(name string, values ...string) Column {
 	b := block.NewBuilder(block.Text, len(values))
+	size := 0
+	for _, v := range values {
+		size += len(v)
+	}
+	b.ReserveText(size)
 	for _, v := range values {
 		b.AppendText(v)
 	}

@@ -2,7 +2,6 @@ package gtable
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
@@ -66,21 +65,21 @@ func (g *streamGroup) add(b batch) ([]int, []int64) {
 	for j, acc := range g.accs {
 		src[j] = vecOf(b.blk.Column(g.in.index(acc.a.col)))
 	}
-	var sb strings.Builder
+	var kb []byte
 	var rest []int
 	var restSeq []int64
 	for i := range b.blk.Len() {
 		seq := g.next
 		g.next++
-		key, _ := keyOf(kv, i, &sb)
-		n, ok := g.ids[key]
+		key, _ := keyBytes(kv, i, &kb)
+		n, ok := g.ids[string(key)]
 		if !ok {
 			if g.full || g.m.over() {
 				g.full = true
 				rest, restSeq = append(rest, i), append(restSeq, seq)
 				continue
 			}
-			n = g.newGroup(key, b.blk, i, seq)
+			n = g.newGroup(string(key), b.blk, i, seq)
 		}
 		for j, acc := range g.accs {
 			acc.add(n, src[j], i)

@@ -1,5 +1,6 @@
 // Package delivery holds what the readers of the formats share: the
-// fingerprint of a delivery file (design decisions D61, D81).
+// fingerprint of a delivery file (design decisions D61, D81) and the buffer
+// a record is split into (D113).
 package delivery
 
 import (

@@ -280,6 +280,7 @@ func (sc *stepCtx) others(orig []origin, keep []int) (rejected, dropped []origin
 	for _, k := range keep {
 		kept[k] = true
 	}
+	dropped = make([]origin, 0, len(orig)-len(keep))
 	for i, o := range orig {
 		switch {
 		case kept[i]:
@@ -427,8 +428,8 @@ func (n *stepNode) runSplit(b batch) (batch, []int, error) {
 	var match, rest, bad []int
 	for i := range c.n {
 		switch {
-		case c.reasons[i] != "":
-			if err := sc.reject(i, "", "", false, c.reasons[i], CodeExpr); err != nil {
+		case c.reasons.at(i) != "":
+			if err := sc.reject(i, "", "", false, c.reasons.at(i), CodeExpr); err != nil {
 				return batch{}, nil, err
 			}
 			bad = append(bad, i)
@@ -675,6 +676,12 @@ func setColumn(out *block.Block, sc *stepCtx, name string, i int, v *vec, inPlac
 			ev = TraceCopyAtBranch
 		}
 		sc.traceCopy(name, ev)
+		replaceColumn(out, i, v.column())
+		return
+	}
+	if v.kind == block.Text {
+		// The bytes of a text column never change once written; its new
+		// values go into a new buffer (D113).
 		replaceColumn(out, i, v.column())
 		return
 	}
