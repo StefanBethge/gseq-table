@@ -145,7 +145,7 @@ func (o joinOp) rightRejects() []rejectEntry { return o.right.rejects }
 // applyAll joins the rows. A join row keeps the source rows of both sides,
 // so that its failure rejects all of them together (D11).
 func (o joinOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
-	out, orig := o.probe(o.prepare(), concatBlocks(blks, in), in, sc.orig)
+	out, orig, _ := o.probe(o.prepare(), concatBlocks(blks, in), in, sc.orig)
 	return out, orig, nil
 }
 
@@ -173,10 +173,11 @@ func (o joinOp) prepare() *joinIndex {
 	return &joinIndex{rb: rb, index: index, rorig: o.right.origins()}
 }
 
-// probe joins the left rows lb with origins lorig to the right side. The
-// join rows keep the order of the left rows, so that probing block by
-// block gives the rows of probing all at once (D6).
-func (o joinOp) probe(ix *joinIndex, lb block.Block, in schema, lorig []origin) (block.Block, []origin) {
+// probe joins the left rows lb with origins lorig to the right side, and
+// returns the number of partners of every left row. The join rows keep the
+// order of the left rows, so that probing block by block gives the rows of
+// probing all at once (D6).
+func (o joinOp) probe(ix *joinIndex, lb block.Block, in schema, lorig []origin) (block.Block, []origin, []int) {
 	lk := make([]*vec, len(o.keys))
 	for i, k := range o.keys {
 		lk[i] = vecOf(lb.Column(in.index(k.left)))
@@ -184,11 +185,13 @@ func (o joinOp) probe(ix *joinIndex, lb block.Block, in schema, lorig []origin) 
 	var sb strings.Builder
 	var li, ri []int
 	var orig []origin
+	counts := make([]int, lb.Len())
 	for i := range lb.Len() {
 		var matches []int
 		if key, null := keyOf(lk, i, &sb); !null {
 			matches = ix.index[key]
 		}
+		counts[i] = len(matches)
 		for _, j := range matches {
 			li = append(li, i)
 			ri = append(ri, j)
@@ -209,7 +212,7 @@ func (o joinOp) probe(ix *joinIndex, lb block.Block, in schema, lorig []origin) 
 			cols = append(cols, ix.rb.Column(i).Take(ri))
 		}
 	}
-	return newBlock(cols, len(li)), orig
+	return newBlock(cols, len(li)), orig, counts
 }
 
 func (o joinOp) isRightKey(name string) bool {
@@ -387,7 +390,7 @@ func (o groupOp) plan(in schema) (schema, error) {
 // stands for its input rows (D12). If aggregations fail for a group, its row
 // is rejected once, with an entry per failed aggregation (D15, D77).
 func (o groupOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
-	out, orig, fails, _ := o.aggregate(concatBlocks(blks, in), in, sc.orig)
+	out, orig, fails, _ := o.aggregate(concatBlocks(blks, in), in, sc.orig, sc.rx.shared)
 	keys := allIndexes(out.Len())
 	return o.rejectFailed(out, orig, fails, keys, in, sc)
 }
@@ -422,7 +425,7 @@ type aggFailure struct{ column, reason string }
 // in the order of the groups' first rows. It returns the rows, their
 // origins, the failed aggregations and the first row of every group. A
 // failed aggregation is null in its row.
-func (o groupOp) aggregate(b block.Block, in schema, rorig []origin) (block.Block, []origin, [][]aggFailure, []int) {
+func (o groupOp) aggregate(b block.Block, in schema, rorig []origin, sh *shared) (block.Block, []origin, [][]aggFailure, []int) {
 	kv := make([]*vec, len(o.keys))
 	for i, k := range o.keys {
 		kv[i] = vecOf(b.Column(in.index(k)))
@@ -445,10 +448,11 @@ func (o groupOp) aggregate(b block.Block, in schema, rorig []origin) (block.Bloc
 	orig := make([]origin, len(groups))
 	for g, rows := range groups {
 		firsts[g] = rows[0]
+		ab := newAggBuilder(sh)
 		for _, r := range rows {
-			orig[g].agg += rorig[r].weight()
-			orig[g].members = append(orig[g].members, rorig[r].rows()...)
+			ab.add(rorig[r])
 		}
+		orig[g] = aggOf(ab.build())
 	}
 	fails := make([][]aggFailure, len(groups))
 	outs := make([]*vec, len(o.aggs))

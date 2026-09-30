@@ -105,10 +105,62 @@ func (m *runMem) writeFrame(w *spill.Writer, b batch, seq []int64) {
 	w.Block(b.blk)
 	for i, o := range b.orig {
 		m.writeRefs(w, o.refs)
-		w.Uvarint(uint64(o.agg))
-		m.writeRefs(w, o.members)
+		m.writeAgg(w, o.agg())
 		w.Varint(seq[i])
 	}
+}
+
+// writeAgg writes what went into an aggregated row: nothing but its number
+// for a shared one, which the run keeps (D110).
+func (m *runMem) writeAgg(w *spill.Writer, a *aggOrigin) {
+	if a == nil {
+		w.Uvarint(0)
+		return
+	}
+	if id, ok := m.shared.aggs[a]; ok {
+		w.Uvarint(uint64(id) + 1)
+		return
+	}
+	w.Uvarint(1)
+	w.Uvarint(uint64(a.n))
+	w.Uvarint(uint64(len(a.srcs)))
+	for _, c := range a.srcs {
+		w.Uvarint(uint64(m.srcID(c.src)))
+		w.Uvarint(uint64(c.n))
+	}
+	m.writeRefs(w, a.multi)
+	w.Uvarint(uint64(len(a.units)))
+	for _, u := range a.units {
+		m.writeAgg(w, u)
+	}
+}
+
+func (m *runMem) readAgg(r *spill.Reader) *aggOrigin {
+	switch tag := r.Int(); {
+	case tag == 0 || r.Err() != nil:
+		return nil
+	case tag > 1:
+		if id := tag - 1; id <= len(m.shared.byID) {
+			return m.shared.byID[id-1]
+		}
+		return nil
+	}
+	a := &aggOrigin{n: r.Int()}
+	a.srcs = make([]srcCount, r.Int())
+	for i := range a.srcs {
+		id, n := r.Int(), r.Int()
+		if id < len(m.regList) {
+			a.srcs[i] = srcCount{m.regList[id], n}
+		}
+	}
+	a.multi = m.readRefs(r)
+	if n := r.Int(); n > 0 && r.Err() == nil {
+		a.units = make([]*aggOrigin, n)
+		for i := range a.units {
+			a.units[i] = m.readAgg(r)
+		}
+	}
+	return a
 }
 
 // endFrames marks the end of the frames of a segment.
@@ -125,8 +177,9 @@ func (m *runMem) readFrame(r *spill.Reader) (b batch, seq []int64, ok bool) {
 	seq = make([]int64, n)
 	for i := range n {
 		orig[i].refs = m.readRefs(r)
-		orig[i].agg = r.Int()
-		orig[i].members = m.readRefs(r)
+		if a := m.readAgg(r); a != nil {
+			orig[i].x = &originExt{agg: a}
+		}
 		seq[i] = r.Varint()
 	}
 	if r.Err() != nil {
@@ -135,9 +188,15 @@ func (m *runMem) readFrame(r *spill.Reader) (b batch, seq []int64, ok bool) {
 	return batch{blk, orig}, seq, true
 }
 
-// originBytes estimates the memory of an origin. The source rows an
-// aggregated row stands for are not counted (G67).
-func originBytes(o origin) int64 { return 48 + 16*int64(len(o.refs)) }
+// originBytes estimates the memory of an origin with its source rows, and
+// what went into an aggregated row (D110).
+func originBytes(o origin) int64 {
+	n := 32 + 16*int64(len(o.refs))
+	if a := o.agg(); a != nil {
+		n += 64 + 24*int64(len(a.srcs)+len(a.multi)+len(a.units))
+	}
+	return n
+}
 
 func batchBytes(b batch) int64 {
 	n := blockBytes(b.blk) + 8*int64(len(b.orig)) // sequence numbers
@@ -322,7 +381,14 @@ func (x *sorter) merge(yield func(row) error) error {
 		}
 		// The rows leave the buffer, so that a spill meanwhile has
 		// nothing to write; they are counted until the merge ends.
-		b, seq := x.sorted(x.buf, x.seq)
+		bs := x.buf
+		if x.prep != nil {
+			bs = make([]batch, len(x.buf))
+			for i, b := range x.buf {
+				bs[i] = x.prep(b)
+			}
+		}
+		b, seq := x.sorted(bs, x.seq)
 		bytes := x.bytes
 		x.buf, x.seq, x.bytes, x.rows = nil, nil, 0, 0
 		defer x.m.shrink(bytes)
@@ -553,10 +619,10 @@ type rawSpill struct {
 	keptAt map[int]segment // spilled copies of rejected rows
 	closed bool
 
-	cacheC    int
-	cache     []block.Column
-	lastRow   int
-	lastCells []keptCell
+	cacheC   int
+	cache    []block.Column
+	lastRow  int
+	lastKept *keptRow
 }
 
 // mem returns what the run that reads the source counts, or nil.
@@ -577,7 +643,7 @@ func (r *rawSource) spillState() *rawSpill {
 // spillChunk writes chunk c of the raw state to disk, if rows in the plan
 // still need it.
 func (r *rawSource) spillChunk(c int, m *runMem) error {
-	if r.chunks[c] == nil || r.rel.chunkLive[c] == 0 || len(r.s) == 0 {
+	if len(r.chunks[c]) == 0 || r.rel.chunkLive[c] == 0 {
 		return nil
 	}
 	sp := r.spillState()
@@ -601,6 +667,9 @@ func (r *rawSource) spillChunk(c int, m *runMem) error {
 	sp.at[c] = seg
 	r.chunks[c] = nil
 	m.shrink(r.rel.bytes[c])
+	if lay := r.loc.layouts[c]; lay.hasKeys {
+		m.grow(lay.keys.Bytes()) // the keys stay in memory (G74)
+	}
 	return nil
 }
 
@@ -633,14 +702,15 @@ func (r *rawSource) spilledChunk(c int) []block.Column {
 	return cols
 }
 
-// spilledKept returns the spilled copy of the raw state of a rejected row.
-func (r *rawSource) spilledKept(row int) ([]keptCell, bool) {
+// spilledKept returns the spilled copy of the raw state and location of a
+// rejected row.
+func (r *rawSource) spilledKept(row int) (*keptRow, bool) {
 	sp := r.sp
 	if sp == nil {
 		return nil, false
 	}
 	if sp.lastRow == row {
-		return sp.lastCells, true
+		return sp.lastKept, true
 	}
 	seg, ok := sp.keptAt[row]
 	if !ok {
@@ -650,21 +720,25 @@ func (r *rawSource) spilledKept(row int) ([]keptCell, bool) {
 		return nil, false // released by Result.Close (D98)
 	}
 	rd := sp.kept.reader(seg)
-	cells := make([]keptCell, rd.Int())
-	for i := range cells {
-		cells[i].ok = rd.Bool()
-		cells[i].s = rd.String()
+	k := &keptRow{}
+	if n := rd.Int(); n > 0 {
+		k.cells = make([]keptCell, n-1)
 	}
+	for i := range k.cells {
+		k.cells[i].ok = rd.Bool()
+		k.cells[i].s = rd.String()
+	}
+	k.loc = rowLoc{line: rd.Int(), offset: rd.Varint(), key: rd.String(), hash: rd.String(), display: rd.String()}
 	if rd.Err() != nil {
 		panic("gtable: reading spilled rejected rows: " + rd.Err().Error())
 	}
-	sp.lastRow, sp.lastCells = row, cells
-	return cells, true
+	sp.lastRow, sp.lastKept = row, k
+	return k, true
 }
 
-func keptBytes(cells []keptCell) int64 {
-	n := int64(64)
-	for _, c := range cells {
+func keptBytes(k *keptRow) int64 {
+	n := int64(128 + len(k.loc.key) + len(k.loc.hash) + len(k.loc.display))
+	for _, c := range k.cells {
 		n += 24 + int64(len(c.s))
 	}
 	return n
@@ -686,13 +760,22 @@ func (r *rawSource) spillKept(m *runMem) error {
 		sp.kept = f
 	}
 	w := sp.kept.w
-	for row, cells := range r.rel.kept {
+	for row, k := range r.rel.kept {
 		off := w.Offset()
-		w.Uvarint(uint64(len(cells)))
-		for _, c := range cells {
+		if k.cells == nil {
+			w.Uvarint(0)
+		} else {
+			w.Uvarint(uint64(len(k.cells)) + 1)
+		}
+		for _, c := range k.cells {
 			w.Bool(c.ok)
 			w.String(c.s)
 		}
+		w.Uvarint(uint64(k.loc.line))
+		w.Varint(k.loc.offset)
+		w.String(k.loc.key)
+		w.String(k.loc.hash)
+		w.String(k.loc.display)
 		sp.keptAt[row] = segment{off, w.Offset() - off}
 	}
 	if err := w.Flush(); err != nil {

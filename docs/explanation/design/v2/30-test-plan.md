@@ -544,6 +544,33 @@ entfernt hat.
 Ohne eingestellte Grenze ergeben 2 von 10 gescheiterten Werten einer Spalte `format_change`,
 1 von 10 ergibt keinen Befund.
 
+### T71 — Die Buchführung wächst nicht mit der Lieferung
+
+**Beweist:** [D109](10-design-decisions.md#d109-buchfuhrung-gibt-es-nur-fur-zeilen-im-plan-hochstens-50-bytes-je-zeile-und-die-1brc-datei-lauft-bei-1-gib-durch), [D110](10-design-decisions.md#d110-zahlungen-entstehen-an-den-ausgangen-des-plans-einen-zustand-je-quellzeile-gibt-es-nur-fur-quellzeilen-in-mehreren-arbeitszeilen), [D111](10-design-decisions.md#d111-fundstelle-schlussel-und-hash-einer-gelesenen-zeile-liegen-beim-block-ihres-rohzustands)
+Eine Lieferung mit 50.000 und eine mit 450.000 Zeilen laufen durch denselben Plan in ein Ziel: Lesen,
+Umwandeln und Filtern; Lesen, Umwandeln, Gruppieren und Sortieren wie `examples/onebrc_budget`; und
+Sortieren unter einem Budget, das auslagert. Beim letzten Block des Ziels liegt der Heap nach einer
+Speicherbereinigung bei der großen Lieferung um höchstens 2 Bytes je zusätzlicher Zeile über dem der
+kleinen. Die Buchführung einer gehaltenen Zeile (Herkunft und Quellzeile) ist höchstens 50 Bytes groß.
+
+### T72 — Fortlaufendes Gruppieren ergibt dieselben Werte wie im Speicher und lagert bei wenigen Gruppen nicht aus
+
+**Beweist:** [D112](10-design-decisions.md#d112-groupby-rechnet-summe-anzahl-mittelwert-minimum-maximum-erster-und-letzter-wert-fortlaufend-und-bitgleich), [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
+Count, Sum, Mean, Min, Max, First und Last über Gleitkommazahlen mit Nullwerten ergeben in einer Pipeline
+mit kleinen Blöcken und kleinem Budget bitgleich die Werte der Tabellenmethode, in der Reihenfolge der
+ersten Zeilen. Eine Gruppe mit mehr Zeilen, als das Budget fasst, lagert nicht aus. Bei mehr Gruppen, als
+das Budget fasst, lagert der Schritt die Zeilen neuer Schlüssel aus, und Werte und Reihenfolge bleiben
+gleich, auch mit einer Aggregation, die alle Werte braucht. Ein Überlauf einer Ganzzahlsumme sortiert die
+aggregierte Zeile aus wie im Speicher.
+
+### T73 — Nur Quellzeilen in mehreren Arbeitszeilen haben einen Zustand, und er zählt im Budget
+
+**Beweist:** [D110](10-design-decisions.md#d110-zahlungen-entstehen-an-den-ausgangen-des-plans-einen-zustand-je-quellzeile-gibt-es-nur-fur-quellzeilen-in-mehreren-arbeitszeilen), [D84](10-design-decisions.md#d84-eine-quellzeile-zahlt-einmal-aussortiert-vor-durchgelaufen-vor-verworfen-und-nach-einem-abbruch-gibt-es-nicht-verarbeitete-zeilen)
+Ein Join, bei dem jede linke Zeile genau einen Partner hat, legt für die linke Quelle keinen Zustand je
+Zeile an, nur für die rechte Seite. Hat eine linke Zeile zwei Partner, von denen einer später scheitert,
+zählt sie einmal als aussortiert, eine linke Zeile mit zwei durchgelaufenen Partnern einmal als
+durchgelaufen, und die gezählte Spitze des Laufs enthält die Zustände.
+
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
 
@@ -629,3 +656,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T68](#t68-auf-wunsch-steht-gomemlimit-bei-90-des-erkannten-limits-und-ein-gesetzter-wert-bleibt) | `TestManagedMemorySetsGOMEMLIMITToNinetyPercent` |
 | [T69](#t69-ein-spaterer-lauf-entfernt-das-verzeichnis-eines-beendeten-laufs-nicht-das-eines-offenen-ergebnisses) | `TestLaterRunRemovesEndedRunsButNotOpenResults` |
 | [T70](#t70-ohne-einstellung-meldet-der-anderungsbericht-format_change-ab-einem-funftel-der-zeilen) | `TestFormatChangeDefaultLimitIsOneFifth` |
+| [T71](#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung) | `TestBookkeepingDoesNotGrowWithTheDelivery` |
+| [T72](#t72-fortlaufendes-gruppieren-ergibt-dieselben-werte-wie-im-speicher-und-lagert-bei-wenigen-gruppen-nicht-aus) | `TestStreamingGroupByEqualsInMemoryAndSpillsOnlyForManyGroups` |
+| [T73](#t73-nur-quellzeilen-in-mehreren-arbeitszeilen-haben-einen-zustand-und-er-zahlt-im-budget) | `TestOnlySourceRowsInSeveralWorkingRowsHaveAState` |

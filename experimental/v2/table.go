@@ -223,7 +223,8 @@ func (t Table) Apply(op Op) Table {
 	if t.run == nil {
 		t.run = newRun()
 	}
-	rx := &rejector{policy: t.policy, run: t.run, prefix: t.prefix}
+	rx := &rejector{policy: t.policy, run: t.run, prefix: t.prefix, shared: &shared{}}
+	registerShared(rx.shared, tableSource{t}, steps)
 	// The table keeps its blocks; the operation changes none of them (D5,
 	// D93).
 	bs := t.batches()

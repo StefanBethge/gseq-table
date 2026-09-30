@@ -45,29 +45,28 @@ runs the same commands and records runtime and peak memory
 The test data is a small generated file in the same format (`go run gen.go` in `testdata`), with
 placeholders, a decimal comma and a line with a third field, so that the run also rejects rows.
 
-### Results (2026-09-29)
+### Results (2026-09-30, after #66)
 
 Apple M4 Pro, Docker Desktop 28.5.1 with 7.7 GiB and 14 CPUs, `GOMEMLIMIT` set by the engine,
-budget a tenth of the limit. Details and the other measurements are in
-[bench/RESULTS.md](../../bench/RESULTS.md).
+budget a tenth of the limit. Details, the measurement before #66 and the other measurements are in
+[bench/RESULTS.md](../../bench/RESULTS.md). The runtimes are those of a quiet host; a later run on a
+busy host took longer at the same peaks.
 
 | Delivery | Limit | Budget | Result | Runtime | Peak of the process |
 |---|---|---:|---|---:|---:|
-| full file, 1 billion lines | 1g | 102 MiB | killed by the memory limit | 14 s | 915 MiB |
-| full file | 2g | 205 MiB | killed by the memory limit | 33 s | 2030 MiB |
-| full file | 4g | 410 MiB | killed by the memory limit | 66 s | 4070 MiB |
-| first 20M lines | 1g | 102 MiB | killed by the memory limit | 32 s | 1011 MiB |
-| first 20M lines | 2g | 205 MiB | ok | 41 s | 1844 MiB |
-| first 20M lines | 4g | 410 MiB | ok | 26 s | 2963 MiB |
-| first 50M lines | 2g | 205 MiB | killed by the memory limit | 32 s | 1989 MiB |
-| first 50M lines | 4g | 410 MiB | ok | 70 s | 3682 MiB |
-| first 100M lines | 4g | 410 MiB | killed by the memory limit | 73 s | 3953 MiB |
+| full file, 1 billion lines | 1g | 102 MiB | ok | 560 s | 898 MiB |
+| full file | 2g | 205 MiB | ok | 363 s | 1300 MiB |
+| full file | 4g | 410 MiB | ok | 356 s | 1228 MiB |
+| first 20M lines | 1g | 102 MiB | ok | 8 s | 33 MiB |
+| first 50M lines | 1g | 102 MiB | ok | 16 s | 70 MiB |
+| first 100M lines | 1g | 102 MiB | ok | 35 s | 130 MiB |
 
-These runs confirm gap G67 of the design set, the target of #66: the engine spills in time,
-but the prototype keeps some data per source row outside the budget, such as the counts and
-the locations of the rows. It grows with the delivery until the process hits the limit, so
-20M lines pass at 2g and 4g, 50M lines only at 4g, and 100M lines and the full file are killed
-at every limit. The runs are repeated once that bookkeeping is reworked (#66).
+Before #66 the full file was killed by the memory limit at every limit, and so were 100M lines, because
+the prototype kept data per source row outside the budget (gap G67 of the design set). Now it keeps
+bookkeeping only for the rows in the plan, and the group by keeps a running state per station instead
+of collecting the rows. What still grows with the file are the rejected rows, which the result holds
+without writers in the plan: 710,671 of them in the full file, so the peak at 1g is 89 % of the limit.
+For a dirtier delivery, give the pipeline writers for the rejected rows (`RejectsTo`, `OverviewTo`).
 
 The file itself is corrupted: the first 20M lines already hold 9,057 lines (about 0.045 %) that
 do not match `name;-?digits.digit`, such as two lines interleaved (`Kankan;40Flores,  Petén;33.9`),

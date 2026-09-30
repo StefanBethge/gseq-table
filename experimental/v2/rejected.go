@@ -60,7 +60,7 @@ var sourceInfo = []field{
 func infoFields(srcs []*rawSource) []field {
 	hash, display := false, false
 	for _, s := range srcs {
-		hash = hash || s.loc != nil && s.loc.hashes != nil
+		hash = hash || s.loc != nil && s.loc.hashes
 		display = display || s.loc != nil && s.loc.cells
 	}
 	if !hash && !display {
@@ -280,7 +280,7 @@ func (r RejectedRows) Overview() Table {
 		for _, ref := range e.orig.refs {
 			ib.sourceRow(e, ref, perID[e.ID])
 		}
-		if e.orig.agg > 0 {
+		if e.orig.aggregated() > 0 {
 			ib.aggregatedRow(e, perID[e.ID])
 		}
 	}
@@ -405,11 +405,12 @@ func (ib *infoBuilder) sourceRow(e rejectEntry, ref srcRef, errors int) {
 		vals["sheet"] = src.sheet
 	}
 	if loc := src.loc; loc != nil {
-		if loc.offsets[ref.row] >= 0 {
-			vals["offset"] = loc.offsets[ref.row]
+		rl := src.locOf(ref.row)
+		if rl.offset >= 0 {
+			vals["offset"] = rl.offset
 		}
-		if loc.hashes != nil {
-			vals["record_hash"] = loc.hashes[ref.row]
+		if loc.hashes {
+			vals["record_hash"] = rl.hash
 		}
 		if raw, ok := loc.rawLines[ref.row]; ok {
 			vals["raw_line"] = raw
@@ -424,7 +425,7 @@ func (ib *infoBuilder) sourceRow(e rejectEntry, ref srcRef, errors int) {
 // aggregatedRow adds the entry for the aggregated part of e.
 func (ib *infoBuilder) aggregatedRow(e rejectEntry, errors int) {
 	vals := entryValues(e, errors)
-	vals["source_rows"] = e.orig.agg
+	vals["source_rows"] = e.orig.aggregated()
 	ib.set(vals)
 }
 

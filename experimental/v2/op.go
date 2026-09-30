@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -45,14 +46,15 @@ type fullOp interface {
 // stepCtx is what a step needs while it runs: its name for rejects, the
 // rejector of the run, and the input rows with their origins.
 type stepCtx struct {
-	step string
-	ref  *stepRef
-	rx   *rejector
-	in   schema
-	blk  block.Block
-	orig []origin
-	ids  map[int]string // reject_id per failed row of the current input
-	cnt  *counter       // counts of the step in a run (D43); nil for a Table method
+	step  string
+	ref   *stepRef
+	rx    *rejector
+	in    schema
+	blk   block.Block
+	orig  []origin
+	ids   map[int]string   // reject_id per failed row of the current input
+	codes map[int][]string // error codes per failed row of the current input
+	cnt   *counter         // counts of the step in a run (D43); nil for a Table method
 
 	// With a fail branch, the errors of the step wait in pending until the
 	// branch decides (D25), and held says that the branch holds the input
@@ -64,7 +66,13 @@ type stepCtx struct {
 
 // begin sets the input rows of the next apply.
 func (sc *stepCtx) begin(blk block.Block, orig []origin) {
-	sc.blk, sc.orig, sc.ids = blk, orig, nil
+	sc.blk, sc.orig, sc.ids, sc.codes = blk, orig, nil, nil
+}
+
+// rejected reports whether input row i of the current input was rejected.
+func (sc *stepCtx) rejected(i int) bool {
+	_, ok := sc.ids[i]
+	return ok
 }
 
 // reject rejects input row i. Errors of one row share its reject_id (D15).
@@ -92,25 +100,35 @@ func (sc *stepCtx) rejectRow(key int, o origin, snap func() snapshot, column, va
 	if sc.ids == nil {
 		sc.ids = make(map[int]string)
 	}
+	h := o.history()
 	id, ok := sc.ids[key]
-	if !ok {
+	first := !ok
+	if first {
 		id = sc.rx.run.nextID()
-		if o.hist != nil {
-			id = o.hist.id
+		if h != nil {
+			id = h.id
 		}
 		sc.ids[key] = id
 	}
+	// A row counts once per code in a step (D84).
+	if sc.codes == nil {
+		sc.codes = make(map[int][]string)
+	}
+	fresh := !slices.Contains(sc.codes[key], code)
+	if fresh {
+		sc.codes[key] = append(sc.codes[key], code)
+	}
 	path, prev := sc.step, ""
-	if o.hist != nil {
-		path, prev = o.hist.path+" › "+sc.step, o.hist.reason
+	if h != nil {
+		path, prev = h.path+" › "+sc.step, h.reason
 	}
 	e := rejectEntry{
 		Reject: Reject{ID: id, Step: path, Column: column, Value: value, HasValue: hasValue, Reason: reason, PrevReason: prev, Code: code},
 		runID:  sc.rx.run.id,
-		orig:   o,
+		orig:   o.detached(),
 		step:   sc.ref,
 	}
-	if o.agg > 0 {
+	if o.aggregated() > 0 {
 		s := snap()
 		e.snap = &s
 	}
@@ -118,7 +136,7 @@ func (sc *stepCtx) rejectRow(key int, o origin, snap func() snapshot, column, va
 		sc.pending = append(sc.pending, pendingReject{key, e})
 		return nil
 	}
-	return sc.rx.add(e)
+	return sc.rx.add(e, first, fresh)
 }
 
 // dropRows returns blk without the rows marked in drop, and the kept rows;

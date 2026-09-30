@@ -269,10 +269,8 @@ func newOpenedReader(src Source, h Header) (*openedReader, error) {
 	for i, c := range cols {
 		rs[i] = field{c, block.Text}
 	}
-	o.raw = &rawSource{name: h.Source, sheet: h.Sheet, s: rs, loc: &readLoc{id: h.ID, cells: h.Cells}, rel: &release{}}
-	if src.hash {
-		o.raw.loc.hashes = []string{}
-	}
+	o.raw = &rawSource{name: h.Source, sheet: h.Sheet, s: rs, rel: &release{},
+		loc: &readLoc{id: h.ID, cells: h.Cells, hashes: src.hash, noRaw: benchknob.NoRawState.Load()}}
 	for _, k := range src.key {
 		j := slices.Index(cols, k)
 		if j < 0 && !slices.Contains(src.expect, k) {
@@ -339,7 +337,7 @@ func (o *openedReader) blocks(n int, sc *stepCtx, yield func(batch) error) error
 		if err != nil {
 			return err
 		}
-		if len(chunk.recs) > 0 {
+		if chunk.n > 0 {
 			if err := o.emit(chunk, sc, yield); err != nil {
 				return err
 			}
@@ -351,16 +349,28 @@ func (o *openedReader) blocks(n int, sc *stepCtx, yield func(batch) error) error
 }
 
 // rawChunk is a run of records stored in the raw state: rows first to first
-// plus len(recs)-1, their raw columns, and why a record was rejected.
+// plus n-1, their raw columns, and why the records in bad were rejected.
 type rawChunk struct {
-	first int
-	cols  []block.Column
-	recs  []chunkRec
+	first, n int
+	cols     []block.Column
+	bad      []chunkRec // in order of i
 }
 
 type chunkRec struct {
+	i            int // record in the chunk
 	code, reason string
 	column       int
+}
+
+// sparse appends v as value i of *vals, which stays nil while every value
+// is empty.
+func sparse(vals *[]string, i int, v string, n int) {
+	if v != "" && *vals == nil {
+		*vals = make([]string, i, n)
+	}
+	if *vals != nil {
+		*vals = append(*vals, v)
+	}
 }
 
 func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
@@ -369,9 +379,13 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 	for i := range builders {
 		builders[i] = block.NewBuilder(block.Text, n)
 	}
+	// The location, keys and hashes go with the raw state (D111).
+	offsets := block.NewBuilder(block.Int, n)
+	var lines []lineRun
+	var keys, hashes, displays []string
 	loc := o.raw.loc
 	done := false
-	for len(c.recs) < n {
+	for c.n < n {
 		r, err := o.src.r.Next()
 		if err == io.EOF {
 			done = true
@@ -380,10 +394,10 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 		if err != nil {
 			return rawChunk{}, false, &DeliveryError{Source: o.h.Source, Code: CodeUnreadable, Err: err}
 		}
-		row := o.raw.rows() + len(c.recs)
-		cr := chunkRec{code: r.Code, reason: r.Reason, column: r.Column}
+		row := o.raw.rows() + c.n
+		cr := chunkRec{i: c.n, code: r.Code, reason: r.Reason, column: r.Column}
 		if cr.code == "" && len(r.Fields) != o.width {
-			cr = chunkRec{CodeUnparseableLine, fmt.Sprintf("line has %d fields, want %d", len(r.Fields), o.width), -1}
+			cr = chunkRec{c.n, CodeUnparseableLine, fmt.Sprintf("line has %d fields, want %d", len(r.Fields), o.width), -1}
 			r.Fields = nil
 		}
 		if cr.code == "" {
@@ -400,57 +414,106 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 				b.AppendText(fields[i])
 			}
 		}
-		loc.lines = append(loc.lines, r.Line)
-		loc.offsets = append(loc.offsets, r.Offset)
+		if i := c.n; len(lines) == 0 || lines[len(lines)-1].line+i-lines[len(lines)-1].row != r.Line {
+			lines = append(lines, lineRun{i, r.Line})
+		}
+		if r.Offset >= 0 {
+			offsets.AppendInt(r.Offset)
+		} else {
+			offsets.AppendNull()
+		}
 		if cr.code != "" && len(r.Raw) > 0 {
 			if loc.rawLines == nil {
 				loc.rawLines = map[int]string{}
 			}
 			loc.rawLines[row] = string(r.Raw)
 		}
+		disp := ""
 		if len(r.Display) > 0 && fields != nil {
-			if loc.display == nil {
-				loc.display = map[int]map[int]string{}
-			}
-			loc.display[row] = r.Display
+			disp = encodeDisplay(r.Display)
 		}
+		sparse(&displays, c.n, disp, n)
 		key := r.key
 		if key == "" && o.keyCols != nil && fields != nil {
 			key = businessKey(o.src.key, o.keyCols, fields)
 		}
-		if key != "" && loc.keys == nil {
-			loc.keys = make([]string, row, row+1)
-		}
-		if loc.keys != nil {
-			loc.keys = append(loc.keys, key)
-		}
-		if loc.hashes != nil {
+		sparse(&keys, c.n, key, n)
+		if loc.hashes {
 			h := r.hash
 			if h == "" {
 				h = recordHash(r.Fields, r.Raw)
 			}
-			loc.hashes = append(loc.hashes, h)
+			hashes = append(hashes, h)
 		}
-		c.recs = append(c.recs, cr)
+		if cr.code != "" {
+			c.bad = append(c.bad, cr)
+		}
+		c.n++
 	}
 	c.cols = make([]block.Column, o.width)
 	for i, b := range builders {
 		c.cols[i] = b.Build()
 	}
-	o.raw.addChunk(c.cols, len(c.recs))
+	chunk := c.cols
+	if loc.noRaw {
+		chunk = nil // D106
+	}
+	lay := chunkLayout{lines: lines, offset: len(chunk), hash: -1, display: -1}
+	if keys != nil {
+		lay.keys, lay.hasKeys = textColumn(pad(keys, c.n)), true
+	}
+	chunk = append(chunk[:len(chunk):len(chunk)], offsets.Build())
+	for _, extra := range []struct {
+		vals []string
+		on   bool
+		at   *int
+	}{{hashes, loc.hashes, &lay.hash}, {pad(displays, c.n), displays != nil, &lay.display}} {
+		if extra.on {
+			*extra.at = len(chunk)
+			chunk = append(chunk, textColumn(extra.vals))
+		}
+	}
+	o.raw.addChunk(chunk, lay, c.n)
 	return c, done, nil
+}
+
+// pad returns vals with empty values up to n.
+func pad(vals []string, n int) []string {
+	for vals != nil && len(vals) < n {
+		vals = append(vals, "")
+	}
+	return vals
+}
+
+// textColumn returns a text column of vals.
+func textColumn(vals []string) block.Column {
+	b := block.NewBuilder(block.Text, len(vals))
+	for _, v := range vals {
+		b.AppendText(v)
+	}
+	return b.Build()
 }
 
 // emit rejects the records of c that failed at read time and yields the
 // others as one batch.
 func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) error {
-	var keep []int
+	keep := make([]int, 0, c.n-len(c.bad))
 	var rejected []origin
 	sc.begin(block.Block{}, nil)
-	for i, r := range c.recs {
+	bad := c.bad
+	for i := range c.n {
 		row := c.first + i
+		var r chunkRec
+		if len(bad) > 0 && bad[0].i == i {
+			r, bad = bad[0], bad[1:]
+		}
+		if r.code == "" && len(o.missing) == 0 {
+			keep = append(keep, i)
+			continue
+		}
 		orig := origin{refs: []srcRef{{o.raw, row}}}
-		sc.cnt.see(orig.refs[0])
+		sc.rx.tally.see([]origin{orig})
+		sc.cnt.enter(orig)
 		if r.code != "" || len(o.missing) > 0 {
 			rejected = append(rejected, orig)
 		}
@@ -470,12 +533,10 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 					return err
 				}
 			}
-		default:
-			keep = append(keep, i)
 		}
 	}
 	// Rows rejected while reading leave the plan here (D43).
-	sc.rx.tally.left(sc.cnt, rejected, true)
+	sc.rx.tally.release(rejected)
 	if len(keep) == 0 {
 		return nil
 	}
@@ -493,7 +554,7 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 		if !benchknob.NoRawState.Load() {
 			col = col.Share() // with the raw state (D55)
 		}
-		if len(keep) < len(c.recs) {
+		if len(keep) < c.n {
 			col = col.Take(keep)
 		}
 		cols[i] = col
@@ -504,6 +565,7 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 		refs[i] = srcRef{o.raw, c.first + k}
 		orig[i] = origin{refs: refs[i : i+1 : i+1]}
 	}
+	sc.rx.tally.enter(sc.cnt, orig)
 	sc.rx.tally.passed(sc.cnt, orig, false)
 	return yield(batch{newBlock(cols, len(keep)), orig})
 }
