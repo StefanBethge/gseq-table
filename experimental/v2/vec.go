@@ -19,6 +19,7 @@ type vec struct {
 	texts []string
 	tbuf  []byte
 	toffs []uint32
+	arena []byte // bytes of computed texts, which texts views (see appendText)
 	ints  []int64
 	flts  []float64
 	bools []bool
@@ -77,6 +78,22 @@ func (v *vec) text(i int) string {
 		return ""
 	}
 	return unsafe.String(&v.tbuf[a], b-a)
+}
+
+// appendText sets text cell i of a computed vec to the parts one after
+// another, in the arena of v instead of a string of its own (D113). Bytes
+// in the arena are never written again, so the views stay valid when it
+// grows.
+func (v *vec) appendText(i int, parts []*vec, j int) {
+	start := len(v.arena)
+	for _, p := range parts {
+		v.arena = append(v.arena, p.text(j)...)
+	}
+	if n := len(v.arena) - start; n > 0 {
+		v.texts[i] = unsafe.String(&v.arena[start], n)
+	} else {
+		v.texts[i] = ""
+	}
 }
 
 // float returns cell i as a float, widening an integer (D71).

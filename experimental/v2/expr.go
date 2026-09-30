@@ -657,11 +657,7 @@ func Concat(args ...Expr) Expr {
 		}
 		return block.Text, nil
 	}, func(out *vec, i int, a []*vec) string {
-		var sb strings.Builder
-		for _, x := range a {
-			sb.WriteString(x.text(i))
-		}
-		out.texts[i] = sb.String()
+		out.appendText(i, a, i)
 		return ""
 	}, args...)
 }

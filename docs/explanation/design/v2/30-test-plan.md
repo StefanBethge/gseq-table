@@ -553,6 +553,10 @@ Sortieren unter einem Budget, das auslagert. Beim letzten Block des Ziels liegt 
 Speicherbereinigung bei der großen Lieferung um höchstens 2 Bytes je zusätzlicher Zeile über dem der
 kleinen. Die Buchführung einer gehaltenen Zeile (Herkunft und Quellzeile) ist höchstens 50 Bytes groß.
 
+Nachtrag 2026-09-30 (#69): Ein vierter Plan liest, wandelt um und filtert eine Lieferung, in der jede
+1000. Zeile beim Umwandeln scheitert. Auch dort wächst der Heap um höchstens 2 Bytes je Zeile: Eine
+aussortierte Zeile behält eine Kopie ihres Rohzustands ([D87](10-design-decisions.md#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)), nicht den Block, aus dem sie gelesen wurde.
+
 ### T72 — Fortlaufendes Gruppieren ergibt dieselben Werte wie im Speicher und lagert bei wenigen Gruppen nicht aus
 
 **Beweist:** [D112](10-design-decisions.md#d112-groupby-rechnet-summe-anzahl-mittelwert-minimum-maximum-erster-und-letzter-wert-fortlaufend-und-bitgleich), [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
