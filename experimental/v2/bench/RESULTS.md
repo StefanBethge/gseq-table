@@ -68,9 +68,8 @@ Umgesetzt:
   dem die Felder direkt in die Spaltenpuffer gehen. Er ändert seinen Eingabepuffer nicht, deshalb sind
   die Rohbytes eines Datensatzes ein Ausschnitt daraus. [T75](../../../docs/explanation/design/v2/30-test-plan.md#t75-der-csv-reader-zerlegt-eine-lieferung-wie-encodingcsv-mit-denselben-fundstellen-und-rohbytes) prüft Felder, Fehler, Zeile, Offset und
   Rohbytes gegen `encoding/csv` über 3000 Zufallseingaben.
-- Sortieren ordnet Verweise auf die Zeilen aller Eingabeblöcke (unstabil mit der Position als letztem
-  Kriterium, also mit dem Ergebnis eines stabilen Sortierens) und sammelt jede Zelle einmal in Blöcke der
-  Blocklänge, im Speicher und beim Auslagern. Join sucht Block für Block und teilt die linken Spalten, wenn
+- Sortieren ordnet Verweise auf die Zeilen aller Eingabeblöcke stabil und sammelt jede Zelle einmal in
+  Blöcke der Blocklänge, im Speicher und beim Auslagern. Join sucht Block für Block und teilt die linken Spalten, wenn
   jede linke Zeile genau einen Partner hat. Schlüssel von Gruppen und Joins entstehen in einem
   wiederverwendeten Byte-Puffer. Gründe gescheiterter Zeilen werden erst beim ersten Fehler angelegt.
 
@@ -84,6 +83,23 @@ endete die volle 1BRC-Datei bei jedem Limit am Speicherlimit: Die Kopie einer au
 ([D87](../../../docs/explanation/design/v2/10-design-decisions.md#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)) hielt über eine View den ganzen Textpuffer ihres Blocks, 710.671 aussortierte Zeilen also
 praktisch die ganze Lieferung. Seit `592c767` besitzt die Kopie ihre Bytes, und [T71](../../../docs/explanation/design/v2/30-test-plan.md#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung) prüft das mit
 einem Plan, in dem jede 1000. Zeile scheitert.
+
+Nachtrag nach der Reihe: Die gemessene Fassung (`592c767`) sortierte unstabil mit der Position als
+letztem Kriterium. Bei Schlüsseln mit vielen gleichen Werten (1000 Codes auf 10 Mio. Zeilen) war das
+Sortieren im Speicher dadurch rund 20 % langsamer als vor #69, weil pdqsort gleiche Elemente nicht mehr
+als gleich erkannte. Seither sortiert es stabil. Direkter Vergleich auf demselben Host (Load 3,0 bis 3,7,
+10 Mio. Zeilen, eine Wiederholung je Spalte und Fassung abwechselnd):
+
+| Fall | vor #69 (`360ce25`) s | `592c767` s | stabil s |
+|---|---:|---:|---:|
+| Sortieren, zahlenlastig | 12,36 / 12,15 | 14,75 / 14,96 | 12,00 / 11,33 |
+| Sortieren, textlastig | 12,77 | 14,53 | 10,02 |
+
+Die übrigen Fälle über 10 Mio. zahlenlastige Zeilen, `360ce25` gegen `592c767` im selben Vergleich:
+Lesen 3,59/3,32 gegen 2,72/2,72 s, Filtern 4,64/4,61 gegen 4,05/4,03 s, Umwandeln 6,08/6,05 gegen
+5,48/5,49 s, abgeleitete Spalten 4,62/4,60 gegen 4,03/4,05 s, Gruppieren 5,33/5,28 gegen 4,29/4,36 s,
+Join 6,91/7,05 gegen 4,40/4,40 s. Die Faktoren des Sortierens in den Tabellen unten gelten für
+`592c767`, sind also etwas zu hoch.
 
 ### [T23](../../../docs/explanation/design/v2/30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein): 1BRC in Docker
 

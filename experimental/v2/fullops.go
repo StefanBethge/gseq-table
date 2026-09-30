@@ -1,7 +1,6 @@
 package gtable
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -690,9 +689,10 @@ func (o sortOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Bloc
 }
 
 // sortRefs returns the rows of blks in the order of the keys. Rows with
-// equal keys keep their order (D70): ties go by position, so the unstable
-// sort gives the order of a stable one. The blocks are not joined first
-// (D113, G75).
+// equal keys keep their order (D70). The sort is stable rather than
+// unstable with the position as last key: keys with many equal values, as
+// a group key has, then compare far less often. The blocks are not joined
+// first (D113, G75).
 func sortRefs(blks []block.Block, s schema, keys []SortKey) []block.Ref {
 	kv := make([][]*vec, len(blks))
 	n := 0
@@ -706,11 +706,8 @@ func sortRefs(blks []block.Block, s schema, keys []SortKey) []block.Ref {
 			refs = append(refs, block.Ref{Blk: int32(i), Row: int32(r)})
 		}
 	}
-	slices.SortFunc(refs, func(x, y block.Ref) int {
-		if c := compareKeys(kv[x.Blk], int(x.Row), kv[y.Blk], int(y.Row), keys); c != 0 {
-			return c
-		}
-		return cmp.Or(cmp.Compare(x.Blk, y.Blk), cmp.Compare(x.Row, y.Row))
+	slices.SortStableFunc(refs, func(x, y block.Ref) int {
+		return compareKeys(kv[x.Blk], int(x.Row), kv[y.Blk], int(y.Row), keys)
 	})
 	return refs
 }
