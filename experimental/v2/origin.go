@@ -219,11 +219,16 @@ func (r *rawSource) keep(row int) {
 	if cols == nil {
 		return
 	}
-	k := &keptRow{loc: r.chunkLoc(c, cols, row)}
+	// Cells of a chunk are views into its buffers; the copy owns its bytes,
+	// so that it does not hold the chunk (D87, D113).
+	loc := r.chunkLoc(c, cols, row)
+	loc.key, loc.hash, loc.display = strings.Clone(loc.key), strings.Clone(loc.hash), strings.Clone(loc.display)
+	k := &keptRow{loc: loc}
 	if !r.loc.noRaw {
 		k.cells = make([]keptCell, len(r.s))
 		for j := range r.s {
-			k.cells[j].s, k.cells[j].ok = cols[j].Text(row - r.starts[c])
+			v, ok := cols[j].Text(row - r.starts[c])
+			k.cells[j] = keptCell{strings.Clone(v), ok}
 		}
 	}
 	if r.rel.kept == nil {

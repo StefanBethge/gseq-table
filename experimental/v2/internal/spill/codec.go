@@ -52,6 +52,12 @@ func (w *Writer) String(s string) {
 	}
 }
 
+// Bytes writes p with its length, like String.
+func (w *Writer) Bytes(p []byte) {
+	w.Uvarint(uint64(len(p)))
+	w.write(p)
+}
+
 // Bool writes b.
 func (w *Writer) Bool(b bool) {
 	if b {
@@ -85,7 +91,7 @@ func (w *Writer) column(c block.Column) {
 		}
 		switch c.Kind() {
 		case block.Text:
-			w.String(c.Texts()[i])
+			w.Bytes(c.TextBytes(i))
 		case block.Int:
 			w.Varint(c.Ints()[i])
 		case block.Float:
@@ -115,6 +121,7 @@ func (w *Writer) Flush() error {
 type Reader struct {
 	r   *bufio.Reader
 	err error
+	buf []byte // scratch for the bytes of a text cell
 }
 
 // NewReader returns a reader over r.
@@ -186,6 +193,24 @@ func (r *Reader) String() string {
 	return string(p)
 }
 
+// bytes reads a value written by Writer.Bytes or Writer.String into a
+// scratch buffer that the next call overwrites.
+func (r *Reader) bytes() []byte {
+	n := r.Int()
+	if r.err != nil || n == 0 {
+		return nil
+	}
+	if cap(r.buf) < n {
+		r.buf = make([]byte, n)
+	}
+	p := r.buf[:n]
+	if _, err := io.ReadFull(r.r, p); err != nil {
+		r.fail(err)
+		return nil
+	}
+	return p
+}
+
 // Bool reads a value written by Writer.Bool.
 func (r *Reader) Bool() bool {
 	if r.err != nil {
@@ -237,7 +262,7 @@ func (r *Reader) column(n int) block.Column {
 		}
 		switch k {
 		case block.Text:
-			b.AppendText(r.String())
+			b.AppendTextBytes(r.bytes())
 		case block.Int:
 			b.AppendInt(r.Varint())
 		case block.Float:

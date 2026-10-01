@@ -1,18 +1,25 @@
 package gtable
 
 import (
+	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
 )
 
 // vec is the working form of a column while an expression is evaluated over a
-// block: one value slice matching kind, and a null flag per cell (D30).
+// block: one value slice matching kind, and a null flag per cell (D30). A
+// vec that reads a text column keeps its buffer and offsets (tbuf, toffs);
+// one that is computed holds texts. Read text cells with text.
 type vec struct {
 	kind  block.Kind
 	n     int
 	null  []bool
 	texts []string
+	tbuf  []byte
+	toffs []uint32
+	arena []byte // bytes of computed texts, which texts views (see appendText)
 	ints  []int64
 	flts  []float64
 	bools []bool
@@ -47,7 +54,7 @@ func vecOf(c block.Column) *vec {
 	}
 	switch v.kind {
 	case block.Text:
-		v.texts = c.Texts()
+		v.tbuf, v.toffs = c.TextData()
 	case block.Int:
 		v.ints = c.Ints()
 	case block.Float:
@@ -58,6 +65,35 @@ func vecOf(c block.Column) *vec {
 		v.times = c.Timestamps()
 	}
 	return v
+}
+
+// text returns text cell i; for a vec that reads a column, a view into its
+// buffer.
+func (v *vec) text(i int) string {
+	if v.toffs == nil {
+		return v.texts[i]
+	}
+	a, b := v.toffs[i], v.toffs[i+1]
+	if a == b {
+		return ""
+	}
+	return unsafe.String(&v.tbuf[a], b-a)
+}
+
+// appendText sets text cell i of a computed vec to the parts one after
+// another, in the arena of v instead of a string of its own (D113). Bytes
+// in the arena are never written again, so the views stay valid when it
+// grows.
+func (v *vec) appendText(i int, parts []*vec, j int) {
+	start := len(v.arena)
+	for _, p := range parts {
+		v.arena = append(v.arena, p.text(j)...)
+	}
+	if n := len(v.arena) - start; n > 0 {
+		v.texts[i] = unsafe.String(&v.arena[start], n)
+	} else {
+		v.texts[i] = ""
+	}
 }
 
 // float returns cell i as a float, widening an integer (D71).
@@ -71,6 +107,15 @@ func (v *vec) float(i int) float64 {
 // column builds a block column from the cells of v.
 func (v *vec) column() block.Column {
 	b := block.NewBuilder(v.kind, v.n)
+	if v.kind == block.Text {
+		size := 0
+		for i := range v.n {
+			if !v.null[i] {
+				size += len(v.text(i))
+			}
+		}
+		b.ReserveText(size)
+	}
 	for i := range v.n {
 		if v.null[i] {
 			b.AppendNull()
@@ -78,7 +123,7 @@ func (v *vec) column() block.Column {
 		}
 		switch v.kind {
 		case block.Text:
-			b.AppendText(v.texts[i])
+			b.AppendText(v.text(i))
 		case block.Int:
 			b.AppendInt(v.ints[i])
 		case block.Float:
@@ -101,7 +146,8 @@ func (v *vec) set(i int, src *vec, j int) {
 	v.null[i] = false
 	switch v.kind {
 	case block.Text:
-		v.texts[i] = src.texts[j]
+		// A copy: the view would hold the whole buffer of src (D113).
+		v.texts[i] = strings.Clone(src.text(j))
 	case block.Int:
 		v.ints[i] = src.ints[j]
 	case block.Float:
@@ -122,7 +168,8 @@ func (v *vec) format(i int) (string, bool) {
 }
 
 // writeInto writes the cells of v into c, which has v's kind and length and
-// may be changed in place.
+// may be changed in place. A text column is never written in place (see
+// setColumn).
 func (v *vec) writeInto(c *block.Column) {
 	for i := range v.n {
 		if v.null[i] {
@@ -130,8 +177,6 @@ func (v *vec) writeInto(c *block.Column) {
 			continue
 		}
 		switch v.kind {
-		case block.Text:
-			c.SetText(i, v.texts[i])
 		case block.Int:
 			c.SetInt(i, v.ints[i])
 		case block.Float:
@@ -152,7 +197,8 @@ func (v *vec) aliases(c block.Column) bool {
 	}
 	switch v.kind {
 	case block.Text:
-		return &v.texts[0] == &c.Texts()[0]
+		_, offs := c.TextData()
+		return v.toffs != nil && &v.toffs[0] == &offs[0]
 	case block.Int:
 		return &v.ints[0] == &c.Ints()[0]
 	case block.Float:

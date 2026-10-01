@@ -136,8 +136,8 @@ func TestColumnSliceAccessorsMatchKind(t *testing.T) {
 	b.AppendText("a")
 	b.AppendNull()
 	c := b.Build()
-	if got := c.Texts(); len(got) != 2 || got[0] != "a" || got[1] != "" {
-		t.Errorf("Texts() = %q", got)
+	if text, offs := c.TextData(); string(text) != "a" || len(offs) != 3 || offs[1] != 1 || offs[2] != 1 {
+		t.Errorf("TextData() = %q, %v", text, offs)
 	}
 	if c.Ints() != nil || c.Floats() != nil || c.Bools() != nil || c.Timestamps() != nil {
 		t.Error("slice accessor of another kind is not nil")
@@ -258,7 +258,7 @@ func TestColumnBytesCountsValuesAndNulls(t *testing.T) {
 	b.AppendText("abc")
 	b.AppendNull()
 	c := b.Build()
-	want := int64(2*stringHeader + 3 + 8)
+	want := int64(3 + 3*4 + 8) // bytes, offsets, null bitmap
 	if got := c.Bytes(); got != want {
 		t.Errorf("Bytes() = %d, want %d", got, want)
 	}

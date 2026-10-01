@@ -250,7 +250,7 @@ func TestPlanErrorsStopTheRunAndOtherErrorsFollowTheirCode(t *testing.T) {
 			"unknown column": With("x", Col("nope").Add(Lit(1))),
 			"type conflict":  With("x", Col("amount").Add(Lit(1))),
 		} {
-			src := &countingSource{tableSource: tableSource{delivery(10)}}
+			src := &countingSource{tableSource: tableSource{dirtyDelivery(10)}}
 			p := &Pipeline{src: src, blockLen: 2}
 			res, err := p.OnError(m).Then(op).Run(ctx)
 			wantPlanError(t, err)

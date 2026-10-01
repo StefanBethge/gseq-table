@@ -281,7 +281,7 @@ func (rx *rejector) carry(es []rejectEntry) {
 func formatCell(k block.Kind, v *vec, i int) string {
 	switch k {
 	case block.Text:
-		return v.texts[i]
+		return v.text(i)
 	case block.Int:
 		return strconv.FormatInt(v.ints[i], 10)
 	case block.Float:

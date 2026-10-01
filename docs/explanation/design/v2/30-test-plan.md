@@ -553,6 +553,10 @@ Sortieren unter einem Budget, das auslagert. Beim letzten Block des Ziels liegt 
 Speicherbereinigung bei der großen Lieferung um höchstens 2 Bytes je zusätzlicher Zeile über dem der
 kleinen. Die Buchführung einer gehaltenen Zeile (Herkunft und Quellzeile) ist höchstens 50 Bytes groß.
 
+Nachtrag 2026-09-30 (#69): Ein vierter Plan liest, wandelt um und filtert eine Lieferung, in der jede
+1000. Zeile beim Umwandeln scheitert. Auch dort wächst der Heap um höchstens 2 Bytes je Zeile: Eine
+aussortierte Zeile behält eine Kopie ihres Rohzustands ([D87](10-design-decisions.md#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)), nicht den Block, aus dem sie gelesen wurde.
+
 ### T72 — Fortlaufendes Gruppieren ergibt dieselben Werte wie im Speicher und lagert bei wenigen Gruppen nicht aus
 
 **Beweist:** [D112](10-design-decisions.md#d112-groupby-rechnet-summe-anzahl-mittelwert-minimum-maximum-erster-und-letzter-wert-fortlaufend-und-bitgleich), [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
@@ -570,6 +574,35 @@ Ein Join, bei dem jede linke Zeile genau einen Partner hat, legt für die linke 
 Zeile an, nur für die rechte Seite. Hat eine linke Zeile zwei Partner, von denen einer später scheitert,
 zählt sie einmal als aussortiert, eine linke Zeile mit zwei durchgelaufenen Partnern einmal als
 durchgelaufen, und die gezählte Spitze des Laufs enthält die Zustände.
+
+### T74 — Textspalten halten ihre Werte in einem Puffer, und Lesen und Kopieren legen keinen String je Zelle an
+
+**Beweist:** [D113](10-design-decisions.md#d113-nach-66-bleiben-g5-und-g13-offen-und-d7-wird-erst-nach-einem-folgeslice-fur-textspalten-und-kopien-wieder-aufgemacht), [D30](10-design-decisions.md#d30-es-gibt-echte-nullwerte-getrennt-vom-leeren-text), [D55](10-design-decisions.md#d55-roh-und-arbeitsdaten-teilen-spalten-bis-ein-schritt-eine-spalte-andert)
+Eine Textspalte aus 16.384 Werten mit leerem Text und Nullwerten liegt als ein Byte-Puffer mit Offsets
+und Null-Bitmap vor: Aufeinanderfolgende Werte liegen im Puffer hintereinander, und das Budget zählt je
+Zelle 4 Bytes Offset statt eines String-Kopfs ([G75](70-gap-ledger.md#g75-textspalten-csv-parsen-und-zwischenkopien-kosten-zeit-und-speicher-gegen-v1)). Leerer Text bleibt ein Wert, null bleibt
+null. Alle Zellen zu lesen allokiert nichts, `Take` und `Concat` allokieren wenige Male je Spalte, nicht
+je Wert. Ein vor einer Änderung gelesener Wert behält seine Bytes, auch wenn die Spalte danach geteilt,
+kopiert und geändert wird.
+
+### T75 — Der CSV-Reader zerlegt eine Lieferung wie encoding/csv, mit denselben Fundstellen und Rohbytes
+
+**Beweist:** [D113](10-design-decisions.md#d113-nach-66-bleiben-g5-und-g13-offen-und-d7-wird-erst-nach-einem-folgeslice-fur-textspalten-und-kopien-wieder-aufgemacht), [D10](10-design-decisions.md#d10-rohzustand-bedeutet-gelesene-zellwerte-rohbytes-bei-unzerlegbaren-zeilen-und-immer-die-fundstelle), [D81](10-design-decisions.md#d81-eine-gelesene-zeile-wird-uber-ihre-physische-zeile-gefunden-und-record_key-besteht-aus-fingerabdruck-und-zeile)
+Über feste und 3000 zufällige Eingaben aus Feldern, Anführungszeichen, Trennzeichen, `\n`, `\r` und
+`\r\n`, mit Komma, Semikolon, Tab und einem Trennzeichen aus mehreren Bytes, mit und ohne
+`LazyQuotes` und in Lesestücken von einem Byte bis zur ganzen Eingabe, liefert der Reader dieselben
+Datensätze wie `encoding/csv`: dieselben Felder, dieselben Fehler mit derselben Startzeile, dieselbe
+Zeile und denselben Offset je Datensatz und dieselben Rohbytes ohne Zeilenumbruch. Eine Zeile zu lesen
+allokiert nichts, sobald die Puffer gewachsen sind.
+
+### T76 — Sortieren und Join sammeln jede Zelle einmal aus den Blöcken ihrer Eingabe
+
+**Beweist:** [D113](10-design-decisions.md#d113-nach-66-bleiben-g5-und-g13-offen-und-d7-wird-erst-nach-einem-folgeslice-fur-textspalten-und-kopien-wieder-aufgemacht), [D70](10-design-decisions.md#d70-beim-sortieren-stehen-nullwerte-in-beiden-richtungen-hinten), [D6](10-design-decisions.md#d6-pipelines-sind-plane-die-in-blocken-ausgefuhrt-werden-und-auf-die-platte-auslagern-konnen)
+Sortieren nach einem Text und einer Gleitkommazahl mit Nullwerten und ein Join auf eine kleine rechte
+Seite über 30.000 Zeilen in Blöcken von 1000 Zeilen geben Blöcke der Blocklänge weiter. Die Zeilen
+stehen in der Reihenfolge eines stabilen Sortierens mit Nullwerten hinten, beim Join in der Reihenfolge
+der linken Zeilen. Der Schritt allokiert höchstens das 1,1-Fache der Bytes der Zellen und 100 Bytes je
+Zeile für die Buchführung ([D109](10-design-decisions.md#d109-buchfuhrung-gibt-es-nur-fur-zeilen-im-plan-hochstens-50-bytes-je-zeile-und-die-1brc-datei-lauft-bei-1-gib-durch)), weil er die Eingabe nicht erst zu einem Block zusammenhängt.
 
 Die Tabelle "welcher Test beweist welchen Fall" entsteht mit den ersten Tests. Ihr Format
 gibt der Parser des Docs-Gates vor ([G14](70-gap-ledger.md#g14-docs-gates-aus-dem-archivar-repo-ubernehmen)).
@@ -659,3 +692,6 @@ den Fall beweisen, und jeder Test, der ihn beweist, muss hier stehen. Eine Zeile
 | [T71](#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung) | `TestBookkeepingDoesNotGrowWithTheDelivery` |
 | [T72](#t72-fortlaufendes-gruppieren-ergibt-dieselben-werte-wie-im-speicher-und-lagert-bei-wenigen-gruppen-nicht-aus) | `TestStreamingGroupByEqualsInMemoryAndSpillsOnlyForManyGroups` |
 | [T73](#t73-nur-quellzeilen-in-mehreren-arbeitszeilen-haben-einen-zustand-und-er-zahlt-im-budget) | `TestOnlySourceRowsInSeveralWorkingRowsHaveAState` |
+| [T74](#t74-textspalten-halten-ihre-werte-in-einem-puffer-und-lesen-und-kopieren-legen-keinen-string-je-zelle-an) | `TestTextColumnsHoldTheirValuesInOneBuffer` |
+| [T75](#t75-der-csv-reader-zerlegt-eine-lieferung-wie-encodingcsv-mit-denselben-fundstellen-und-rohbytes) | `TestCSVTokenizerReadsLikeEncodingCSV` |
+| [T76](#t76-sortieren-und-join-sammeln-jede-zelle-einmal-aus-den-blocken-ihrer-eingabe) | `TestSortAndJoinGatherEveryCellOnce` |

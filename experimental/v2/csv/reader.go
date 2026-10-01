@@ -1,9 +1,6 @@
 package csv
 
 import (
-	"bufio"
-	"bytes"
-	stdcsv "encoding/csv"
 	"errors"
 	"fmt"
 	"io"
@@ -67,12 +64,19 @@ func File(path string, opts ...Option) gtable.Source {
 func Reparse(opts ...Option) gtable.RejectsOption {
 	cfg := newConfig(opts)
 	return gtable.Reparse(func(line string) ([]string, error) {
-		r := cfg.newReader(strings.NewReader(line))
-		fields, err := r.Read()
-		if err != nil {
+		tz := newTokenizer(strings.NewReader(line), cfg.comma, cfg.lazyQuotes)
+		var f delivery.Fields
+		rec, err := tz.next(&f)
+		switch {
+		case err == io.EOF:
+			return nil, errors.New("line holds no record")
+		case err != nil:
 			return nil, err
+		case rec.perr != nil:
+			return nil, rec.perr
 		}
-		if _, err := r.Read(); err != io.EOF {
+		fields := f.Strings()
+		if _, err := tz.next(&f); err != io.EOF {
 			return nil, errors.New("line holds more than one record")
 		}
 		if j := cfg.tooLarge(fields); j >= 0 {
@@ -80,14 +84,6 @@ func Reparse(opts ...Option) gtable.RejectsOption {
 		}
 		return fields, nil
 	})
-}
-
-func (c config) newReader(r io.Reader) *stdcsv.Reader {
-	cr := stdcsv.NewReader(r)
-	cr.Comma = c.comma
-	cr.LazyQuotes = c.lazyQuotes
-	cr.FieldsPerRecord = -1 // the source checks the number of fields
-	return cr
 }
 
 // tooLarge returns the index of the first field over the limit, or -1.
@@ -100,14 +96,28 @@ func (c config) tooLarge(fields []string) int {
 	return -1
 }
 
-// reader implements gtable.Reader over a CSV file.
+// tooLargeField returns the index of the first field of f over the limit,
+// or -1.
+func (c config) tooLargeField(f *delivery.Fields) int {
+	start := 0
+	for j, end := range f.Ends {
+		if end-start > c.maxField {
+			return j
+		}
+		start = end
+	}
+	return -1
+}
+
+// reader implements gtable.Reader over a CSV file. It splits records into
+// a reused buffer instead of strings (D113).
 type reader struct {
 	path string
 	cfg  config
 
-	f   *os.File
-	rec *recorder
-	cr  *stdcsv.Reader
+	f  *os.File
+	tz *tokenizer
+	fs delivery.Fields
 }
 
 func (r *reader) Open() (gtable.Header, error) {
@@ -124,51 +134,54 @@ func (r *reader) Open() (gtable.Header, error) {
 	if h.ID, err = delivery.Fingerprint(name, f); err != nil {
 		return h, err
 	}
-	// The CSV reader reads in small pieces; the file is read in large ones.
-	r.rec = &recorder{r: bufio.NewReaderSize(f, readBuffer)}
-	r.cr = r.cfg.newReader(r.rec)
+	r.tz = newTokenizer(f, r.cfg.comma, r.cfg.lazyQuotes)
 	if r.cfg.noHeader {
 		return h, nil
 	}
-	cols, err := r.cr.Read()
+	rec, err := r.tz.next(&r.fs)
 	switch {
 	case err == io.EOF:
 		return h, errors.New("no header line")
 	case err != nil:
 		return h, fmt.Errorf("header: %w", err)
+	case rec.perr != nil:
+		return h, fmt.Errorf("header: %w", rec.perr)
 	}
+	cols := r.fs.Strings()
 	cols[0] = strings.TrimPrefix(cols[0], "\ufeff")
 	h.Columns = cols
 	return h, nil
 }
 
+// Next returns the next record with its fields as strings. The engine
+// reads with NextFields; Next serves other callers of a gtable.Reader.
 func (r *reader) Next() (gtable.Record, error) {
-	start := r.cr.InputOffset()
-	r.rec.drop(start)
-	fields, err := r.cr.Read()
-	if err == io.EOF {
-		return gtable.Record{}, io.EOF
+	rec, err := r.NextFields(&r.fs)
+	if err == nil && rec.Code == "" {
+		rec.Fields = r.fs.Strings()
 	}
-	raw, offset := trimLine(r.rec.take(start, r.cr.InputOffset()), start)
-	rec := gtable.Record{Offset: offset, Raw: raw, Column: -1}
-	var pe *stdcsv.ParseError
-	switch {
-	case errors.As(err, &pe):
-		rec.Line = pe.StartLine
-		rec.Code, rec.Reason = gtable.CodeUnparseableLine, pe.Err.Error()
-		rec.Raw = r.cut(raw)
-		return rec, nil
-	case err != nil:
+	return rec, err
+}
+
+// NextFields reads the next record into fs, which holds its fields unless
+// the record is rejected at read time; the returned record has no Fields.
+func (r *reader) NextFields(fs *delivery.Fields) (gtable.Record, error) {
+	t, err := r.tz.next(fs)
+	if err != nil {
 		return gtable.Record{}, err
 	}
-	rec.Line, _ = r.cr.FieldPos(0)
-	if j := r.cfg.tooLarge(fields); j >= 0 {
-		rec.Code, rec.Column = gtable.CodeFieldTooLarge, j
-		rec.Reason = fmt.Sprintf("field is larger than %d bytes", r.cfg.maxField)
-		rec.Raw = r.cut(raw)
+	rec := gtable.Record{Line: t.line, Offset: t.offset, Raw: t.raw, Column: -1}
+	if t.perr != nil {
+		rec.Code, rec.Reason = gtable.CodeUnparseableLine, t.perr.Err.Error()
+		rec.Raw = r.cut(t.raw)
 		return rec, nil
 	}
-	rec.Fields = fields
+	if j := r.cfg.tooLargeField(fs); j >= 0 {
+		rec.Code, rec.Column = gtable.CodeFieldTooLarge, j
+		rec.Reason = fmt.Sprintf("field is larger than %d bytes", r.cfg.maxField)
+		rec.Raw = r.cut(t.raw)
+		return rec, nil
+	}
 	return rec, nil
 }
 
@@ -180,58 +193,6 @@ func (r *reader) Close() error {
 		return nil
 	}
 	err := r.f.Close()
-	r.f, r.rec, r.cr = nil, nil, nil
+	r.f, r.tz = nil, nil
 	return err
 }
-
-// trimLine cuts the blank lines encoding/csv skipped before a record and the
-// line break after it, and returns the bytes and the offset of the record.
-func trimLine(raw []byte, offset int64) ([]byte, int64) {
-	for {
-		switch {
-		case len(raw) > 0 && raw[0] == '\n':
-			raw, offset = raw[1:], offset+1
-			continue
-		case len(raw) > 1 && raw[0] == '\r' && raw[1] == '\n':
-			raw, offset = raw[2:], offset+2
-			continue
-		}
-		break
-	}
-	raw = bytes.TrimSuffix(bytes.TrimSuffix(raw, []byte("\n")), []byte("\r"))
-	return raw, offset
-}
-
-// recorder keeps the bytes the CSV reader has read and not yet dropped, so
-// the raw bytes of a record can be cut out by input offset (D10).
-type recorder struct {
-	r    io.Reader
-	buf  []byte
-	base int64 // input offset of buf[0]
-}
-
-func (rc *recorder) Read(p []byte) (int, error) {
-	n, err := rc.r.Read(p)
-	rc.buf = append(rc.buf, p[:n]...)
-	return n, err
-}
-
-func (rc *recorder) take(from, to int64) []byte { return rc.buf[from-rc.base : to-rc.base] }
-
-// drop drops the bytes before offset to. It moves the rest to the front
-// only once the dropped part is large, so that a record costs its own bytes,
-// not those of the buffer.
-func (rc *recorder) drop(to int64) {
-	n := int(to - rc.base)
-	if n < dropAt && 2*n < len(rc.buf) {
-		return
-	}
-	rc.buf, rc.base = rc.buf[:copy(rc.buf, rc.buf[n:])], to
-}
-
-// readBuffer is the size of the reads from the file, dropAt the number of
-// dropped bytes from which the recorder moves its rest.
-const (
-	readBuffer = 1 << 20
-	dropAt     = 64 << 10
-)

@@ -25,7 +25,7 @@ func (s *countingSource) blocks(n int, sc *stepCtx, yield func(batch) error) err
 	})
 }
 
-func delivery(n int) Table {
+func dirtyDelivery(n int) Table {
 	ids := make([]string, n)
 	amounts := make([]string, n)
 	for i := range n {
@@ -51,7 +51,7 @@ func steps() []Op {
 
 // A plan error is found before any row is read (D19).
 func TestPipelinePlanErrorBeforeAnyRowIsRead(t *testing.T) {
-	src := &countingSource{tableSource: tableSource{delivery(20)}}
+	src := &countingSource{tableSource: tableSource{dirtyDelivery(20)}}
 	for name, op := range map[string]Op{
 		"unknown column": With("x", Col("nope").Add(Lit(1))),
 		"type conflict":  With("x", Col("amount").Add(Lit(1))), // amount is still text
@@ -73,15 +73,15 @@ func TestPipelinePlanErrorBeforeAnyRowIsRead(t *testing.T) {
 			t.Fatalf("%s: %d rows read before the plan error", name, src.read)
 		}
 	}
-	wantPlanError(t, From(delivery(1), -1).Check()) // 0 is the default (D107)
-	wantPlanError(t, From(delivery(1).Select("x"), 1).Check())
-	wantPlanError(t, From(delivery(1), 1).Then(Op{}).Check())
+	wantPlanError(t, From(dirtyDelivery(1), -1).Check()) // 0 is the default (D107)
+	wantPlanError(t, From(dirtyDelivery(1).Select("x"), 1).Check())
+	wantPlanError(t, From(dirtyDelivery(1), 1).Then(Op{}).Check())
 }
 
 // The same operations give the same result as Table methods and as pipeline
 // steps, for any block length (D31; prepares T22).
 func TestPipelineMatchesTableMethods(t *testing.T) {
-	src := delivery(100)
+	src := dirtyDelivery(100)
 	eager := src
 	for _, op := range steps() {
 		eager = eager.Apply(op)
@@ -111,7 +111,7 @@ func TestPipelineMatchesTableMethods(t *testing.T) {
 }
 
 func TestPipelineRunsBlockByBlock(t *testing.T) {
-	src := &countingSource{tableSource: tableSource{delivery(10)}}
+	src := &countingSource{tableSource: tableSource{dirtyDelivery(10)}}
 	var sizes []int
 	p := &Pipeline{src: src, blockLen: 4}
 	p.Then(WhereFunc(func(r Row) (bool, error) { return true, nil }))
@@ -160,14 +160,14 @@ func TestPipelineCarriesSourceRejectsAndNamesSteps(t *testing.T) {
 func TestPipelineStopsOnCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := From(delivery(10), 2).Then(Select("id")).Run(ctx)
+	_, err := From(dirtyDelivery(10), 2).Then(Select("id")).Run(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v", err)
 	}
 }
 
 func TestPipelineOverEmptySource(t *testing.T) {
-	res, err := From(delivery(0), 2).Then(Cast("amount", TypeInt)).Then(Sort(Asc("amount"))).Run(context.Background())
+	res, err := From(dirtyDelivery(0), 2).Then(Cast("amount", TypeInt)).Then(Sort(Asc("amount"))).Run(context.Background())
 	got := res.Table
 	if err != nil || got.Len() != 0 || !slices.Equal(got.Columns(), []string{"id", "amount"}) {
 		t.Errorf("got %v, %v", got.Columns(), err)
@@ -177,7 +177,7 @@ func TestPipelineOverEmptySource(t *testing.T) {
 // Block length 0 is the default of the engine, a negative one a plan error
 // (D107).
 func TestBlockLengthZeroIsTheDefault(t *testing.T) {
-	src := &countingSource{tableSource: tableSource{delivery(DefaultBlockLen + 5)}}
+	src := &countingSource{tableSource: tableSource{dirtyDelivery(DefaultBlockLen + 5)}}
 	var sizes []int
 	p := &Pipeline{src: src, blockLen: 0}
 	p.steps = append(p.steps, step{name: "probe", op: Op{probe{&sizes}}})
@@ -187,5 +187,5 @@ func TestBlockLengthZeroIsTheDefault(t *testing.T) {
 	if !slices.Equal(sizes, []int{DefaultBlockLen, 5}) {
 		t.Errorf("block sizes = %v, want %d, 5", sizes, DefaultBlockLen)
 	}
-	wantPlanError(t, From(delivery(3), -1).Check())
+	wantPlanError(t, From(dirtyDelivery(3), -1).Check())
 }

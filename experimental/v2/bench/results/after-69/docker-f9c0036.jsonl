@@ -1,0 +1,3 @@
+{"label":"docker-onebrc-measurements-1g","case":"exec","managed":true,"rep":0,"wall_s":336.634750905,"maxrss":1060831232,"exit":-1,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-measurements-2g","case":"exec","managed":true,"rep":0,"wall_s":807.426149663,"maxrss":2126028800,"exit":-1,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-measurements-4g","case":"exec","managed":true,"rep":0,"wall_s":1351.684177455,"maxrss":4261101568,"exit":-1,"limit":4294967296,"goos":"linux"}

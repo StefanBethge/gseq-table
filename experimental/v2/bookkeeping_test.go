@@ -14,10 +14,12 @@ import (
 
 // genReader generates a delivery in the format of the 1BRC file as it is
 // read, so that the test holds no records of its own: station and
-// measurement, over 50 stations.
+// measurement, over 50 stations. With bad, every bad-th measurement is
+// not a number.
 type genReader struct {
 	n, next int
 	off     int64
+	bad     int
 }
 
 func (r *genReader) Open() (Header, error) {
@@ -33,6 +35,9 @@ func (r *genReader) Next() (Record, error) {
 	r.next++
 	st := "s" + strconv.Itoa(i*7%50)
 	val := strconv.FormatFloat(float64(i*37%1999-999)/10, 'f', 1, 64)
+	if r.bad > 0 && i%r.bad == 0 {
+		val = "x" + val
+	}
 	rec := Record{Fields: []string{st, val}, Line: i + 2, Offset: r.off}
 	r.off += int64(len(st) + len(val) + 2)
 	return rec, nil
@@ -66,6 +71,7 @@ func TestBookkeepingDoesNotGrowWithTheDelivery(t *testing.T) {
 		ops    []Op
 		budget int64 // 0: no cap
 		rows   func(n int) int
+		bad    int // every bad-th row fails the cast; 0: none
 	}{
 		"stream": {
 			ops:  []Op{Cast("measurement", TypeFloat), Where(Col("measurement").Gt(Lit(0.0)))},
@@ -77,6 +83,13 @@ func TestBookkeepingDoesNotGrowWithTheDelivery(t *testing.T) {
 				Sort(Asc("station"))},
 			rows: func(int) int { return 50 },
 		},
+		// A rejected row keeps a copy of its raw state, not its chunk
+		// (D87, D111): the heap grows by its copy, not by the rows.
+		"stream with rejects": {
+			ops:  []Op{Cast("measurement", TypeFloat), Where(Col("measurement").Gt(Lit(0.0)))},
+			rows: func(n int) int { return -1 },
+			bad:  1000,
+		},
 		"spilled sort": {
 			ops:    []Op{Cast("measurement", TypeFloat), Sort(Asc("measurement"))},
 			budget: 1 << 20,
@@ -87,7 +100,7 @@ func TestBookkeepingDoesNotGrowWithTheDelivery(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			heap := map[int]uint64{}
 			for _, n := range []int{small, large} {
-				p := FromSource(NewSource(&genReader{n: n}), 4096)
+				p := FromSource(NewSource(&genReader{n: n, bad: pl.bad}), 4096)
 				for _, op := range pl.ops {
 					p.Then(op)
 				}
@@ -103,7 +116,7 @@ func TestBookkeepingDoesNotGrowWithTheDelivery(t *testing.T) {
 				if want := pl.rows(n); want >= 0 && out.rows != want {
 					t.Fatalf("%d rows: sink got %d rows, want %d", n, out.rows, want)
 				}
-				if res.Counts.Read != n || res.Counts.Passed+res.Counts.Dropped != n {
+				if res.Counts.Read != n || res.Counts.Passed+res.Counts.Dropped+res.Counts.Rejected != n {
 					t.Fatalf("%d rows: counts %s", n, countsOf(res.Counts))
 				}
 				heap[n] = out.heap

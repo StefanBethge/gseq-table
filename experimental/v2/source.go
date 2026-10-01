@@ -13,6 +13,7 @@ import (
 
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/benchknob"
 	"github.com/stefanbethge/gseq-table/experimental/v2/internal/block"
+	"github.com/stefanbethge/gseq-table/experimental/v2/internal/delivery"
 )
 
 // Reader reads one delivery for a Source (F8). The packages csv and excel
@@ -29,6 +30,13 @@ type Reader interface {
 	// ends the run as unreadable.
 	Next() (Record, error)
 	Close() error
+}
+
+// fieldReader is a Reader that splits a record into a reused buffer
+// instead of strings, as the CSV reader does (D113, G75). The record it
+// returns has no Fields; f holds them unless the record has a Code.
+type fieldReader interface {
+	NextFields(f *delivery.Fields) (Record, error)
 }
 
 // Header describes an opened delivery.
@@ -241,6 +249,26 @@ type openedReader struct {
 	missing  []string
 	findings []Finding
 	keyCols  []int // raw column per business key column, -1 for a missing one (D97)
+
+	fs        delivery.Fields // the fields of the record being read
+	textBytes []int           // bytes of every raw column in the last chunk
+}
+
+// next reads the next record into o.fs and reports whether it has fields.
+func (o *openedReader) next() (Record, bool, error) {
+	if fr, ok := o.src.r.(fieldReader); ok {
+		r, err := fr.NextFields(&o.fs)
+		return r, err == nil && r.Code == "", err
+	}
+	r, err := o.src.r.Next()
+	if err != nil || r.Fields == nil {
+		return r, false, err
+	}
+	o.fs.Reset()
+	for _, f := range r.Fields {
+		o.fs.Append(f)
+	}
+	return r, true, nil
 }
 
 func newOpenedReader(src Source, h Header) (*openedReader, error) {
@@ -376,8 +404,14 @@ func sparse(vals *[]string, i int, v string, n int) {
 func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 	c := rawChunk{first: o.raw.rows()}
 	builders := make([]*block.Builder, o.width)
+	if o.textBytes == nil {
+		o.textBytes = make([]int, o.width)
+	}
 	for i := range builders {
 		builders[i] = block.NewBuilder(block.Text, n)
+		// Room for the bytes of the last chunk and a little more, so
+		// that the buffer rarely grows.
+		builders[i].ReserveText(o.textBytes[i] + o.textBytes[i]/16)
 	}
 	// The location, keys and hashes go with the raw state (D111).
 	offsets := block.NewBuilder(block.Int, n)
@@ -386,7 +420,7 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 	loc := o.raw.loc
 	done := false
 	for c.n < n {
-		r, err := o.src.r.Next()
+		r, hasFields, err := o.next()
 		if err == io.EOF {
 			done = true
 			break
@@ -396,22 +430,24 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 		}
 		row := o.raw.rows() + c.n
 		cr := chunkRec{i: c.n, code: r.Code, reason: r.Reason, column: r.Column}
-		if cr.code == "" && len(r.Fields) != o.width {
-			cr = chunkRec{c.n, CodeUnparseableLine, fmt.Sprintf("line has %d fields, want %d", len(r.Fields), o.width), -1}
-			r.Fields = nil
+		nf := 0
+		if hasFields {
+			nf = o.fs.Len()
+		}
+		if cr.code == "" && nf != o.width {
+			cr = chunkRec{c.n, CodeUnparseableLine, fmt.Sprintf("line has %d fields, want %d", nf, o.width), -1}
+			hasFields = false
 		}
 		if cr.code == "" {
 			cr.column = -1
 		}
-		fields := r.Fields
-		if cr.code != "" && len(fields) != o.width {
-			fields = nil
-		}
+		// The fields of a rejected record stay its raw state if they fit.
+		fields := hasFields && nf == o.width
 		for i, b := range builders {
-			if fields == nil {
-				b.AppendNull()
+			if fields {
+				b.AppendTextBytes(o.fs.Field(i))
 			} else {
-				b.AppendText(fields[i])
+				b.AppendNull()
 			}
 		}
 		if i := c.n; len(lines) == 0 || lines[len(lines)-1].line+i-lines[len(lines)-1].row != r.Line {
@@ -429,19 +465,23 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 			loc.rawLines[row] = string(r.Raw)
 		}
 		disp := ""
-		if len(r.Display) > 0 && fields != nil {
+		if len(r.Display) > 0 && fields {
 			disp = encodeDisplay(r.Display)
 		}
 		sparse(&displays, c.n, disp, n)
 		key := r.key
-		if key == "" && o.keyCols != nil && fields != nil {
-			key = businessKey(o.src.key, o.keyCols, fields)
+		if key == "" && o.keyCols != nil && fields {
+			key = businessKey(o.src.key, o.keyCols, &o.fs)
 		}
 		sparse(&keys, c.n, key, n)
 		if loc.hashes {
 			h := r.hash
 			if h == "" {
-				h = recordHash(r.Fields, r.Raw)
+				var fs *delivery.Fields
+				if hasFields {
+					fs = &o.fs
+				}
+				h = recordHash(fs, r.Raw)
 			}
 			hashes = append(hashes, h)
 		}
@@ -453,6 +493,8 @@ func (o *openedReader) readChunk(n int) (rawChunk, bool, error) {
 	c.cols = make([]block.Column, o.width)
 	for i, b := range builders {
 		c.cols[i] = b.Build()
+		text, _ := c.cols[i].TextData()
+		o.textBytes[i] = len(text)
 	}
 	chunk := c.cols
 	if loc.noRaw {
@@ -573,13 +615,14 @@ func (o *openedReader) emit(c rawChunk, sc *stepCtx, yield func(batch) error) er
 // recordHash is the record_hash of a row: the first 16 hex characters of
 // SHA-256 over its cell values, or over the raw bytes of a line that could
 // not be split (D81).
-func recordHash(fields []string, raw []byte) string {
+func recordHash(fields *delivery.Fields, raw []byte) string {
 	h := sha256.New()
 	if fields == nil {
 		h.Write([]byte("raw:"))
 		h.Write(raw)
 	} else {
-		for _, f := range fields {
+		for i := range fields.Len() {
+			f := fields.Field(i)
 			fmt.Fprintf(h, "%d:%s;", len(f), f)
 		}
 	}
@@ -589,12 +632,13 @@ func recordHash(fields []string, raw []byte) string {
 // businessKey is the record_key of a row with a business key: the first 16
 // hex characters of SHA-256 over the names of the key columns and their
 // values (D97).
-func businessKey(names []string, cols []int, fields []string) string {
+func businessKey(names []string, cols []int, fields *delivery.Fields) string {
 	h := sha256.New()
 	for i, name := range names {
 		fmt.Fprintf(h, "%d:%s;", len(name), name)
 		if j := cols[i]; j >= 0 {
-			fmt.Fprintf(h, "%d:%s;", len(fields[j]), fields[j])
+			f := fields.Field(j)
+			fmt.Fprintf(h, "%d:%s;", len(f), f)
 		} else {
 			h.Write([]byte("n;"))
 		}

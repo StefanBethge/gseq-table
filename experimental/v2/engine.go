@@ -246,8 +246,42 @@ func (s *fullStage) finish(ctx context.Context) error {
 	var outOrig []origin
 	switch op := s.op.(type) {
 	case joinOp:
-		b := s.joinRows(op, op.prepare(), concatBlocks(blks, s.in), orig)
-		out, outOrig = b.blk, b.orig
+		// Block by block: the join rows keep the order of the left rows
+		// (D6), and no block is joined with another first (D113).
+		ix := op.prepare()
+		start := 0
+		emitted := false
+		for i, b := range blks {
+			end := start + b.Len()
+			jb := s.joinRows(op, ix, b, orig[start:end:end])
+			start = end
+			// An empty block goes on only if no block has rows.
+			if jb.blk.Len() == 0 && (emitted || i < len(blks)-1) {
+				continue
+			}
+			emitted = true
+			if err := s.emit(ctx, jb); err != nil {
+				return err
+			}
+		}
+		t.left(s.sc.cnt, right, false)
+		return s.next.finish(ctx)
+	case sortOp:
+		// The sorted rows are gathered from the input blocks into blocks
+		// of the block length, each cell once (D113, G75).
+		refs := sortRefs(blks, s.in, op.keys)
+		starts := rowStarts(blks)
+		for _, part := range chunkRefs(refs, s.blockLen) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			b := batch{block.GatherBlocks(blks, part), pickRefs(orig, starts, part)}
+			t.passed(s.sc.cnt, b.orig, false)
+			if err := s.emit(ctx, b); err != nil {
+				return err
+			}
+		}
+		return s.next.finish(ctx)
 	default:
 		var err error
 		if out, outOrig, err = s.op.applyAll(blks, s.in, s.sc); err != nil {
@@ -329,7 +363,10 @@ func (s *fullStage) finishJoin(ctx context.Context, op joinOp) error {
 func (s *fullStage) joinRows(op joinOp, ix *joinIndex, lb block.Block, lorig []origin) batch {
 	t := s.sc.rx.tally
 	out, outOrig, matches := op.probe(ix, lb, s.in, lorig)
-	var dropped, joined []origin
+	// The join rows own what they share of lb (D55).
+	lb.Release()
+	joined := make([]origin, 0, len(lorig))
+	var dropped []origin
 	for i, n := range matches {
 		switch {
 		case n > 1:
@@ -606,6 +643,20 @@ func run(ctx context.Context, src func(yield func(batch) error) error, steps []p
 		err = first.finish(ctx)
 	}
 	return c.batches, err
+}
+
+// chunkRefs splits refs into parts of at most n rows; n <= 0 keeps them
+// whole.
+func chunkRefs(refs []block.Ref, n int) [][]block.Ref {
+	if n <= 0 || len(refs) <= n {
+		return [][]block.Ref{refs}
+	}
+	var out [][]block.Ref
+	for start := 0; start < len(refs); start += n {
+		end := min(start+n, len(refs))
+		out = append(out, refs[start:end:end])
+	}
+	return out
 }
 
 // chunk splits b into batches of at most n rows; n <= 0 keeps it whole.

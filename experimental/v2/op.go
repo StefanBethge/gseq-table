@@ -123,7 +123,8 @@ func (sc *stepCtx) rejectRow(key int, o origin, snap func() snapshot, column, va
 		path, prev = h.path+" › "+sc.step, h.reason
 	}
 	e := rejectEntry{
-		Reject: Reject{ID: id, Step: path, Column: column, Value: value, HasValue: hasValue, Reason: reason, PrevReason: prev, Code: code},
+		// The value may be a view into a block; the entry outlives it (D113).
+		Reject: Reject{ID: id, Step: path, Column: column, Value: strings.Clone(value), HasValue: hasValue, Reason: reason, PrevReason: prev, Code: code},
 		runID:  sc.rx.run.id,
 		orig:   o.detached(),
 		step:   sc.ref,
@@ -287,7 +288,7 @@ func (o whereOp) apply(blk block.Block, in schema, sc *stepCtx) (block.Block, []
 	v := o.cond.n.eval(c)
 	drop := make([]bool, c.n)
 	for i := range c.n {
-		if r := c.reasons[i]; r != "" {
+		if r := c.reasons.at(i); r != "" {
 			if err := sc.reject(i, "", "", false, r, CodeExpr); err != nil {
 				return block.Block{}, nil, err
 			}
@@ -349,7 +350,7 @@ type part struct {
 	name    string
 	idx     int // column to replace, or -1 to append
 	vals    *vec
-	reasons []string
+	reasons reasons
 	value   func(i int) (string, bool) // nil: no value
 	code    string
 }
@@ -361,7 +362,7 @@ func applyParts(blk block.Block, sc *stepCtx, parts []part) (block.Block, []int,
 	drop := make([]bool, blk.Len())
 	for i := range blk.Len() {
 		for _, p := range parts {
-			r := p.reasons[i]
+			r := p.reasons.at(i)
 			if r == "" {
 				continue
 			}
@@ -471,13 +472,13 @@ func (o castOp) part(blk block.Block, in schema) part {
 	ci := in.index(o.col)
 	src := vecOf(blk.Column(ci))
 	out := newVec(o.to, src.n)
-	reasons := make([]string, src.n)
+	var reasons reasons
 	for i := range src.n {
 		if src.null[i] {
 			out.null[i] = true
 			continue
 		}
-		reasons[i] = o.cell(src, i, out)
+		reasons.set(i, o.cell(src, i, out), src.n)
 	}
 	return part{name: o.col, idx: ci, vals: out, reasons: reasons, value: src.format, code: CodeParse}
 }
@@ -485,7 +486,7 @@ func (o castOp) part(blk block.Block, in schema) part {
 // cell casts cell i of src into out and returns a reason if it fails.
 func (o castOp) cell(src *vec, i int, out *vec) string {
 	if src.kind == block.Text {
-		s := src.texts[i]
+		s := src.text(i)
 		if o.lenient && o.to != block.Text {
 			s = strings.TrimSpace(s)
 		}

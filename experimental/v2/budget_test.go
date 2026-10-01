@@ -179,7 +179,7 @@ func TestGroupByRejectsAggregatedRowsAndStaysInTheBudget(t *testing.T) {
 	testutil.Proves(t, "T9")
 	const budget = 64 << 10
 	// Groups of 100 rows: one group must fit in memory (G68).
-	p := FromSource(NewSource(measurements(20000, 200)), 32).
+	p := FromSource(NewSource(measurements(40000, 200)), 32).
 		Then(Cast("value", TypeFloat)).
 		Then(Cast("big", TypeInt)).
 		Then(GroupBy([]string{"station"}, Min("value"), Mean("value").As("mean"), Max("value").As("max"), Sum("big"))).
@@ -209,7 +209,7 @@ func TestGroupByRejectsAggregatedRowsAndStaysInTheBudget(t *testing.T) {
 	rows := agg[0].Rows
 	wantCells(t, rows, "station", "s7")
 	s7 := 0
-	for _, r := range measurements(20000, 200).recs {
+	for _, r := range measurements(40000, 200).recs {
 		if r.Fields[0] == "s7" && r.Fields[1] != "n/a" {
 			s7++
 		}
@@ -593,12 +593,12 @@ func TestSortAndGroupByOverMoreDataThanTheBudgetKeepTheBudget(t *testing.T) {
 	const budget = 128 << 10
 	plans := map[string]func() *Pipeline{
 		"sort": func() *Pipeline {
-			return FromSource(NewSource(measurements(30000, 300)), 64).
+			return FromSource(NewSource(measurements(80000, 300)), 64).
 				Then(Cast("value", TypeFloat)).
 				Then(Sort(Desc("value"), Asc("station")))
 		},
 		"group by and sort": func() *Pipeline {
-			return FromSource(NewSource(measurements(30000, 300)), 64).
+			return FromSource(NewSource(measurements(80000, 300)), 64).
 				Then(Cast("value", TypeFloat)).
 				Then(GroupBy([]string{"station"}, Min("value"), Mean("value").As("mean"), Max("value").As("max"))).
 				Then(Sort(Asc("station")))

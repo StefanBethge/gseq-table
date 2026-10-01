@@ -2,9 +2,328 @@
 
 Messungen zu [G5](../../../docs/explanation/design/v2/70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) nach den Bestehkriterien aus [D58](../../../docs/explanation/design/v2/10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget), mit den Lieferungen aus
 [D60](../../../docs/explanation/design/v2/10-design-decisions.md#d60-der-prototyp-wird-mit-eigenen-beispiel-lieferungen-der-1brc-datei-und-in-docker-mit-verschiedenen-speicher-limits-erprobt), sowie die Läufe zu [T23](../../../docs/explanation/design/v2/30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein) in Docker. Die Neumessung nach dem Umbau der Buchführung je Quellzeile
-([G67](../../../docs/explanation/design/v2/70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets), #66) steht oben, die Messung vom 2026-09-29 (#53) darunter unverändert. Die Rohdaten
-stehen unter [results/](results/) (vor #66) und [results/after-66/](results/after-66/), das Werkzeug
-ist `bench` in diesem Verzeichnis.
+([G67](../../../docs/explanation/design/v2/70-gap-ledger.md#g67-buchfuhrung-je-quellzeile-liegt-auerhalb-des-budgets), #66) und die nach dem Umbau der Textspalten und Kopien
+([G75](../../../docs/explanation/design/v2/70-gap-ledger.md#g75-textspalten-csv-parsen-und-zwischenkopien-kosten-zeit-und-speicher-gegen-v1), #69) stehen oben, die Messung vom 2026-09-29 (#53) darunter unverändert. Die
+Rohdaten stehen unter [results/](results/) (vor #66), [results/after-66/](results/after-66/) und
+[results/after-69/](results/after-69/), das Werkzeug ist `bench` in diesem Verzeichnis.
+
+## Neumessung nach #69 (2026-09-30)
+
+Nach den Ursachen aus [G75](../../../docs/explanation/design/v2/70-gap-ledger.md#g75-textspalten-csv-parsen-und-zwischenkopien-kosten-zeit-und-speicher-gegen-v1) ([D113](../../../docs/explanation/design/v2/10-design-decisions.md#d113-nach-66-bleiben-g5-und-g13-offen-und-d7-wird-erst-nach-einem-folgeslice-fur-textspalten-und-kopien-wieder-aufgemacht)): Textspalten als ein Byte-Puffer mit Offsets von 32 Bit und
+Null-Bitmap je Block ([T74](../../../docs/explanation/design/v2/30-test-plan.md#t74-textspalten-halten-ihre-werte-in-einem-puffer-und-lesen-und-kopieren-legen-keinen-string-je-zelle-an)), ein eigener CSV-Tokenizer, der mit den Regeln von `encoding/csv` direkt
+in einen wiederverwendeten Puffer liest und die Rohbytes ohne eigene Kopie kennt ([T75](../../../docs/explanation/design/v2/30-test-plan.md#t75-der-csv-reader-zerlegt-eine-lieferung-wie-encodingcsv-mit-denselben-fundstellen-und-rohbytes)), und
+Sortieren und Join, die jede Zelle einmal aus den Blöcken ihrer Eingabe sammeln ([T76](../../../docs/explanation/design/v2/30-test-plan.md#t76-sortieren-und-join-sammeln-jede-zelle-einmal-aus-den-blocken-ihrer-eingabe)). Stand der
+Messung: Commit `592c767`. Die Rohdaten stehen unter [results/after-69/](results/after-69/).
+
+### Ergebnis
+
+| Frage | Kriterium ([D58](../../../docs/explanation/design/v2/10-design-decisions.md#d58-der-prototyp-hat-feste-bestehkriterien-fur-laufzeit-speicher-und-budget)) | nach #66 | nach #69 |
+|---|---|---|---|
+| [G5](../../../docs/explanation/design/v2/70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht): v2 gegen v1 `MutableTable` | höchstens 1,2-fache Laufzeit und höchstens der Spitzenspeicher | Zeit bei Lesen, Filtern, Gruppieren und Join 1,24- bis 2,01-fach, Speicher beim Sortieren 2,0- bis 2,4-fach, beim Join 1,4- bis 1,5-fach | **nicht bestanden, knapp**: Zeit überall im Kriterium außer beim Filtern (1,24- bis 1,36-fach); Speicher überall im Kriterium (0,01- bis 0,90-fach) außer beim textlastigen Sortieren (1,03- bis 1,11-fach) |
+| [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): v2 gegen v1 `Table`, zahlenlastig | nicht langsamer, höchstens 70 % des Spitzenspeichers | nur Umwandeln | **nicht bestanden**: Speicher überall unter 70 % außer beim Sortieren von 1 Mio. Zeilen (74 %); schneller bei Umwandeln, abgeleiteten Spalten und Sortieren, langsamer bei Lesen (1,03- bis 1,15-fach), Filtern (1,20- bis 1,30-fach), Gruppieren (1,08- bis 1,11-fach) und Join (1,20- bis 1,28-fach) |
+| [T23](../../../docs/explanation/design/v2/30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein): volle 1BRC-Datei in Docker mit 1g, 2g, 4g | Lauf kommt durch | ok, Spitze 891 bis 1170 MiB | **bestanden**: ok, Spitze 829 bis 1144 MiB |
+
+Der Maintainer hat entschieden ([D114](../../../docs/explanation/design/v2/10-design-decisions.md#d114-die-engine-darf-innerhalb-eines-laufs-nebenlaufig-arbeiten-und-d7-wird-erst-nach-einem-folgeslice-dafur-wieder-aufgemacht)): Zuerst setzt ein Folgeslice nebenläufiges Arbeiten innerhalb eines Laufs um, [D7](../../../docs/explanation/design/v2/10-design-decisions.md#d7-die-engine-entscheidet-ob-sie-daten-kopiert-oder-an-ort-und-stelle-andert) wird erst nach der Neumessung wieder aufgemacht, und [G5](../../../docs/explanation/design/v2/70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht) und [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange) bleiben bis dahin offen.
+
+### Maschine und Last
+
+Wie vor #66: Apple M4 Pro, 14 Kerne, 48 GiB, macOS 26.6.2, Go 1.27.1, Docker Desktop 28.5.1 mit 7,65 GiB
+und 14 CPUs, `busybox:1.37.0`, ohne Swap. Ruhig war der Host nicht: Neben der Messung liefen zwei
+virtuelle Maschinen mit zusammen rund 240 % CPU und weitere Programme. Die Last über eine Minute lag
+während der Hauptreihe (20:25 bis 22:15) zwischen 2,9 und 16,3, im Median bei 5,4, während der
+Wiederholungen (22:25 bis 22:51) zwischen 1,7 und 5,6, im Median bei 3,2
+([results/after-69/load.txt](results/after-69/load.txt)). v1 und v2 liefen abwechselnd unter derselben
+Last, die Faktoren sind vergleichbar, die absoluten Zeiten nicht.
+
+Vier Zellen der Hauptreihe waren durch Lastspitzen gestört (eine Wiederholung zwei- bis dreimal so lang
+wie die anderen): textlastiges Sortieren, abgeleitete Spalten und Join sowie zahlenlastiges Sortieren
+mit 10 Mio. Zeilen. Sie wurden mit fünf Wiederholungen je Implementierung neu gemessen
+([results/after-69/compare-rerun.jsonl](results/after-69/compare-rerun.jsonl)), und die Tabellen unten
+nehmen für diese Zellen die Wiederholungen. Der Host war während der Wiederholungen insgesamt langsamer
+(v1 `MutableTable` sortierte 10 Mio. zahlenlastige Zeilen in 20,8 statt 15,1 s): Ihre Faktoren gelten,
+ihre Zeiten sind nicht mit denen der Hauptreihe zu mischen. Eine erste Reihe zum Auslagern lief
+versehentlich gleichzeitig mit einer zweiten und wurde verworfen; die Tabelle unten ist eine Reihe allein.
+
+### Was die Profile zeigten und was sich änderte
+
+Profile über 10 Mio. zahlenlastige Zeilen vor der Umsetzung (`bench run … -cpuprofile … -allocprofile …`):
+
+- Lesen: Gut die Hälfte der Allokationen legte `Builder.reset` an, weil jeder Builder nach `Build`
+  sofort eine neue Liste voller Kapazität belegte, die meist verworfen wurde. Ein gutes Drittel legte
+  `encoding/csv` an (ein String und eine Liste je Datensatz). Die Speicherbereinigung durchsuchte jeden
+  String einer Textspalte.
+- Sortieren: 68 % der Allokationen lagen in `Builder.reset` über `Concat`, `Take` und das Zerlegen in
+  Blöcke, also drei Kopien jeder Zelle, und 24 % der Zeit im stabilen Sortieren (`SortStableFunc`).
+- Join: 56 % der Allokationen lagen in `Builder.reset`, dazu ein String je Schlüssel und Zeile in
+  `keyOf`, und rund 45 % der Zeit in der Speicherbereinigung.
+
+Umgesetzt:
+
+- Textspalten sind ein `[]byte` mit `[]uint32`-Offsets und Null-Bitmap, beide Listen ohne Zeiger. Zellen
+  werden als View auf den Puffer gelesen, geschriebene Bytes ändern sich nie. Wo eine View länger lebt als
+  ihr Block (Zwischenstände von Gruppen, Werte und Kopien aussortierter Zeilen), wird sie kopiert. Ein
+  Builder legt seine Listen erst mit der ersten Zelle an, und der Reader reserviert für jede Textspalte
+  die Bytes des vorigen Blocks.
+- Der CSV-Reader zerlegt Datensätze mit einem eigenen Tokenizer in einen wiederverwendeten Puffer, aus
+  dem die Felder direkt in die Spaltenpuffer gehen. Er ändert seinen Eingabepuffer nicht, deshalb sind
+  die Rohbytes eines Datensatzes ein Ausschnitt daraus. [T75](../../../docs/explanation/design/v2/30-test-plan.md#t75-der-csv-reader-zerlegt-eine-lieferung-wie-encodingcsv-mit-denselben-fundstellen-und-rohbytes) prüft Felder, Fehler, Zeile, Offset und
+  Rohbytes gegen `encoding/csv` über 3000 Zufallseingaben.
+- Sortieren ordnet Verweise auf die Zeilen aller Eingabeblöcke stabil und sammelt jede Zelle einmal in
+  Blöcke der Blocklänge, im Speicher und beim Auslagern. Join sucht Block für Block und teilt die linken Spalten, wenn
+  jede linke Zeile genau einen Partner hat. Schlüssel von Gruppen und Joins entstehen in einem
+  wiederverwendeten Byte-Puffer. Gründe gescheiterter Zeilen werden erst beim ersten Fehler angelegt.
+
+Eine Textspalte fasst in einem Block höchstens 4 GiB ([G77](../../../docs/explanation/design/v2/70-gap-ledger.md#g77-eine-textspalte-fasst-in-einem-block-hochstens-4-gib)). Einen `sync.Pool` für Puffer gibt es
+nicht: Die Puffer der Blöcke sind nach dem Umbau der größte Teil der Allokationen, aber Zellen werden als
+Views gelesen, die über Tabellen und Ziele ihren Block überleben können, und ein wiederverwendeter Puffer
+würde sie ändern.
+
+Beim ersten Docker-Lauf (`f9c0036`, [results/after-69/docker-f9c0036.jsonl](results/after-69/docker-f9c0036.jsonl))
+endete die volle 1BRC-Datei bei jedem Limit am Speicherlimit: Die Kopie einer aussortierten Zeile
+([D87](../../../docs/explanation/design/v2/10-design-decisions.md#d87-ohne-ziel-halt-die-ergebnistabelle-den-rohzustand-ihrer-zeilen-aussortierte-zeilen-behalten-eine-kopie)) hielt über eine View den ganzen Textpuffer ihres Blocks, 710.671 aussortierte Zeilen also
+praktisch die ganze Lieferung. Seit `592c767` besitzt die Kopie ihre Bytes, und [T71](../../../docs/explanation/design/v2/30-test-plan.md#t71-die-buchfuhrung-wachst-nicht-mit-der-lieferung) prüft das mit
+einem Plan, in dem jede 1000. Zeile scheitert.
+
+Nachtrag nach der Reihe: Die gemessene Fassung (`592c767`) sortierte unstabil mit der Position als
+letztem Kriterium. Bei Schlüsseln mit vielen gleichen Werten (1000 Codes auf 10 Mio. Zeilen) war das
+Sortieren im Speicher dadurch rund 20 % langsamer als vor #69, weil pdqsort gleiche Elemente nicht mehr
+als gleich erkannte. Seither sortiert es stabil. Direkter Vergleich auf demselben Host (Load 3,0 bis 3,7,
+10 Mio. Zeilen, eine Wiederholung je Spalte und Fassung abwechselnd):
+
+| Fall | vor #69 (`360ce25`) s | `592c767` s | stabil s |
+|---|---:|---:|---:|
+| Sortieren, zahlenlastig | 12,36 / 12,15 | 14,75 / 14,96 | 12,00 / 11,33 |
+| Sortieren, textlastig | 12,77 | 14,53 | 10,02 |
+
+Die übrigen Fälle über 10 Mio. zahlenlastige Zeilen, `360ce25` gegen `592c767` im selben Vergleich:
+Lesen 3,59/3,32 gegen 2,72/2,72 s, Filtern 4,64/4,61 gegen 4,05/4,03 s, Umwandeln 6,08/6,05 gegen
+5,48/5,49 s, abgeleitete Spalten 4,62/4,60 gegen 4,03/4,05 s, Gruppieren 5,33/5,28 gegen 4,29/4,36 s,
+Join 6,91/7,05 gegen 4,40/4,40 s. Die Faktoren des Sortierens in den Tabellen unten gelten für
+`592c767`, sind also etwas zu hoch.
+
+### [T23](../../../docs/explanation/design/v2/30-test-plan.md#t23-ein-lauf-uber-mehr-daten-als-das-budget-halt-das-budget-ein): 1BRC in Docker
+
+`bench/docker.sh <dir> onebrc <datei>`, `examples/onebrc_budget` mit `GOMEMLIMIT` durch die Engine.
+
+| Lieferung | Limit | nach #66 (`5118c8a`, Host gestört) | nach #69 (`592c767`, Host gestört) |
+|---|---|---|---|
+| volle Datei | 1g | ok, 1709 s, 891 MiB | ok, 887 s, 829 MiB |
+| volle Datei | 2g | ok, 760 s, 1170 MiB | ok, 1081 s, 1144 MiB |
+| volle Datei | 4g | ok, 556 s, 1123 MiB | ok, 1332 s, 993 MiB |
+
+Jeder Lauf endet mit Status `ok` und denselben Zählungen wie nach #66 (999.992.341 gelesen, 710.671
+aussortiert, 999.281.670 durchgelaufen). Die Last lag während der Läufe bei 4 bis 13, die Zeiten sagen
+deshalb nichts. Auf dem Host lief ein Ausschnitt von 50 Mio. Zeilen in 14,4 s mit 69 MiB (nach #66 16
+bis 21 s, 70 MiB). Die Spitze folgt weiter den aussortierten Zeilen und den Gruppen ([G76](../../../docs/explanation/design/v2/70-gap-ledger.md#g76-ubersicht-und-rohbytes-aussortierter-zeilen-wachsen-mit-den-fehlern)).
+
+### Messwerte
+
+Median aus drei Wiederholungen, für die vier neu gemessenen Zellen aus fünf.
+
+#### [G5](../../../docs/explanation/design/v2/70-gap-ledger.md#g5-ob-es-eine-veranderbare-tabelle-braucht): v2 automatisch mit Rohzustand gegen v1 MutableTable
+
+Zahlenlastig, 1M Zeilen:
+
+| Fall | v1m s | v2 s | Zeit × | v1m MiB | v2 MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 0.26 | 0.28 | 1.08 | 360 | 155 | 0.43 | ja | ja |
+| filter | 0.31 | 0.42 | 1.33 | 331 | 214 | 0.65 | **nein** | ja |
+| cast | 0.78 | 0.56 | 0.71 | 392 | 231 | 0.59 | ja | ja |
+| derive | 0.45 | 0.41 | 0.92 | 461 | 186 | 0.40 | ja | ja |
+| sort | 1.74 | 1.01 | 0.58 | 347 | 312 | 0.90 | ja | ja |
+| groupby | 0.42 | 0.43 | 1.04 | 452 | 24 | 0.05 | ja | ja |
+| join | 0.39 | 0.45 | 1.16 | 633 | 277 | 0.44 | ja | ja |
+
+Zahlenlastig, 10M Zeilen:
+
+| Fall | v1m s | v2 s | Zeit × | v1m MiB | v2 MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 1.81 | 1.93 | 1.07 | 3334 | 1440 | 0.43 | ja | ja |
+| filter | 2.31 | 2.87 | 1.24 | 3586 | 2018 | 0.56 | **nein** | ja |
+| cast | 5.31 | 3.94 | 0.74 | 3741 | 2204 | 0.59 | ja | ja |
+| derive | 3.10 | 2.91 | 0.94 | 4690 | 1753 | 0.37 | ja | ja |
+| sort | 20.83 | 15.24 | 0.73 | 3349 | 2674 | 0.80 | ja | ja |
+| groupby | 2.89 | 3.01 | 1.04 | 4379 | 25 | 0.01 | ja | ja |
+| join | 2.71 | 3.23 | 1.19 | 6118 | 3165 | 0.52 | ja | ja |
+
+Textlastig, 1M Zeilen:
+
+| Fall | v1m s | v2 s | Zeit × | v1m MiB | v2 MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 0.30 | 0.33 | 1.10 | 450 | 248 | 0.55 | ja | ja |
+| filter | 0.35 | 0.47 | 1.36 | 473 | 333 | 0.70 | **nein** | ja |
+| cast | 0.43 | 0.41 | 0.95 | 465 | 269 | 0.58 | ja | ja |
+| derive | 0.40 | 0.39 | 0.96 | 591 | 314 | 0.53 | ja | ja |
+| sort | 2.06 | 1.12 | 0.54 | 450 | 498 | 1.11 | ja | **nein** |
+| groupby | 0.31 | 0.30 | 0.94 | 498 | 29 | 0.06 | ja | ja |
+| join | 0.32 | 0.35 | 1.09 | 783 | 375 | 0.48 | ja | ja |
+
+Textlastig, 10M Zeilen:
+
+| Fall | v1m s | v2 s | Zeit × | v1m MiB | v2 MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 2.22 | 2.47 | 1.11 | 4403 | 2373 | 0.54 | ja | ja |
+| filter | 2.52 | 3.28 | 1.30 | 4403 | 3273 | 0.74 | **nein** | ja |
+| cast | 3.11 | 2.89 | 0.93 | 4409 | 2615 | 0.59 | ja | ja |
+| derive | 4.03 | 3.86 | 0.96 | 6381 | 2946 | 0.46 | ja | ja |
+| sort | 20.77 | 16.56 | 0.80 | 4403 | 4530 | 1.03 | ja | **nein** |
+| groupby | 3.51 | 3.30 | 0.94 | 4954 | 30 | 0.01 | ja | ja |
+| join | 4.20 | 4.92 | 1.17 | 7530 | 4101 | 0.54 | ja | ja |
+
+#### [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): v2 gegen v1 Table, zahlenlastig
+
+Zahlenlastig, 1M Zeilen:
+
+| Fall | v1t s | v2 s | Zeit × | v1t MiB | v2 MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 0.24 | 0.28 | 1.15 | 336 | 155 | 0.46 | **nein** | ja |
+| filter | 0.32 | 0.42 | 1.30 | 404 | 214 | 0.53 | **nein** | ja |
+| cast | 1.11 | 0.56 | 0.50 | 808 | 231 | 0.29 | ja | ja |
+| derive | 0.47 | 0.41 | 0.89 | 499 | 186 | 0.37 | ja | ja |
+| sort | 1.88 | 1.01 | 0.54 | 423 | 312 | 0.74 | ja | **nein** |
+| groupby | 0.40 | 0.43 | 1.08 | 334 | 24 | 0.07 | **nein** | ja |
+| join | 0.37 | 0.45 | 1.20 | 634 | 277 | 0.44 | **nein** | ja |
+
+Zahlenlastig, 10M Zeilen:
+
+| Fall | v1t s | v2 s | Zeit × | v1t MiB | v2 MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 1.88 | 1.93 | 1.03 | 3243 | 1440 | 0.44 | **nein** | ja |
+| filter | 2.40 | 2.87 | 1.20 | 3952 | 2018 | 0.51 | **nein** | ja |
+| cast | 7.84 | 3.94 | 0.50 | 7585 | 2204 | 0.29 | ja | ja |
+| derive | 3.09 | 2.91 | 0.94 | 4932 | 1753 | 0.36 | ja | ja |
+| sort | 22.06 | 15.24 | 0.69 | 4125 | 2674 | 0.65 | ja | ja |
+| groupby | 2.71 | 3.01 | 1.11 | 3565 | 25 | 0.01 | **nein** | ja |
+| join | 2.52 | 3.23 | 1.28 | 5765 | 3165 | 0.55 | **nein** | ja |
+
+#### [G13](../../../docs/explanation/design/v2/70-gap-ledger.md#g13-vorteil-spaltenorientierter-blocke-und-voreinstellungen-fur-budget-und-blocklange): v2 ohne gegen mit Rohzustand ([D106](../../../docs/explanation/design/v2/10-design-decisions.md#d106-ein-interner-mess-schalter-lasst-den-rohzustand-fur-die-benchmarks-weg))
+
+Zahlenlastig, 1M Zeilen:
+
+| Fall | v2 s | v2noraw s | Zeit × | v2 MiB | v2noraw MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 0.28 | 0.28 | 1.01 | 155 | 155 | 1.00 | – | – |
+| filter | 0.42 | 0.41 | 0.99 | 214 | 136 | 0.63 | – | – |
+| cast | 0.56 | 0.55 | 0.99 | 231 | 158 | 0.68 | – | – |
+| derive | 0.41 | 0.41 | 0.99 | 186 | 177 | 0.95 | – | – |
+| sort | 1.01 | 0.98 | 0.98 | 312 | 312 | 1.00 | – | – |
+| groupby | 0.43 | 0.43 | 1.00 | 24 | 23 | 0.95 | – | – |
+| join | 0.45 | 0.45 | 1.01 | 277 | 307 | 1.11 | – | – |
+
+Zahlenlastig, 10M Zeilen:
+
+| Fall | v2 s | v2noraw s | Zeit × | v2 MiB | v2noraw MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 1.93 | 1.90 | 0.98 | 1440 | 1448 | 1.01 | – | – |
+| filter | 2.87 | 2.85 | 0.99 | 2018 | 1228 | 0.61 | – | – |
+| cast | 3.94 | 3.83 | 0.97 | 2204 | 1539 | 0.70 | – | – |
+| derive | 2.91 | 2.87 | 0.99 | 1753 | 1554 | 0.89 | – | – |
+| sort | 15.24 | 14.68 | 0.96 | 2674 | 2674 | 1.00 | – | – |
+| groupby | 3.01 | 3.01 | 1.00 | 25 | 25 | 0.99 | – | – |
+| join | 3.23 | 3.17 | 0.98 | 3165 | 2779 | 0.88 | – | – |
+
+Textlastig, 1M Zeilen:
+
+| Fall | v2 s | v2noraw s | Zeit × | v2 MiB | v2noraw MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 0.33 | 0.33 | 1.00 | 248 | 249 | 1.00 | – | – |
+| filter | 0.47 | 0.46 | 0.98 | 333 | 203 | 0.61 | – | – |
+| cast | 0.41 | 0.41 | 1.00 | 269 | 258 | 0.96 | – | – |
+| derive | 0.39 | 0.39 | 1.00 | 314 | 311 | 0.99 | – | – |
+| sort | 1.12 | 0.77 | 0.68 | 498 | 498 | 1.00 | – | – |
+| groupby | 0.30 | 0.30 | 1.02 | 29 | 30 | 1.02 | – | – |
+| join | 0.35 | 0.35 | 1.00 | 375 | 375 | 1.00 | – | – |
+
+Textlastig, 10M Zeilen:
+
+| Fall | v2 s | v2noraw s | Zeit × | v2 MiB | v2noraw MiB | Speicher × | Zeit ok | Speicher ok |
+|---|---:|---:|---:|---:|---:|---:|---|---|
+| read | 2.47 | 2.27 | 0.92 | 2373 | 2372 | 1.00 | – | – |
+| filter | 3.28 | 3.20 | 0.98 | 3273 | 1732 | 0.53 | – | – |
+| cast | 2.89 | 2.87 | 1.00 | 2615 | 2473 | 0.95 | – | – |
+| derive | 3.86 | 3.84 | 0.99 | 2946 | 2927 | 0.99 | – | – |
+| sort | 16.56 | 18.86 | 1.14 | 4530 | 4530 | 1.00 | – | – |
+| groupby | 3.30 | 3.32 | 1.00 | 30 | 31 | 1.02 | – | – |
+| join | 4.92 | 5.02 | 1.02 | 4101 | 3843 | 0.94 | – | – |
+
+#### Mit Ziel
+
+| Art | Fall | Impl | Zeilen | Block | Ziel | Budget MiB | GOMEMLIMIT | s | MiB | Wdh. | Fehlgeschlagen | Ergebnis |
+|---|---|---|---:|---:|---|---:|---|---:|---:|---:|---:|---|
+| num | cast | v2 | 10M | 0 | true | 0 | false | 4.05 | 26 | 3 | 0 | 10000000 |
+| num | cast | v2noraw | 10M | 0 | true | 0 | false | 3.97 | 26 | 3 | 0 | 10000000 |
+| num | derive | v2 | 10M | 0 | true | 0 | false | 3.04 | 26 | 3 | 0 | 10000000 |
+| num | derive | v2noraw | 10M | 0 | true | 0 | false | 3.03 | 26 | 3 | 0 | 10000000 |
+| num | filter | v2 | 10M | 0 | true | 0 | false | 2.89 | 26 | 3 | 0 | 4998744 |
+| num | filter | v2noraw | 10M | 0 | true | 0 | false | 2.90 | 26 | 3 | 0 | 4998744 |
+| num | groupby | v2 | 10M | 0 | true | 0 | false | 2.89 | 24 | 3 | 0 | 1000 |
+| num | groupby | v2noraw | 10M | 0 | true | 0 | false | 2.81 | 25 | 3 | 0 | 1000 |
+| num | join | v2 | 10M | 0 | true | 0 | false | 4.02 | 3585 | 3 | 0 | 10000000 |
+| num | join | v2noraw | 10M | 0 | true | 0 | false | 4.07 | 3592 | 3 | 0 | 10000000 |
+| num | read | v2 | 10M | 0 | true | 0 | false | 2.39 | 25 | 3 | 0 | 10000000 |
+| num | read | v2noraw | 10M | 0 | true | 0 | false | 2.56 | 25 | 3 | 0 | 10000000 |
+| num | sort | v2 | 10M | 0 | true | 0 | false | 10.28 | 2971 | 3 | 0 | 10000000 |
+| num | sort | v2noraw | 10M | 0 | true | 0 | false | 10.19 | 2960 | 3 | 0 | 10000000 |
+| text | cast | v2 | 10M | 0 | true | 0 | false | 4.62 | 32 | 3 | 0 | 10000000 |
+| text | cast | v2noraw | 10M | 0 | true | 0 | false | 4.59 | 32 | 3 | 0 | 10000000 |
+| text | derive | v2 | 10M | 0 | true | 0 | false | 4.35 | 31 | 3 | 0 | 10000000 |
+| text | derive | v2noraw | 10M | 0 | true | 0 | false | 4.34 | 32 | 3 | 0 | 10000000 |
+| text | filter | v2 | 10M | 0 | true | 0 | false | 4.99 | 31 | 3 | 0 | 4995817 |
+| text | filter | v2noraw | 10M | 0 | true | 0 | false | 4.90 | 31 | 3 | 0 | 4995817 |
+| text | groupby | v2 | 10M | 0 | true | 0 | false | 4.33 | 31 | 3 | 0 | 1000 |
+| text | groupby | v2noraw | 10M | 0 | true | 0 | false | 4.31 | 31 | 3 | 0 | 1000 |
+| text | join | v2 | 10M | 0 | true | 0 | false | 6.30 | 3990 | 3 | 0 | 10000000 |
+| text | join | v2noraw | 10M | 0 | true | 0 | false | 6.33 | 4008 | 3 | 0 | 10000000 |
+| text | read | v2 | 10M | 0 | true | 0 | false | 3.76 | 26 | 3 | 0 | 10000000 |
+| text | read | v2noraw | 10M | 0 | true | 0 | false | 3.71 | 26 | 3 | 0 | 10000000 |
+| text | sort | v2 | 10M | 0 | true | 0 | false | 17.79 | 4236 | 3 | 0 | 10000000 |
+| text | sort | v2noraw | 10M | 0 | true | 0 | false | 17.03 | 4566 | 3 | 0 | 10000000 |
+
+#### Auslagern unter 256 MiB
+
+| Art | Fall | Impl | Zeilen | Block | Ziel | Budget MiB | GOMEMLIMIT | s | MiB | Wdh. | Fehlgeschlagen | Ergebnis |
+|---|---|---|---:|---:|---|---:|---|---:|---:|---:|---:|---|
+| num | groupby | v2 | 10M | 0 | false | 256 | false | 4.30 | 25 | 3 | 0 | 1000 |
+| num | groupby | v2 | 10M | 0 | true | 256 | false | 4.31 | 24 | 3 | 0 | 1000 |
+| num | groupby | v2noraw | 10M | 0 | false | 256 | false | 4.35 | 25 | 3 | 0 | 1000 |
+| num | groupby | v2noraw | 10M | 0 | true | 256 | false | 4.29 | 25 | 3 | 0 | 1000 |
+| num | sort | v2 | 10M | 0 | false | 256 | false | 18.31 | 2985 | 3 | 0 | 10000000 |
+| num | sort | v2 | 10M | 0 | true | 256 | false | 17.30 | 733 | 3 | 0 | 10000000 |
+| num | sort | v2noraw | 10M | 0 | false | 256 | false | 16.49 | 2142 | 3 | 0 | 10000000 |
+| num | sort | v2noraw | 10M | 0 | true | 256 | false | 16.19 | 756 | 3 | 0 | 10000000 |
+| text | groupby | v2 | 10M | 0 | false | 256 | false | 4.33 | 30 | 3 | 0 | 1000 |
+| text | groupby | v2 | 10M | 0 | true | 256 | false | 4.37 | 31 | 3 | 0 | 1000 |
+| text | groupby | v2noraw | 10M | 0 | false | 256 | false | 4.32 | 31 | 3 | 0 | 1000 |
+| text | groupby | v2noraw | 10M | 0 | true | 256 | false | 4.33 | 31 | 3 | 0 | 1000 |
+| text | sort | v2 | 10M | 0 | false | 256 | false | 25.72 | 6120 | 3 | 0 | 10000000 |
+| text | sort | v2 | 10M | 0 | true | 256 | false | 23.93 | 690 | 3 | 0 | 10000000 |
+| text | sort | v2noraw | 10M | 0 | false | 256 | false | 22.18 | 3744 | 3 | 0 | 10000000 |
+| text | sort | v2noraw | 10M | 0 | true | 256 | false | 22.61 | 699 | 3 | 0 | 10000000 |
+
+### Was bleibt
+
+- Filtern kopiert die Spalten der Zeilen, die es behält, in neue Blöcke; v1 `MutableTable` entfernt
+  Zeilen an Ort und Stelle. Das ist der größte verbleibende Abstand bei der Zeit.
+- Sortieren im Speicher hält bis zum letzten Block die Eingabeblöcke und die sortierte Kopie, mit und
+  ohne Rohzustand; v1 sortiert Zeiger auf Zeilen. Textlastig ergibt das das 1,03- bis 1,11-Fache des
+  Speichers von v1 `MutableTable`.
+- v2 liest und rechnet in einer Goroutine, v1 nutzt beim Lesen mehrere Kerne (Nutzerzeit über der
+  Laufzeit). Nebenläufigkeit innerhalb eines Laufs deckt keine Decision.
+- Die Buchführung je gehaltener Zeile (Herkunft und Quellzeile, 48 Bytes) ist nach den Zellen der größte
+  Posten der Allokationen beim Lesen.
+
+### Nachmessen
+
+```sh
+cd experimental/v2
+go build -o /tmp/bench ./bench
+/tmp/bench suite -dir /tmp/bench-data -plan compare -out compare.jsonl
+/tmp/bench suite -dir /tmp/bench-data -plan sink -rows 10000000 -out sink.jsonl
+/tmp/bench suite -dir /tmp/bench-data -plan spill -rows 10000000 -out spill.jsonl
+/tmp/bench measure -label compare -impl v1m -case sort -kind text -rows 10000000 -dir /tmp/bench-data -reps 5 -out compare-rerun.jsonl
+bench/docker.sh /tmp onebrc ~/1brc/golang/measurements.txt
+/tmp/bench report compare.jsonl compare-rerun.jsonl sink.jsonl spill.jsonl
+```
 
 ## Neumessung nach #66 (2026-09-30)
 

@@ -1,0 +1,3 @@
+{"label":"docker-onebrc-measurements-1g","case":"exec","managed":true,"rep":0,"wall_s":887.055890152,"maxrss":869335040,"result":"rejected by code: parse 46202, unparseable_line 664469","exit":0,"limit":1073741824,"goos":"linux"}
+{"label":"docker-onebrc-measurements-2g","case":"exec","managed":true,"rep":0,"wall_s":1080.805997786,"maxrss":1199796224,"result":"rejected by code: parse 46202, unparseable_line 664469","exit":0,"limit":2147483648,"goos":"linux"}
+{"label":"docker-onebrc-measurements-4g","case":"exec","managed":true,"rep":0,"wall_s":1331.533049159,"maxrss":1041612800,"result":"rejected by code: parse 46202, unparseable_line 664469","exit":0,"limit":4294967296,"goos":"linux"}

@@ -35,34 +35,50 @@ func concatBlocks(blks []block.Block, s schema) block.Block {
 
 // keyOf encodes the cells of the given columns in row i as a map key, and
 // reports whether one of them is null.
-func keyOf(cols []*vec, i int, sb *strings.Builder) (string, bool) {
-	sb.Reset()
+func keyOf(cols []*vec, i int, buf *[]byte) (string, bool) {
+	k, null := keyBytes(cols, i, buf)
+	return string(k), null
+}
+
+// keyBytes is keyOf into *buf, which it reuses: a lookup with
+// m[string(key)] allocates nothing (D113).
+func keyBytes(cols []*vec, i int, buf *[]byte) ([]byte, bool) {
+	b := (*buf)[:0]
 	hasNull := false
 	for _, c := range cols {
 		if c.null[i] {
-			sb.WriteString("n;")
+			b = append(b, "n;"...)
 			hasNull = true
 			continue
 		}
-		var s string
+		var tmp [64]byte
+		var v []byte
 		switch c.kind {
 		case block.Float:
 			f := c.flts[i]
 			if f == 0 {
 				f = 0 // -0 and 0 are one key
 			}
-			s = strconv.FormatFloat(f, 'g', -1, 64)
+			v = strconv.AppendFloat(tmp[:0], f, 'g', -1, 64)
 		case block.Timestamp:
-			s = c.times[i].UTC().Format(time.RFC3339Nano) // one key per instant
-		default:
-			s = formatCell(c.kind, c, i)
+			v = c.times[i].UTC().AppendFormat(tmp[:0], time.RFC3339Nano) // one key per instant
+		case block.Int:
+			v = strconv.AppendInt(tmp[:0], c.ints[i], 10)
+		case block.Bool:
+			v = strconv.AppendBool(tmp[:0], c.bools[i])
 		}
-		sb.WriteString(strconv.Itoa(len(s)))
-		sb.WriteByte(':')
-		sb.WriteString(s)
-		sb.WriteByte(';')
+		if c.kind == block.Text {
+			t := c.text(i)
+			b = strconv.AppendInt(b, int64(len(t)), 10)
+			b = append(append(b, ':'), t...)
+		} else {
+			b = strconv.AppendInt(b, int64(len(v)), 10)
+			b = append(append(b, ':'), v...)
+		}
+		b = append(b, ';')
 	}
-	return sb.String(), hasNull
+	*buf = b
+	return b, hasNull
 }
 
 // ---------------------------------------------------------------------------
@@ -163,10 +179,10 @@ func (o joinOp) prepare() *joinIndex {
 	for i, k := range o.keys {
 		rk[i] = vecOf(rb.Column(o.right.s.index(k.right)))
 	}
-	var sb strings.Builder
+	var kb []byte
 	index := make(map[string][]int)
 	for i := range rb.Len() {
-		if key, null := keyOf(rk, i, &sb); !null {
+		if key, null := keyOf(rk, i, &kb); !null {
 			index[key] = append(index[key], i)
 		}
 	}
@@ -182,14 +198,15 @@ func (o joinOp) probe(ix *joinIndex, lb block.Block, in schema, lorig []origin) 
 	for i, k := range o.keys {
 		lk[i] = vecOf(lb.Column(in.index(k.left)))
 	}
-	var sb strings.Builder
-	var li, ri []int
-	var orig []origin
+	var kb []byte
+	li := make([]int, 0, lb.Len())
+	ri := make([]int, 0, lb.Len())
+	orig := make([]origin, 0, lb.Len())
 	counts := make([]int, lb.Len())
 	for i := range lb.Len() {
 		var matches []int
-		if key, null := keyOf(lk, i, &sb); !null {
-			matches = ix.index[key]
+		if key, null := keyBytes(lk, i, &kb); !null {
+			matches = ix.index[string(key)]
 		}
 		counts[i] = len(matches)
 		for _, j := range matches {
@@ -204,8 +221,18 @@ func (o joinOp) probe(ix *joinIndex, lb block.Block, in schema, lorig []origin) 
 		}
 	}
 	cols := make([]block.Column, 0, len(in)+ix.rb.Width())
+	// Where every left row has one join row, the join rows share the
+	// left columns instead of copying them (D55, D113).
+	same := len(li) == lb.Len()
+	for i, l := range li {
+		same = same && l == i
+	}
 	for i := range in {
-		cols = append(cols, lb.Column(i).Take(li))
+		if same {
+			cols = append(cols, lb.Column(i).Share())
+		} else {
+			cols = append(cols, lb.Column(i).Take(li))
+		}
 	}
 	for i, f := range o.right.s {
 		if !o.isRightKey(f.name) {
@@ -404,17 +431,17 @@ func (o groupOp) withKey(in schema) func(batch) batch {
 		for i, k := range o.keys {
 			kv[i] = vecOf(b.blk.Column(in.index(k)))
 		}
-		var sb strings.Builder
-		kb := block.NewBuilder(block.Text, b.blk.Len())
+		var kb []byte
+		keys := block.NewBuilder(block.Text, b.blk.Len())
 		for i := range b.blk.Len() {
-			key, _ := keyOf(kv, i, &sb)
-			kb.AppendText(key)
+			key, _ := keyBytes(kv, i, &kb)
+			keys.AppendTextBytes(key)
 		}
 		cols := make([]block.Column, 0, len(in)+1)
 		for i := range in {
 			cols = append(cols, b.blk.Column(i))
 		}
-		return batch{newBlock(append(cols, kb.Build()), b.blk.Len()), b.orig}
+		return batch{newBlock(append(cols, keys.Build()), b.blk.Len()), b.orig}
 	}
 }
 
@@ -430,11 +457,11 @@ func (o groupOp) aggregate(b block.Block, in schema, rorig []origin, sh *shared)
 	for i, k := range o.keys {
 		kv[i] = vecOf(b.Column(in.index(k)))
 	}
-	var sb strings.Builder
+	var kb []byte
 	ids := make(map[string]int)
 	var groups [][]int
 	for i := range b.Len() {
-		key, _ := keyOf(kv, i, &sb)
+		key, _ := keyOf(kv, i, &kb)
 		g, ok := ids[key]
 		if !ok {
 			g = len(groups)
@@ -513,9 +540,9 @@ func (a Agg) reduce(src *vec, rows []int, out *vec, g int) string {
 		return ""
 	case "CountDistinct":
 		seen := make(map[string]bool)
-		var sb strings.Builder
+		var kb []byte
 		for _, r := range vals {
-			k, _ := keyOf([]*vec{src}, r, &sb)
+			k, _ := keyOf([]*vec{src}, r, &kb)
 			seen[k] = true
 		}
 		out.ints[g] = int64(len(seen))
@@ -555,7 +582,7 @@ func (a Agg) reduce(src *vec, rows []int, out *vec, g int) string {
 	case "StringJoin":
 		parts := make([]string, len(vals))
 		for i, r := range vals {
-			parts[i] = src.texts[r]
+			parts[i] = src.text(r)
 		}
 		out.texts[g] = strings.Join(parts, a.sep)
 	case "First":
@@ -657,17 +684,54 @@ func (o sortOp) plan(in schema) (schema, error) {
 }
 
 func (o sortOp) applyAll(blks []block.Block, in schema, sc *stepCtx) (block.Block, []origin, error) {
-	b := concatBlocks(blks, in)
-	idx := sortIndex(b, in, o.keys)
-	return b.Take(idx), pick(sc.orig, idx), nil
+	refs := sortRefs(blks, in, o.keys)
+	return block.GatherBlocks(blks, refs), pickRefs(sc.orig, rowStarts(blks), refs), nil
 }
 
-// sortIndex returns the rows of b in the order of the keys, stable (D70).
-func sortIndex(b block.Block, s schema, keys []SortKey) []int {
-	kv := keyVecs(b, s, keys)
-	idx := allIndexes(b.Len())
-	slices.SortStableFunc(idx, func(x, y int) int { return compareKeys(kv, x, kv, y, keys) })
-	return idx
+// sortRefs returns the rows of blks in the order of the keys. Rows with
+// equal keys keep their order (D70). The sort is stable rather than
+// unstable with the position as last key: keys with many equal values, as
+// a group key has, then compare far less often. The blocks are not joined
+// first (D113, G75).
+func sortRefs(blks []block.Block, s schema, keys []SortKey) []block.Ref {
+	kv := make([][]*vec, len(blks))
+	n := 0
+	for i, b := range blks {
+		kv[i] = keyVecs(b, s, keys)
+		n += b.Len()
+	}
+	refs := make([]block.Ref, 0, n)
+	for i, b := range blks {
+		for r := range b.Len() {
+			refs = append(refs, block.Ref{Blk: int32(i), Row: int32(r)})
+		}
+	}
+	slices.SortStableFunc(refs, func(x, y block.Ref) int {
+		return compareKeys(kv[x.Blk], int(x.Row), kv[y.Blk], int(y.Row), keys)
+	})
+	return refs
+}
+
+// rowStarts returns the position of the first row of every block among the
+// rows of all blocks.
+func rowStarts(blks []block.Block) []int {
+	starts := make([]int, len(blks))
+	n := 0
+	for i, b := range blks {
+		starts[i] = n
+		n += b.Len()
+	}
+	return starts
+}
+
+// pickRefs returns the entries of vals, one per row of all blocks, for the
+// rows refs.
+func pickRefs[T any](vals []T, starts []int, refs []block.Ref) []T {
+	out := make([]T, len(refs))
+	for i, r := range refs {
+		out[i] = vals[starts[r.Blk]+int(r.Row)]
+	}
+	return out
 }
 
 // keyVecs returns the key columns of b.
