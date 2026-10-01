@@ -32,7 +32,7 @@ und 14 CPUs, `busybox:1.37.0`, ohne Swap. Ruhig war der Host nicht: Neben der Me
 virtuelle Maschinen mit zusammen rund 240 % CPU und weitere Programme. Die Last über eine Minute lag
 während der Hauptreihe (20:25 bis 22:15) zwischen 2,9 und 16,3, im Median bei 5,4, während der
 Wiederholungen (22:25 bis 22:51) zwischen 1,7 und 5,6, im Median bei 3,2
-([results/after-69/load.log](results/after-69/load.log)). v1 und v2 liefen abwechselnd unter derselben
+([results/after-69/load.txt](results/after-69/load.txt)). v1 und v2 liefen abwechselnd unter derselben
 Last, die Faktoren sind vergleichbar, die absoluten Zeiten nicht.
 
 Vier Zellen der Hauptreihe waren durch Lastspitzen gestört (eine Wiederholung zwei- bis dreimal so lang
